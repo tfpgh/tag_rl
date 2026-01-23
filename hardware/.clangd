@@ -1,0 +1,20 @@
+CompileFlags:
+  Add:
+    - "-ferror-limit=0"
+    - "-Wno-unknown-attributes"
+    - "-Wno-unknown-warning-option"
+  Remove:
+    - "-mmcu=*"
+    - "-march=*"
+    - "-flto*"
+    - "-fno-fat-lto-objects"
+    - "-mrelax"
+    - "-mcall-prologues"
+    - "-fno-tree-switch-conversion"
+    - "-fstrict-volatile-bitfields"
+
+Diagnostics:
+  Suppress: "*"
+
+Index:
+  Background: Build

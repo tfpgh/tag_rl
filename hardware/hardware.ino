@@ -7,10 +7,10 @@ const int UDP_PORT = 8888;
 const int TIMEOUT_MS = 200; // Kill motors after no packets for this long
 
 // DRV8833 pins
-const int PIN_LEFT1 = 2;
-const int PIN_LEFT2 = 3;
-const int PIN_RIGHT1 = 4;
-const int PIN_RIGHT2 = 5;
+const int PIN_LEFT1 = 0;
+const int PIN_LEFT2 = 1;
+const int PIN_RIGHT1 = 2;
+const int PIN_RIGHT2 = 3;
 
 WiFiUDP udp;
 unsigned long lastPacketTime = 0;

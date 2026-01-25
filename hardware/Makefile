@@ -1,12 +1,12 @@
-FQBN := esp32:esp32:esp32c3
-PORT := /dev/ttyUSB0
+FQBN := esp32:esp32:XIAO_ESP32C3
+PORT := /dev/cu.usbmodem1101
 
 build:
 	arduino-cli compile --fqbn $(FQBN) --build-path ./build .
-	cp build/compile_commands.json .
 
 upload: build
-	arduino-cli upload --fqbn $(FQBN) --port $(PORT) .
+	arduino-cli upload --fqbn $(FQBN) --port $(PORT) --input-dir ./build .
+	$(MAKE) monitor
 
 monitor:
 	arduino-cli monitor --port $(PORT)

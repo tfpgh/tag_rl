@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
-const char *WIFI_SSID = "Middlebury-IoT";
-const char *WIFI_PASS = "INeedToGetAPassword";
+const char *WIFI_SSID = "WIFI_SSID ";
+const char *WIFI_PASS = "WIFI_PASS";
 const int UDP_PORT = 8888;
 const int TIMEOUT_MS = 200; // Kill motors after no packets for this long
 
@@ -40,9 +40,8 @@ void setup() {
 
   motorsSet(0, 0);
 
-  Serial.println(WiFi.macAddress());
-
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.println(WiFi.macAddress());
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
   }

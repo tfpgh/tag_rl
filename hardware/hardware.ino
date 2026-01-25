@@ -1,16 +1,16 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
-const char *WIFI_SSID = "WIFI_SSID ";
-const char *WIFI_PASS = "WIFI_PASS";
+const char *WIFI_SSID = "TagRL";
+const char *WIFI_PASS = "12345678";
 const int UDP_PORT = 8888;
 const int TIMEOUT_MS = 200; // Kill motors after no packets for this long
 
 // DRV8833 pins
-const int PIN_LEFT1 = 0;
-const int PIN_LEFT2 = 1;
-const int PIN_RIGHT1 = 2;
-const int PIN_RIGHT2 = 3;
+const int PIN_LEFT1 = 4;
+const int PIN_LEFT2 = 6;
+const int PIN_RIGHT1 = 7;
+const int PIN_RIGHT2 = 9;
 
 WiFiUDP udp;
 unsigned long lastPacketTime = 0;

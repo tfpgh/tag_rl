@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <esp_wifi.h>
 
 const char *WIFI_SSID = "TagRL";
 const char *WIFI_PASS = "12345678";
@@ -7,10 +8,10 @@ const int UDP_PORT = 8888;
 const int TIMEOUT_MS = 200; // Kill motors after no packets for this long
 
 // DRV8833 pins
-const int PIN_LEFT1 = 4;
-const int PIN_LEFT2 = 6;
-const int PIN_RIGHT1 = 7;
-const int PIN_RIGHT2 = 9;
+const int PIN_LEFT1 = D6;
+const int PIN_LEFT2 = D5;
+const int PIN_RIGHT1 = D4;
+const int PIN_RIGHT2 = D3;
 
 WiFiUDP udp;
 unsigned long lastPacketTime = 0;
@@ -40,12 +41,16 @@ void setup() {
 
   motorsSet(0, 0);
 
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.println(WiFi.macAddress());
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
   }
   Serial.println(WiFi.localIP());
+
+  esp_wifi_set_ps(WIFI_PS_NONE);
 
   udp.begin(UDP_PORT);
 }

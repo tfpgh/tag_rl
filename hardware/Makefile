@@ -1,5 +1,5 @@
 FQBN := esp32:esp32:XIAO_ESP32C3
-PORT := /dev/cu.usbmodem1101
+PORT := /dev/cu.usbmodem101
 
 build:
 	arduino-cli compile --fqbn $(FQBN) --build-path ./build .

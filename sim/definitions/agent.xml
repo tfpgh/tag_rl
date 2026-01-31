@@ -85,7 +85,7 @@
 	<motor
             name="left_motor"
             joint="left_wheel_joint"
-            gear="0.12"
+            gear="0.15"
             ctrlrange="-1 1"
             ctrllimited="true"
         />

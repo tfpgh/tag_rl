@@ -216,3 +216,5 @@ __marimo__/
 .streamlit/secrets.toml
 
 MUJOCO_LOG.TXT
+
+.DS_Store

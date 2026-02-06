@@ -20,10 +20,27 @@ void motorsSet(int16_t left, int16_t right) {
   int pwmLeft = map(abs(left), 0, 32767, 0, 255);
   int pwmRight = map(abs(right), 0, 32767, 0, 255);
 
-  analogWrite(PIN_LEFT1, left > 0 ? pwmLeft : 0);
-  analogWrite(PIN_LEFT2, left < 0 ? pwmLeft : 0);
-  analogWrite(PIN_RIGHT1, right > 0 ? pwmRight : 0);
-  analogWrite(PIN_RIGHT2, right < 0 ? pwmRight : 0);
+  if (left > 0) {
+    analogWrite(PIN_LEFT1, 255);
+    analogWrite(PIN_LEFT2, 255 - pwmLeft);
+  } else if (left < 0) {
+    analogWrite(PIN_LEFT1, 255 - pwmLeft);
+    analogWrite(PIN_LEFT2, 255);
+  } else {
+    analogWrite(PIN_LEFT1, 255);
+    analogWrite(PIN_LEFT2, 255);
+  }
+
+  if (right > 0) {
+    analogWrite(PIN_RIGHT1, 255);
+    analogWrite(PIN_RIGHT2, 255 - pwmRight);
+  } else if (right < 0) {
+    analogWrite(PIN_RIGHT1, 255 - pwmRight);
+    analogWrite(PIN_RIGHT2, 255);
+  } else {
+    analogWrite(PIN_RIGHT1, 255);
+    analogWrite(PIN_RIGHT2, 255);
+  }
 }
 
 void setup() {

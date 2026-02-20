@@ -9,6 +9,7 @@ dependencies = [
     "mujoco-mjx>=3.4.0",
     "pynput>=1.8.1",
     "rich>=14.3.2",
+    "trimesh>=4.11.1",
 ]
 
 [dependency-groups]

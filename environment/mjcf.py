@@ -1,14 +1,51 @@
+import io
+
+import trimesh
+
 from environment.config import EnvironmentConfig
 
 WALL_GEOM_GROUP = 0
 AGENT_GEOM_GROUP = 1
 FLOOR_GEOM_GROUP = 2
 
+# Contact bitmasks
+CON_BM_VISUAL_ONLY = 0b00000
+CON_BM_FLOOR = 0b00001
+CON_BM_WHEEL = 0b00010
+CON_BM_CASTER_BALL = 0b00100
+CON_BM_CHASSIS = 0b01000
+CON_BM_WALL = 0b10000
+
+# contype and conaffinity
+CONTACTS = {
+    "floor": (CON_BM_FLOOR, CON_BM_WHEEL | CON_BM_CASTER_BALL | CON_BM_CHASSIS),
+    "wheel": (CON_BM_WHEEL, CON_BM_FLOOR),
+    "caster_ball": (CON_BM_CASTER_BALL, CON_BM_FLOOR),
+    "chassis": (CON_BM_CHASSIS, CON_BM_FLOOR | CON_BM_WALL | CON_BM_CHASSIS),
+    "wall": (CON_BM_WALL, CON_BM_CHASSIS),
+    "visual_only": (CON_BM_VISUAL_ONLY, CON_BM_VISUAL_ONLY),
+}
+
 WALL_THICKNESS = 0.02
 WALL_HEIGHT = 0.1
 
+CHASSIS_RADIUS = 0.05
+CHASSIS_BASE_HEIGHT = 0.038
+CHASSIS_TOP_HEIGHT = 0.003
+
+CYLINDER_MESH_SECTIONS = 16
+
 CHASER_COLOR = "1 0.545 0.545 1"
 EVADER_COLOR = "0.435 0.702 0.722 1"
+
+
+def _generate_chassis_mesh(radius: float, height: float) -> bytes:
+    mesh = trimesh.creation.cylinder(
+        radius=radius, height=height, sections=CYLINDER_MESH_SECTIONS
+    )
+    buf = io.BytesIO()
+    mesh.export(buf, file_type="stl")
+    return buf.getvalue()
 
 
 def _agent_mjcf(
@@ -30,18 +67,22 @@ def _agent_mjcf(
         />
 		<geom
             name="{name}_chassis_base"
-            type="cylinder"
-            size="0.05 0.019"
+            type="mesh"
+            mesh="chassis_base_mesh"
             group="{AGENT_GEOM_GROUP}"
             rgba="0.1 0.1 0.1 1"
+            contype="{CONTACTS["chassis"][0]}"
+            conaffinity="{CONTACTS["chassis"][1]}"
         />
 		<geom
             name="{name}_chassis_top"
-            type="cylinder"
+            type="mesh"
+            mesh="chassis_top_mesh"
             pos="0 0 0.0205"
-            size="0.05 0.0015"
             group="{AGENT_GEOM_GROUP}"
             rgba="{lid_color}"
+            contype="{CONTACTS["chassis"][0]}"
+            conaffinity="{CONTACTS["chassis"][1]}"
         />
         <body name="{name}_left_wheel" pos="0 0.037123 -0.0099">
             <joint
@@ -60,6 +101,8 @@ def _agent_mjcf(
                 group="{AGENT_GEOM_GROUP}"
                 rgba="0.6 0.6 0.6 1"
                 friction="1.1 0.005 0.002"
+                contype="{CONTACTS["wheel"][0]}"
+                conaffinity="{CONTACTS["wheel"][1]}"
             />
         </body>
         <body name="{name}_right_wheel" pos="0 -0.037123 -0.0099">
@@ -79,6 +122,8 @@ def _agent_mjcf(
                 group="{AGENT_GEOM_GROUP}"
                 rgba="0.6 0.6 0.6 1"
                 friction="1.1 0.005 0.002"
+                contype="{CONTACTS["wheel"][0]}"
+                conaffinity="{CONTACTS["wheel"][1]}"
             />
         </body>
         <body name="{name}_caster" pos="-0.037 0 -0.0251">
@@ -90,6 +135,8 @@ def _agent_mjcf(
                 mass="0.004"
                 group="{AGENT_GEOM_GROUP}"
                 rgba="0.1 0.1 0.1 1"
+                contype="{CONTACTS["visual_only"][0]}"
+                conaffinity="{CONTACTS["visual_only"][1]}"
             />
             <body name="{name}_caster_ball" pos="0 0 0">
                 <joint
@@ -105,6 +152,8 @@ def _agent_mjcf(
                     group="{AGENT_GEOM_GROUP}"
                     rgba="0.6 0.6 0.6 1"
                     friction="0.7 0.005 0.0001"
+                    contype="{CONTACTS["caster_ball"][0]}"
+                    conaffinity="{CONTACTS["caster_ball"][1]}"
                 />
             </body>
         </body>
@@ -159,6 +208,8 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         group="{FLOOR_GEOM_GROUP}"
         rgba="0.2 0.2 0.25 1"
         friction="1.1 0.005 0.0001"
+        contype="{CONTACTS["floor"][0]}"
+        conaffinity="{CONTACTS["floor"][1]}"
     />
     <geom
         name="wall_north"
@@ -167,6 +218,8 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         size="{arena_half_width + WALL_THICKNESS} {half_wall_thickness} {half_wall_height}"
         group="{WALL_GEOM_GROUP}"
         rgba="0.8 0.8 0.8 1"
+        contype="{CONTACTS["wall"][0]}"
+        conaffinity="{CONTACTS["wall"][1]}"
     />
     <geom
         name="wall_south"
@@ -175,6 +228,8 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         size="{arena_half_width + WALL_THICKNESS} {half_wall_thickness} {half_wall_height}"
         group="{WALL_GEOM_GROUP}"
         rgba="0.8 0.8 0.8 1"
+        contype="{CONTACTS["wall"][0]}"
+        conaffinity="{CONTACTS["wall"][1]}"
     />
     <geom
         name="wall_east"
@@ -183,6 +238,8 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         size="{half_wall_thickness} {arena_half_height} {half_wall_height}"
         group="{WALL_GEOM_GROUP}"
         rgba="0.8 0.8 0.8 1"
+        contype="{CONTACTS["wall"][0]}"
+        conaffinity="{CONTACTS["wall"][1]}"
     />
     <geom
         name="wall_west"
@@ -191,12 +248,19 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         size="{half_wall_thickness} {arena_half_height} {half_wall_height}"
         group="{WALL_GEOM_GROUP}"
         rgba="0.8 0.8 0.8 1"
+        contype="{CONTACTS["wall"][0]}"
+        conaffinity="{CONTACTS["wall"][1]}"
     />
     """
 
 
-def generate_mjcf(config: EnvironmentConfig) -> str:
+def generate_mjcf(config: EnvironmentConfig) -> tuple[str, dict[str, bytes]]:
     """Build the complete MJCF XML for the environment"""
+
+    assets = {
+        "chassis_base.stl": _generate_chassis_mesh(CHASSIS_RADIUS, CHASSIS_BASE_HEIGHT),
+        "chassis_top.stl": _generate_chassis_mesh(CHASSIS_RADIUS, CHASSIS_TOP_HEIGHT),
+    }
 
     chaser_body_xml, chaser_actuator_xml, chaser_sensor_xml = _agent_mjcf(
         "chaser", CHASER_COLOR, "0.3 0 0.0299"
@@ -205,9 +269,13 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
         "evader", EVADER_COLOR, "-0.3 0 0.0299"
     )
 
-    return f"""
+    mjcf_xml = f"""
     <mujoco model="tag">
         <option integrator="implicitfast"/>
+        <asset>
+            <mesh name="chassis_base_mesh" file="chassis_base.stl" />
+            <mesh name="chassis_top_mesh" file="chassis_top.stl" />
+        </asset>
         <visual>
             <headlight ambient="0.5 0.5 0.5" />
         </visual>
@@ -226,3 +294,5 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
         </sensor>
     </mujoco>
     """
+
+    return mjcf_xml, assets

@@ -3,7 +3,7 @@
 #include <esp_wifi.h>
 
 const char *WIFI_SSID = "TagRL";
-const char *WIFI_PASS = "12345678";
+const char *WIFI_PASS = "TagRLPassword";
 const int UDP_PORT = 8888;
 const int TIMEOUT_MS = 200; // Kill motors after no packets for this long
 

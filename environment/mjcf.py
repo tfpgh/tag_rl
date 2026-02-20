@@ -129,10 +129,10 @@ def _agent_mjcf(
     """
 
     sensor_xml = f"""
-    <framepos name="{name}_pos" objtype="body" objname="{name}" />
-    <framequat name="{name}_quat" objtype="body" objname="{name}" />
-    <framelinvel name="{name}_vel" objtype="body" objname="{name}" />
-    <frameangvel name="{name}_angvel" objtype="body" objname="{name}" />
+    <framepos name="{name}_position" objtype="body" objname="{name}" />
+    <framequat name="{name}_quaternion" objtype="body" objname="{name}" />
+    <framelinvel name="{name}_velocity" objtype="body" objname="{name}" />
+    <frameangvel name="{name}_angular_velocity" objtype="body" objname="{name}" />
     """
 
     return body_xml, actuator_xml, sensor_xml

@@ -218,3 +218,5 @@ __marimo__/
 MUJOCO_LOG.TXT
 
 .DS_Store
+
+.typings/

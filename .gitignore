@@ -220,3 +220,6 @@ MUJOCO_LOG.TXT
 .DS_Store
 
 .typings/
+
+logs/
+tensorboard/

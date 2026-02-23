@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 cuda = [
     "jax[cuda12]>=0.9.0.1",
-    "mujoco-warp>=3.5.0",
+    "mujoco-warp[cuda]",
 ]
 
 [dependency-groups]
@@ -33,3 +33,6 @@ dev = [
 
 [tool.pyright]
 stubPath = ".typings/"
+
+[tool.uv.sources]
+mujoco-warp = { git = "https://github.com/google-deepmind/mujoco_warp.git" }

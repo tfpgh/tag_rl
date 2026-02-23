@@ -5,10 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "distrax>=0.1.7",
+    "flax>=0.12.4",
     "mujoco>=3.4.0",
     "mujoco-mjx>=3.4.0",
+    "optax>=0.2.6",
     "pynput>=1.8.1",
     "rich>=14.3.2",
+    "tqdm>=4.67.3",
     "trimesh>=4.11.1",
 ]
 

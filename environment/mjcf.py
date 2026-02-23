@@ -4,9 +4,9 @@ import trimesh
 
 from environment.config import EnvironmentConfig
 
-WALL_GEOM_GROUP = 0
-AGENT_GEOM_GROUP = 1
-FLOOR_GEOM_GROUP = 2
+GEOM_GROUP_WALL = 0
+GEOM_GROUP_AGENT = 1
+GEOM_GROUP_FLOOR = 2
 
 # Contact bitmasks
 CON_BM_VISUAL_ONLY = 0b00000
@@ -29,7 +29,6 @@ CONTACTS = {
 WALL_THICKNESS = 0.02
 WALL_HEIGHT = 0.1
 
-CHASSIS_RADIUS = 0.05
 CHASSIS_BASE_HEIGHT = 0.038
 CHASSIS_TOP_HEIGHT = 0.003
 
@@ -69,7 +68,7 @@ def _agent_mjcf(
             name="{name}_chassis_base"
             type="mesh"
             mesh="chassis_base_mesh"
-            group="{AGENT_GEOM_GROUP}"
+            group="{GEOM_GROUP_AGENT}"
             rgba="0.1 0.1 0.1 1"
             contype="{CONTACTS["chassis"][0]}"
             conaffinity="{CONTACTS["chassis"][1]}"
@@ -79,7 +78,7 @@ def _agent_mjcf(
             type="mesh"
             mesh="chassis_top_mesh"
             pos="0 0 0.0205"
-            group="{AGENT_GEOM_GROUP}"
+            group="{GEOM_GROUP_AGENT}"
             rgba="{lid_color}"
             contype="{CONTACTS["chassis"][0]}"
             conaffinity="{CONTACTS["chassis"][1]}"
@@ -98,7 +97,7 @@ def _agent_mjcf(
                 size="0.020 0.0015"
                 euler="90 0 0"
                 mass="0.00425"
-                group="{AGENT_GEOM_GROUP}"
+                group="{GEOM_GROUP_AGENT}"
                 rgba="0.6 0.6 0.6 1"
                 friction="1.1 0.005 0.002"
                 contype="{CONTACTS["wheel"][0]}"
@@ -119,7 +118,7 @@ def _agent_mjcf(
                 size="0.020 0.0015"
                 euler="90 0 0"
                 mass="0.00425"
-                group="{AGENT_GEOM_GROUP}"
+                group="{GEOM_GROUP_AGENT}"
                 rgba="0.6 0.6 0.6 1"
                 friction="1.1 0.005 0.002"
                 contype="{CONTACTS["wheel"][0]}"
@@ -133,7 +132,7 @@ def _agent_mjcf(
                 size="0.006 0.006 0.004"
                 pos="0 0 0.004"
                 mass="0.004"
-                group="{AGENT_GEOM_GROUP}"
+                group="{GEOM_GROUP_AGENT}"
                 rgba="0.1 0.1 0.1 1"
                 contype="{CONTACTS["visual_only"][0]}"
                 conaffinity="{CONTACTS["visual_only"][1]}"
@@ -149,7 +148,7 @@ def _agent_mjcf(
                     type="sphere"
                     size="0.0048"
                     mass="0.002"
-                    group="{AGENT_GEOM_GROUP}"
+                    group="{GEOM_GROUP_AGENT}"
                     rgba="0.6 0.6 0.6 1"
                     friction="0.7 0.005 0.0001"
                     contype="{CONTACTS["caster_ball"][0]}"
@@ -205,7 +204,7 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         type="plane"
         pos="0 0 -0.02"
         size="{arena_half_width + WALL_THICKNESS} {arena_half_height + WALL_THICKNESS} 0.04"
-        group="{FLOOR_GEOM_GROUP}"
+        group="{GEOM_GROUP_FLOOR}"
         rgba="0.2 0.2 0.25 1"
         friction="1.1 0.005 0.0001"
         contype="{CONTACTS["floor"][0]}"
@@ -216,7 +215,7 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         type="box"
         pos="0 {arena_half_height + half_wall_thickness} {half_wall_height}"
         size="{arena_half_width + WALL_THICKNESS} {half_wall_thickness} {half_wall_height}"
-        group="{WALL_GEOM_GROUP}"
+        group="{GEOM_GROUP_WALL}"
         rgba="0.8 0.8 0.8 1"
         contype="{CONTACTS["wall"][0]}"
         conaffinity="{CONTACTS["wall"][1]}"
@@ -226,7 +225,7 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         type="box"
         pos="0 {-arena_half_height - half_wall_thickness} {half_wall_height}"
         size="{arena_half_width + WALL_THICKNESS} {half_wall_thickness} {half_wall_height}"
-        group="{WALL_GEOM_GROUP}"
+        group="{GEOM_GROUP_WALL}"
         rgba="0.8 0.8 0.8 1"
         contype="{CONTACTS["wall"][0]}"
         conaffinity="{CONTACTS["wall"][1]}"
@@ -236,7 +235,7 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         type="box"
         pos="{arena_half_width + half_wall_thickness} 0 {half_wall_height}"
         size="{half_wall_thickness} {arena_half_height} {half_wall_height}"
-        group="{WALL_GEOM_GROUP}"
+        group="{GEOM_GROUP_WALL}"
         rgba="0.8 0.8 0.8 1"
         contype="{CONTACTS["wall"][0]}"
         conaffinity="{CONTACTS["wall"][1]}"
@@ -246,7 +245,7 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         type="box"
         pos="{-arena_half_width - half_wall_thickness} 0 {half_wall_height}"
         size="{half_wall_thickness} {arena_half_height} {half_wall_height}"
-        group="{WALL_GEOM_GROUP}"
+        group="{GEOM_GROUP_WALL}"
         rgba="0.8 0.8 0.8 1"
         contype="{CONTACTS["wall"][0]}"
         conaffinity="{CONTACTS["wall"][1]}"
@@ -258,8 +257,12 @@ def generate_mjcf(config: EnvironmentConfig) -> tuple[str, dict[str, bytes]]:
     """Build the complete MJCF XML for the environment"""
 
     assets = {
-        "chassis_base.stl": _generate_chassis_mesh(CHASSIS_RADIUS, CHASSIS_BASE_HEIGHT),
-        "chassis_top.stl": _generate_chassis_mesh(CHASSIS_RADIUS, CHASSIS_TOP_HEIGHT),
+        "chassis_base.stl": _generate_chassis_mesh(
+            config.agent_radius, CHASSIS_BASE_HEIGHT
+        ),
+        "chassis_top.stl": _generate_chassis_mesh(
+            config.agent_radius, CHASSIS_TOP_HEIGHT
+        ),
     }
 
     chaser_body_xml, chaser_actuator_xml, chaser_sensor_xml = _agent_mjcf(
@@ -275,6 +278,7 @@ def generate_mjcf(config: EnvironmentConfig) -> tuple[str, dict[str, bytes]]:
         <asset>
             <mesh name="chassis_base_mesh" file="chassis_base.stl" />
             <mesh name="chassis_top_mesh" file="chassis_top.stl" />
+            <material name="default" rgba="1 1 1 1" />
         </asset>
         <visual>
             <headlight ambient="0.5 0.5 0.5" />

@@ -16,11 +16,8 @@ class EnvironmentConfig:
     # Perception rays
     n_rays: int = 64
 
-    # MuJoCo
-    mujoco_timestep: float = 0.002
-
     # Action frequency, hz
-    action_frequency: int = 50
+    action_frequency: int = 20
 
     # Episode timing, seconds
     episode_max_length: int = 30
@@ -28,9 +25,11 @@ class EnvironmentConfig:
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
-    time_reward = 0.000001  # + for evader, - for chaser
-    distance_shaping_scale = 0.001
+    time_reward: float = 0.0001  # + for evader, - for chaser
+    distance_shaping_scale: float = 0.03
 
     # Normalization, not exact
-    agent_max_linear_velocity = 1.35  # m/s
-    agent_max_angular_velocity = 31.0  # rad/s
+    agent_max_linear_velocity: float = 1.35  # m/s
+    agent_max_angular_velocity: float = 31.0  # rad/s
+
+    minimum_starting_separation: float = 0.125  # m, center to center

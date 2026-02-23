@@ -54,7 +54,7 @@ class TagEnvironment:
 
         xml, assets = generate_mjcf(config)
         self.mj_model = mujoco.MjModel.from_xml_string(xml, assets=assets)
-        self.mjx_model = mjx.put_model(self.mj_model, impl="jax")
+        self.mjx_model = mjx.put_model(self.mj_model, impl="warp")
 
         self.sensor_slices = SensorSlices(self.mj_model)
         self.joint_qpos_slices = JointQposSlices(self.mj_model)
@@ -236,7 +236,7 @@ class TagEnvironment:
 
         qvel = jnp.zeros(self.mj_model.nv)
 
-        mjx_data = mjx.make_data(self.mjx_model, impl="jax")
+        mjx_data = mjx.make_data(self.mj_model, impl="warp")
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(self.mjx_model, mjx_data)
 
@@ -447,7 +447,7 @@ if __name__ == "__main__":
     print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
 
     # Benchmark post-JIT
-    n_iters = 20
+    n_iters = 100
     t0 = time.time()
     # with jax.profiler.trace("tensorboard/"):
     for _ in tqdm(range(n_iters)):

@@ -64,7 +64,7 @@ def _agent_mjcf(
             diaginertia="0.000112 0.000112 0.000188"
             mass="0.15"
         />
-		<geom
+		<!-- <geom
             name="{name}_chassis_base"
             type="mesh"
             mesh="chassis_base_mesh"
@@ -78,6 +78,25 @@ def _agent_mjcf(
             type="mesh"
             mesh="chassis_top_mesh"
             pos="0 0 0.0205"
+            group="{GEOM_GROUP_AGENT}"
+            rgba="{lid_color}"
+            contype="{CONTACTS["chassis"][0]}"
+            conaffinity="{CONTACTS["chassis"][1]}"
+        /> -->
+        <geom
+            name="{name}_chassis_base"
+            type="cylinder"
+            group="{GEOM_GROUP_AGENT}"
+            size="0.05 0.019"
+            rgba="0.1 0.1 0.1 1"
+            contype="{CONTACTS["chassis"][0]}"
+            conaffinity="{CONTACTS["chassis"][1]}"
+        />
+        <geom
+            name="{name}_chassis_top"
+            type="cylinder"
+            pos="0 0 0.0205"
+            size="0.05 0.0015"
             group="{GEOM_GROUP_AGENT}"
             rgba="{lid_color}"
             contype="{CONTACTS["chassis"][0]}"

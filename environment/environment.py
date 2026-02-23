@@ -449,11 +449,13 @@ if __name__ == "__main__":
     # Benchmark post-JIT
     n_iters = 100
     t0 = time.time()
-    for _ in tqdm(range(n_iters)):
-        states, obs_cs, obs_es, rew_cs, rew_es, dones, infos = v_step(
-            states, batch_act[:, :2], batch_act[:, 2:]
-        )
-    jax.block_until_ready(states.step_count)
+    with jax.profiler.trace("tensorboard/"):
+        for _ in tqdm(range(n_iters)):
+            states, obs_cs, obs_es, rew_cs, rew_es, dones, infos = v_step(
+                states, batch_act[:, :2], batch_act[:, 2:]
+            )
+            jax.block_until_ready(states.step_count)
+
     elapsed = time.time() - t0
     sps = (n_iters * N) / elapsed
     print(

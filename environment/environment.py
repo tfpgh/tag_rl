@@ -54,7 +54,7 @@ class TagEnvironment:
 
         xml, assets = generate_mjcf(config)
         self.mj_model = mujoco.MjModel.from_xml_string(xml, assets=assets)
-        self.mjx_model = mjx.put_model(self.mj_model, impl="jax")
+        self.mjx_model = mjx.put_model(self.mj_model, impl="warp")
 
         self.sensor_slices = SensorSlices(self.mj_model)
         self.joint_qpos_slices = JointQposSlices(self.mj_model)
@@ -425,7 +425,7 @@ if __name__ == "__main__":
     )
 
     # Vectorized test
-    N = 65_536
+    N = 16_384
     print(f"\nVectorized ({N} envs)...")
     v_reset = jax.vmap(env.reset)
     v_step = jax.vmap(env.step)
@@ -447,14 +447,14 @@ if __name__ == "__main__":
     print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
 
     # Benchmark post-JIT
-    n_iters = 5
+    n_iters = 20
     t0 = time.time()
-    with jax.profiler.trace("tensorboard/"):
-        for _ in tqdm(range(n_iters)):
-            states, obs_cs, obs_es, rew_cs, rew_es, dones, infos = v_step(
-                states, batch_act[:, :2], batch_act[:, 2:]
-            )
-            jax.block_until_ready(states.step_count)
+    # with jax.profiler.trace("tensorboard/"):
+    for _ in tqdm(range(n_iters)):
+        states, obs_cs, obs_es, rew_cs, rew_es, dones, infos = v_step(
+            states, batch_act[:, :2], batch_act[:, 2:]
+        )
+        jax.block_until_ready(states.step_count)
 
     elapsed = time.time() - t0
     sps = (n_iters * N) / elapsed

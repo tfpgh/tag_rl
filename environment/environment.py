@@ -425,7 +425,7 @@ if __name__ == "__main__":
     )
 
     # Vectorized test
-    N = 1024
+    N = 256
     print(f"\nVectorized ({N} envs)...")
     v_reset = jax.vmap(env.reset)
     v_step = jax.vmap(env.step)
@@ -447,7 +447,7 @@ if __name__ == "__main__":
     print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
 
     # Benchmark post-JIT
-    n_iters = 100
+    n_iters = 20
     t0 = time.time()
     with jax.profiler.trace("tensorboard/"):
         for _ in tqdm(range(n_iters)):

@@ -8,4 +8,6 @@
 #SBATCH --gres=gpu:rtxa6000:1
 #SBATCH --time=30:00
 
+export TQDM_MININTERVAL=15
+export PYTHONUNBUFFERED=1
 uv run -m environment.environment

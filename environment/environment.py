@@ -480,11 +480,20 @@ if __name__ == "__main__":
     state, chaser_obs, evader_obs = env.reset(k)
     auto_step = make_auto_reset_step(env)
 
+    # Action linear interpolation
+    waypoint_interval = 50
+    rng, k_c, k_e = random.split(rng, 3)
+    prev_chaser = random.uniform(k_c, (2,), minval=-0.3, maxval=0.3)
+    prev_evader = random.uniform(k_e, (2,), minval=-0.3, maxval=0.3)
+    rng, k_c, k_e = random.split(rng, 3)
+    next_chaser = random.uniform(k_c, (2,), minval=-0.3, maxval=0.3)
+    next_evader = random.uniform(k_e, (2,), minval=-0.3, maxval=0.3)
+
     frames = []
     renderer = mujoco.Renderer(env.mj_model, height=1080, width=1920)
     mj_data = mujoco.MjData(env.mj_model)
 
-    n_video_steps = 1_000
+    n_video_steps = 1_200
     for i in range(n_video_steps):
         # Manually copy qpos/qvel from MJX to CPU MjData
         mj_data.qpos[:] = np.array(state.mjx_data.qpos)
@@ -495,8 +504,15 @@ if __name__ == "__main__":
 
         # Random actions in [-1, 1]
         rng, k_c, k_e, k_reset = random.split(rng, 4)
-        chaser_action = jnp.array([0.10, 0.13])
-        evader_action = jnp.array([0.15, 0.12])
+        if i % waypoint_interval == 0 and i > 0:
+            prev_chaser = next_chaser
+            prev_evader = next_evader
+            rng, k_c, k_e = random.split(rng, 3)
+            next_chaser = random.uniform(k_c, (2,), minval=-1.0, maxval=1.0)
+            next_evader = random.uniform(k_e, (2,), minval=-1.0, maxval=1.0)
+        t = (i % waypoint_interval) / waypoint_interval
+        chaser_action = prev_chaser + t * (next_chaser - prev_chaser)
+        evader_action = prev_evader + t * (next_evader - prev_evader)
 
         # Step with auto-reset
         state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (

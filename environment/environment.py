@@ -341,7 +341,6 @@ class TagEnvironment:
         )
 
         sensor_data = mjx_data.sensordata
-        sensor_slices = self.sensor_slices
 
         chaser_xy = sensor_data[sensor_slices.chaser_position][:2]
         evader_xy = sensor_data[sensor_slices.evader_position][:2]

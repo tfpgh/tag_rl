@@ -395,7 +395,10 @@ def make_auto_reset_step(env: TagEnvironment) -> JitWrapped:
 
 # Testing
 if __name__ == "__main__":
+    import os
     import time
+
+    os.environ["MUJOCO_GL"] = "egl"
 
     config = EnvironmentConfig()
     N = 16_384
@@ -462,3 +465,23 @@ if __name__ == "__main__":
     print(
         f"\n  Throughput: {sps:,.0f} env steps/sec ({n_iters} x {N} in {elapsed:.2f}s)"
     )
+
+    import imageio
+
+    rng, k = random.split(rng)
+    state, _, _ = env.reset(k)
+    renderer = mujoco.Renderer(env.mj_model, width=480, height=480)
+    mj_data = mujoco.MjData(env.mj_model)
+
+    frames = []
+    act = jnp.full((4,), 0.05)
+
+    for _ in tqdm(range(300)):
+        state, *_ = env.step(state, act[:2], act[2:])
+        mjx.get_data_into(mj_data, env.mj_model, state.mjx_data)
+        mujoco.mj_forward(env.mj_model, mj_data)
+        renderer.update_scene(mj_data, camera=-1)
+        frames.append(renderer.render().copy())
+
+    imageio.mimsave("debug.mp4", frames, fps=config.action_frequency)
+    print("wrote debug.mp4")

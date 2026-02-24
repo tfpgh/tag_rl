@@ -533,7 +533,7 @@ if __name__ == "__main__":
     next_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
 
     frames = []
-    renderer = mujoco.Renderer(env.mj_model, height=1088, width=1920)
+    renderer = mujoco.Renderer(env.mj_model, height=1080, width=1920)
     mj_data = mujoco.MjData(env.mj_model)
 
     n_video_steps = 1_200

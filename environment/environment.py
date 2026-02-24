@@ -318,11 +318,23 @@ class TagEnvironment:
         # Substep physics
         mjx_data = state.mjx_data.replace(ctrl=control_actions)
 
-        def substep(data: mjx.Data, _) -> tuple[mjx.Data, None]:
-            return mjx.step(self.mjx_model, data), None
+        def substep(
+            carry: tuple[mjx.Data, jax.Array], _
+        ) -> tuple[tuple[mjx.Data, jax.Array], None]:
+            data, min_dist = carry
 
-        mjx_data, _ = jax.lax.scan(
-            substep, mjx_data, None, length=self.substeps_per_action
+            data = mjx.step(self.mjx_model, data)
+
+            chaser_xy = data.sensordata[sensor_slices.chaser_position][:2]
+            evader_xy = data.sensordata[sensor_slices.evader_position][:2]
+            dist = jnp.linalg.norm(chaser_xy - evader_xy)
+            min_dist = jnp.minimum(carry[1], dist)
+
+            return (data, min_dist), None
+
+        init_distance = jnp.float32(jnp.inf)
+        (mjx_data, min_distance), _ = jax.lax.scan(
+            substep, (mjx_data, init_distance), None, length=self.substeps_per_action
         )
 
         sensor_data = mjx_data.sensordata
@@ -331,14 +343,14 @@ class TagEnvironment:
         chaser_xy = sensor_data[sensor_slices.chaser_position][:2]
         evader_xy = sensor_data[sensor_slices.evader_position][:2]
 
-        distance = jnp.linalg.norm(chaser_xy - evader_xy)
-        tagged = distance < self.tag_distance
+        tagged = min_distance < self.tag_distance
 
         # Termination
         step_count = state.step_count + 1
         time_up = step_count >= self.max_steps
         done = tagged | time_up
 
+        distance = jnp.linalg.norm(chaser_xy - evader_xy)
         distance_delta = state.prev_distance - distance  # Positive = getting closer
 
         chaser_reward = (

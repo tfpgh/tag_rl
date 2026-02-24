@@ -456,6 +456,11 @@ if __name__ == "__main__":
     rng, k = random.split(rng)
     batch_act = jnp.full((N, 4), 0.05)
 
+    waypoint_interval = 10
+    rng, k1, k2 = random.split(rng, 3)
+    prev_actions = random.uniform(k1, (N, 4), minval=-0.5, maxval=0.5)
+    next_actions = random.uniform(k2, (N, 4), minval=-0.5, maxval=0.5)
+
     t0 = time.time()
     states, *_ = v_step(states, batch_act[:, :2], batch_act[:, 2:])
     jax.block_until_ready(states.step_count)
@@ -464,8 +469,14 @@ if __name__ == "__main__":
     # Benchmark post-JIT
     n_iters = 100
     t0 = time.time()
-    # with jax.profiler.trace("tensorboard/"):
-    for _ in tqdm(range(n_iters)):
+    for i in tqdm(range(n_iters)):
+        if i % waypoint_interval == 0 and i > 0:
+            prev_actions = next_actions
+            rng, k = random.split(rng)
+            next_actions = random.uniform(k, (N, 4), minval=-0.5, maxval=0.5)
+        t = (i % waypoint_interval) / waypoint_interval
+        batch_act = prev_actions + t * (next_actions - prev_actions)
+
         states, obs_cs, obs_es, rew_cs, rew_es, dones, infos = v_step(
             states, batch_act[:, :2], batch_act[:, 2:]
         )

@@ -439,7 +439,7 @@ if __name__ == "__main__":
     config.arena_height = 0.5
     config.wall_margin_factor = 1.2
 
-    N = 8_192
+    N = 4096
     env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")

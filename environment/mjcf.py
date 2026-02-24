@@ -255,6 +255,7 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
             <material name="default" rgba="1 1 1 1" />
         </asset>
         <visual>
+            <global offwidth="1920" offheight="1080"/>
             <headlight ambient="0.5 0.5 0.5" />
         </visual>
         <worldbody>

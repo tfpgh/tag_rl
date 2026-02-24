@@ -1,3 +1,9 @@
+if __name__ == "__main__":
+    import os
+
+    os.environ["MUJOCO_GL"] = "egl"
+
+
 from functools import partial
 from typing import NamedTuple
 
@@ -467,21 +473,30 @@ if __name__ == "__main__":
     )
 
     import imageio
+    import numpy as np
 
-    rng, k = random.split(rng)
-    state, _, _ = env.reset(k)
-    renderer = mujoco.Renderer(env.mj_model, width=480, height=480)
     mj_data = mujoco.MjData(env.mj_model)
+    renderer = mujoco.Renderer(env.mj_model, width=1920, height=1080)
 
+    mj_data.qpos[env.joint_qpos_slices.chaser_root.start] = -1.0
+    mj_data.qpos[env.joint_qpos_slices.chaser_root.start + 1] = 0.0
+    mj_data.qpos[env.joint_qpos_slices.chaser_root.start + 2] = config.agent_z
+    mj_data.qpos[env.joint_qpos_slices.chaser_root.start + 3] = 1.0  # quat w
+
+    mj_data.qpos[env.joint_qpos_slices.evader_root.start] = 1.0
+    mj_data.qpos[env.joint_qpos_slices.evader_root.start + 1] = 0.0
+    mj_data.qpos[env.joint_qpos_slices.evader_root.start + 2] = config.agent_z
+    mj_data.qpos[env.joint_qpos_slices.evader_root.start + 3] = 1.0  # quat w
+
+    mujoco.mj_forward(env.mj_model, mj_data)
+
+    ctrl = np.array([0.05, 0.0, 0.05, 0.0])
     frames = []
-    act = jnp.full((4,), 0.05)
-
-    for _ in tqdm(range(300)):
-        state, *_ = env.step(state, act[:2], act[2:])
-        mjx.get_data_into(mj_data, env.mj_model, state.mjx_data)
-        mujoco.mj_forward(env.mj_model, mj_data)
+    for _ in tqdm(range(600)):
+        mj_data.ctrl[:] = ctrl
+        mujoco.mj_step(env.mj_model, mj_data)
         renderer.update_scene(mj_data, camera=-1)
         frames.append(renderer.render().copy())
 
-    imageio.mimsave("debug.mp4", frames, fps=config.action_frequency)
+    imageio.mimsave("debug.mp4", frames, fps=20)
     print("wrote debug.mp4")

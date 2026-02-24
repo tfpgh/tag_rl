@@ -33,3 +33,4 @@ class EnvironmentConfig:
     agent_max_angular_velocity: float = 31.0  # rad/s
 
     minimum_starting_separation: float = 0.125  # m, center to center
+    wall_margin_factor: float = 3.0  # Minimum distance from wall (* agent_radius)

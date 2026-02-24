@@ -187,7 +187,7 @@ class TagEnvironment:
         )
 
         # Move agents to random positions
-        margin = config.agent_radius * 3
+        margin = config.wall_margin_factor * config.agent_radius
         lower_bounds = jnp.array(
             [-(config.arena_width / 2) + margin, -(config.arena_height / 2) + margin]
         )

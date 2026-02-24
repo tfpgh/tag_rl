@@ -252,8 +252,6 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
     <mujoco model="tag">
         <option timestep="0.005" integrator="implicitfast"/>
         <asset>
-            <mesh name="chassis_base_mesh" file="chassis_base.stl" />
-            <mesh name="chassis_top_mesh" file="chassis_top.stl" />
             <material name="default" rgba="1 1 1 1" />
         </asset>
         <visual>

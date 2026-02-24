@@ -85,6 +85,14 @@ class TagEnvironment:
             (config.arena_width) ** 2 + (config.arena_height) ** 2
         )
 
+        # Pre-allocate mjx.Data template (reused by reset to avoid tracer leaks)
+        self._template_mjx_data = mjx.make_data(
+            self.mj_model,
+            impl="warp",
+            naconmax=20 * n_envs,
+            njmax=100,
+        )
+
     def _cast_rays(
         self,
         mjx_model: mjx.Model,
@@ -260,13 +268,7 @@ class TagEnvironment:
 
         qvel = jnp.zeros(self.mj_model.nv)
 
-        mjx_data = mjx.make_data(
-            self.mj_model,
-            impl="warp",
-            naconmax=20 * self.n_envs,
-            njmax=100,
-        )
-        mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
+        mjx_data = self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(self.mjx_model, mjx_data)
 
         initial_distance = jnp.linalg.norm(chaser_xy - evader_xy)

@@ -237,7 +237,7 @@ class TagEnvironment:
 
         qvel = jnp.zeros(self.mj_model.nv)
 
-        mjx_data = mjx.make_data(self.mj_model, impl="warp", nconmax=11 * self.n_envs)
+        mjx_data = mjx.make_data(self.mj_model, impl="warp", naconmax=11 * self.n_envs)
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(self.mjx_model, mjx_data)
 

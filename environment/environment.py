@@ -475,28 +475,40 @@ if __name__ == "__main__":
     import imageio
     import numpy as np
 
-    mj_data = mujoco.MjData(env.mj_model)
-    renderer = mujoco.Renderer(env.mj_model, width=1920, height=1080)
+    print("\nRecording video...")
+    rng, k = random.split(rng)
+    state, chaser_obs, evader_obs = env.reset(k)
+    auto_step = make_auto_reset_step(env)
 
-    mj_data.qpos[env.joint_qpos_slices.chaser_root.start] = -1.0
-    mj_data.qpos[env.joint_qpos_slices.chaser_root.start + 1] = 0.0
-    mj_data.qpos[env.joint_qpos_slices.chaser_root.start + 2] = config.agent_z
-    mj_data.qpos[env.joint_qpos_slices.chaser_root.start + 3] = 1.0  # quat w
-
-    mj_data.qpos[env.joint_qpos_slices.evader_root.start] = 1.0
-    mj_data.qpos[env.joint_qpos_slices.evader_root.start + 1] = 0.0
-    mj_data.qpos[env.joint_qpos_slices.evader_root.start + 2] = config.agent_z
-    mj_data.qpos[env.joint_qpos_slices.evader_root.start + 3] = 1.0  # quat w
-
-    mujoco.mj_forward(env.mj_model, mj_data)
-
-    ctrl = np.array([0.05, 0.0, 0.05, 0.0])
     frames = []
-    for _ in tqdm(range(600)):
-        mj_data.ctrl[:] = ctrl
-        mujoco.mj_step(env.mj_model, mj_data)
-        renderer.update_scene(mj_data, camera=-1)
-        frames.append(renderer.render().copy())
+    renderer = mujoco.Renderer(env.mj_model, height=1080, width=1920)
+    mj_data = mujoco.MjData(env.mj_model)
 
-    imageio.mimsave("debug.mp4", frames, fps=20)
-    print("wrote debug.mp4")
+    n_video_steps = 1_000
+    for i in range(n_video_steps):
+        # Manually copy qpos/qvel from MJX to CPU MjData
+        mj_data.qpos[:] = np.array(state.mjx_data.qpos)
+        mj_data.qvel[:] = np.array(state.mjx_data.qvel)
+        mujoco.mj_forward(env.mj_model, mj_data)
+        renderer.update_scene(mj_data)
+        frames.append(renderer.render())
+
+        # Random actions in [-1, 1]
+        rng, k_c, k_e, k_reset = random.split(rng, 4)
+        chaser_action = jnp.array([0.10, 0.13])
+        evader_action = jnp.array([0.15, 0.12])
+
+        # Step with auto-reset
+        state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
+            auto_step(state, chaser_action, evader_action, k_reset)
+        )
+
+        if done:
+            print(
+                f"  step {i}: tagged={info.tagged}, time_up={info.time_up}, "
+                f"dist={info.distance:.3f}, steps={info.step_count} -> auto reset"
+            )
+
+    renderer.close()
+    imageio.mimsave("debug.mp4", frames, fps=int(config.action_frequency))
+    print(f"Saved {len(frames)} frames to debug.mp4")

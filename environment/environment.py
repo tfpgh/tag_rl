@@ -243,7 +243,7 @@ class TagEnvironment:
 
         qvel = jnp.zeros(self.mj_model.nv)
 
-        mjx_data = mjx.make_data(self.mj_model, impl="warp", naconmax=100 * self.n_envs)
+        mjx_data = mjx.make_data(self.mj_model, impl="warp", naconmax=80 * self.n_envs)
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(self.mjx_model, mjx_data)
 
@@ -412,7 +412,7 @@ if __name__ == "__main__":
     config.arena_height = 0.3
     config.wall_margin_factor = 1.0
 
-    N = 16_384
+    N = 8_192
     env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")

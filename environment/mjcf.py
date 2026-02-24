@@ -1,7 +1,3 @@
-import io
-
-import trimesh
-
 from environment.config import EnvironmentConfig
 
 GEOM_GROUP_WALL = 0
@@ -32,19 +28,8 @@ WALL_HEIGHT = 0.1
 CHASSIS_BASE_HEIGHT = 0.038
 CHASSIS_TOP_HEIGHT = 0.003
 
-CYLINDER_MESH_SECTIONS = 16
-
 CHASER_COLOR = "1 0.545 0.545 1"
 EVADER_COLOR = "0.435 0.702 0.722 1"
-
-
-def _generate_chassis_mesh(radius: float, height: float) -> bytes:
-    mesh = trimesh.creation.cylinder(
-        radius=radius, height=height, sections=CYLINDER_MESH_SECTIONS
-    )
-    buf = io.BytesIO()
-    mesh.export(buf, file_type="stl")
-    return buf.getvalue()
 
 
 def _agent_mjcf(
@@ -64,25 +49,6 @@ def _agent_mjcf(
             diaginertia="0.000112 0.000112 0.000188"
             mass="0.15"
         />
-		<!-- <geom
-            name="{name}_chassis_base"
-            type="mesh"
-            mesh="chassis_base_mesh"
-            group="{GEOM_GROUP_AGENT}"
-            rgba="0.1 0.1 0.1 1"
-            contype="{CONTACTS["chassis"][0]}"
-            conaffinity="{CONTACTS["chassis"][1]}"
-        />
-		<geom
-            name="{name}_chassis_top"
-            type="mesh"
-            mesh="chassis_top_mesh"
-            pos="0 0 0.0205"
-            group="{GEOM_GROUP_AGENT}"
-            rgba="{lid_color}"
-            contype="{CONTACTS["chassis"][0]}"
-            conaffinity="{CONTACTS["chassis"][1]}"
-        /> -->
         <geom
             name="{name}_chassis_base"
             type="cylinder"
@@ -272,17 +238,8 @@ def _arena_xml(config: EnvironmentConfig) -> str:
     """
 
 
-def generate_mjcf(config: EnvironmentConfig) -> tuple[str, dict[str, bytes]]:
+def generate_mjcf(config: EnvironmentConfig) -> str:
     """Build the complete MJCF XML for the environment"""
-
-    assets = {
-        "chassis_base.stl": _generate_chassis_mesh(
-            config.agent_radius, CHASSIS_BASE_HEIGHT
-        ),
-        "chassis_top.stl": _generate_chassis_mesh(
-            config.agent_radius, CHASSIS_TOP_HEIGHT
-        ),
-    }
 
     chaser_body_xml, chaser_actuator_xml, chaser_sensor_xml = _agent_mjcf(
         "chaser", CHASER_COLOR, "0.3 0 0.0299"
@@ -318,4 +275,4 @@ def generate_mjcf(config: EnvironmentConfig) -> tuple[str, dict[str, bytes]]:
     </mujoco>
     """
 
-    return mjcf_xml, assets
+    return mjcf_xml

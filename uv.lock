@@ -2121,7 +2121,6 @@ dependencies = [
     { name = "tensorboard" },
     { name = "tensorboard-plugin-profile" },
     { name = "tqdm" },
-    { name = "trimesh" },
 ]
 
 [package.optional-dependencies]
@@ -2151,7 +2150,6 @@ requires-dist = [
     { name = "tensorboard", specifier = ">=2.20.0" },
     { name = "tensorboard-plugin-profile", specifier = ">=2.21.6" },
     { name = "tqdm", specifier = ">=4.67.3" },
-    { name = "trimesh", specifier = ">=4.11.1" },
 ]
 provides-extras = ["cuda"]
 

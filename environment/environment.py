@@ -53,8 +53,8 @@ class TagEnvironment:
         self.config = config
         self.n_envs = n_envs
 
-        xml, assets = generate_mjcf(config)
-        self.mj_model = mujoco.MjModel.from_xml_string(xml, assets=assets)
+        xml = generate_mjcf(config)
+        self.mj_model = mujoco.MjModel.from_xml_string(xml)
         self.mjx_model = mjx.put_model(self.mj_model, impl="warp")
 
         self.sensor_slices = SensorSlices(self.mj_model)
@@ -419,7 +419,7 @@ if __name__ == "__main__":
     print(f"\nobs shapes: chaser={obs_c.shape}  evader={obs_e.shape}")
 
     rng, k = random.split(rng)
-    act = jnp.full((4,), 0.01)
+    act = jnp.full((4,), 0.05)
     state, obs_c, obs_e, rew_c, rew_e, done, info = env.step(state, act[:2], act[2:])
     print(
         f"step 1: dist={info.distance:.4f}  tagged={info.tagged}  "
@@ -440,7 +440,7 @@ if __name__ == "__main__":
     print(f"  reset (incl JIT): {time.time() - t0:.1f}s")
 
     rng, k = random.split(rng)
-    batch_act = jnp.full((N, 4), 0.01)
+    batch_act = jnp.full((N, 4), 0.05)
 
     t0 = time.time()
     states, *_ = v_step(states, batch_act[:, :2], batch_act[:, 2:])

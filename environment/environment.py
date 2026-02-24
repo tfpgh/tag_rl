@@ -203,10 +203,20 @@ class TagEnvironment:
         )
 
         # Guarantee minimum separation
-        too_close = (
-            jnp.linalg.norm(chaser_xy - evader_xy) < config.minimum_starting_separation
-        )
-        evader_xy = jnp.where(too_close, -chaser_xy, evader_xy)
+        delta = evader_xy - chaser_xy
+        dist = jnp.linalg.norm(delta)
+
+        # If exactly coincident, pick a random direction
+        random_dir = random.uniform(key_evader_yaw, (2,), minval=-1.0, maxval=1.0)
+        random_dir = random_dir / jnp.linalg.norm(random_dir)
+
+        direction = jnp.where(dist < 1e-6, random_dir, delta / dist)
+
+        desired_pos = chaser_xy + direction * config.minimum_starting_separation
+        desired_pos = jnp.clip(desired_pos, lower_bounds, upper_bounds)
+
+        too_close = dist < config.minimum_starting_separation
+        evader_xy = jnp.where(too_close, desired_pos, evader_xy)
 
         chaser_yaw = random.uniform(key_chaser_yaw, (), minval=-jnp.pi, maxval=jnp.pi)
         evader_yaw = random.uniform(key_evader_yaw, (), minval=-jnp.pi, maxval=jnp.pi)

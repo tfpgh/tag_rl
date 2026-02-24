@@ -408,8 +408,8 @@ if __name__ == "__main__":
 
     config = EnvironmentConfig()
 
-    config.arena_width = 0.5
-    config.arena_height = 0.5
+    config.arena_width = 0.3
+    config.arena_height = 0.3
 
     N = 16_384
     env = TagEnvironment(config, N)
@@ -485,7 +485,7 @@ if __name__ == "__main__":
     auto_step = make_auto_reset_step(env)
 
     # Action linear interpolation
-    waypoint_interval = 20
+    waypoint_interval = 10
     rng, k_c, k_e = random.split(rng, 3)
     prev_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
     prev_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
@@ -512,8 +512,8 @@ if __name__ == "__main__":
             prev_chaser = next_chaser
             prev_evader = next_evader
             rng, k_c, k_e = random.split(rng, 3)
-            next_chaser = random.uniform(k_c, (2,), minval=-1.0, maxval=1.0)
-            next_evader = random.uniform(k_e, (2,), minval=-1.0, maxval=1.0)
+            next_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
+            next_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
         t = (i % waypoint_interval) / waypoint_interval
         chaser_action = prev_chaser + t * (next_chaser - prev_chaser)
         evader_action = prev_evader + t * (next_evader - prev_evader)

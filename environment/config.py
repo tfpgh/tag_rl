@@ -14,7 +14,7 @@ class EnvironmentConfig:
     tag_distance_factor: float = 1.1
 
     # Perception rays
-    n_rays: int = 32
+    n_rays: int = 64
 
     # Action frequency, hz
     action_frequency: int = 20

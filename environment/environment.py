@@ -467,7 +467,7 @@ if __name__ == "__main__":
     print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
 
     # Benchmark post-JIT
-    n_iters = 100
+    n_iters = 200
     t0 = time.time()
     for i in tqdm(range(n_iters)):
         if i % waypoint_interval == 0 and i > 0:

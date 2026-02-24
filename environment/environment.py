@@ -318,6 +318,9 @@ class TagEnvironment:
         # Substep physics
         mjx_data = state.mjx_data.replace(ctrl=control_actions)
 
+        # Closure can't access self, didn't realize this was a thing in Python
+        sensor_slices = self.sensor_slices
+
         def substep(
             carry: tuple[mjx.Data, jax.Array], _
         ) -> tuple[tuple[mjx.Data, jax.Array], None]:

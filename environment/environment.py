@@ -209,14 +209,21 @@ class TagEnvironment:
         # If exactly coincident, pick a random direction
         random_dir = random.uniform(key_evader_yaw, (2,), minval=-1.0, maxval=1.0)
         random_dir = random_dir / jnp.linalg.norm(random_dir)
-
         direction = jnp.where(dist < 1e-6, random_dir, delta / dist)
 
-        desired_pos = chaser_xy + direction * config.minimum_starting_separation
-        desired_pos = jnp.clip(desired_pos, lower_bounds, upper_bounds)
-
         too_close = dist < config.minimum_starting_separation
-        evader_xy = jnp.where(too_close, desired_pos, evader_xy)
+
+        # Phase 1: push evader away from chaser
+        evader_candidate = chaser_xy + direction * config.minimum_starting_separation
+        evader_candidate = jnp.clip(evader_candidate, lower_bounds, upper_bounds)
+        evader_xy = jnp.where(too_close, evader_candidate, evader_xy)
+
+        # Phase 2: if clamp pulled evader back, push chaser the other way
+        new_dist = jnp.linalg.norm(evader_xy - chaser_xy)
+        still_too_close = new_dist < config.minimum_starting_separation
+        chaser_candidate = evader_xy - direction * config.minimum_starting_separation
+        chaser_candidate = jnp.clip(chaser_candidate, lower_bounds, upper_bounds)
+        chaser_xy = jnp.where(still_too_close, chaser_candidate, chaser_xy)
 
         chaser_yaw = random.uniform(key_chaser_yaw, (), minval=-jnp.pi, maxval=jnp.pi)
         evader_yaw = random.uniform(key_evader_yaw, (), minval=-jnp.pi, maxval=jnp.pi)
@@ -418,11 +425,11 @@ if __name__ == "__main__":
 
     config = EnvironmentConfig()
 
-    config.arena_width = 1.0
-    config.arena_height = 1.0
-    config.wall_margin_factor = 1.1
+    # config.arena_width = 1.0
+    # config.arena_height = 1.0
+    # config.wall_margin_factor = 1.1
 
-    N = 16_384
+    N = 4_096
     env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")

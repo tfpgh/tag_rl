@@ -310,7 +310,7 @@ class TagEnvironment:
         evader_xy = sensor_data[sensor_slices.evader_position][:2]
 
         distance = jnp.linalg.norm(chaser_xy - evader_xy)
-        tagged = (distance < self.tag_distance) & (~is_frozen)
+        tagged = distance < self.tag_distance
 
         # Termination
         step_count = state.step_count + 1

@@ -30,6 +30,8 @@ cuda = [
 dev = [
     "mypy>=1.19.1",
     "pybind11-stubgen>=2.5.5",
+    "pyright>=1.1.408",
+    "ruff>=0.15.2",
 ]
 
 [tool.pyright]

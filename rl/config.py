@@ -17,3 +17,8 @@ class RLConfig:
     ent_coef: float = 0.01
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
+
+    anneal_lr: bool = False
+    debug: bool = True
+    hidden_size: int = 128
+    seed: int = 0

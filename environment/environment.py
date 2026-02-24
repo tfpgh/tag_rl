@@ -264,7 +264,7 @@ class TagEnvironment:
             self.mj_model,
             impl="warp",
             naconmax=20 * self.n_envs,
-            njmax=100 * self.n_envs,
+            njmax=100,
         )
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(self.mjx_model, mjx_data)

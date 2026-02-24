@@ -398,7 +398,7 @@ if __name__ == "__main__":
     import time
 
     config = EnvironmentConfig()
-    N = 16_384
+    N = 32_768
     env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")
@@ -448,7 +448,7 @@ if __name__ == "__main__":
     print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
 
     # Benchmark post-JIT
-    n_iters = 1000
+    n_iters = 100
     t0 = time.time()
     # with jax.profiler.trace("tensorboard/"):
     for _ in tqdm(range(n_iters)):

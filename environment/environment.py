@@ -398,7 +398,7 @@ if __name__ == "__main__":
     import time
 
     config = EnvironmentConfig()
-    N = 32_768
+    N = 16_384
     env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")

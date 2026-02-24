@@ -293,7 +293,7 @@ def generate_mjcf(config: EnvironmentConfig) -> tuple[str, dict[str, bytes]]:
 
     mjcf_xml = f"""
     <mujoco model="tag">
-        <option integrator="implicitfast"/>
+        <option timestep="0.005" integrator="implicitfast"/>
         <asset>
             <mesh name="chassis_base_mesh" file="chassis_base.stl" />
             <mesh name="chassis_top_mesh" file="chassis_top.stl" />

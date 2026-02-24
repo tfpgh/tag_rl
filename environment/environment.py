@@ -407,6 +407,10 @@ if __name__ == "__main__":
     os.environ["MUJOCO_GL"] = "egl"
 
     config = EnvironmentConfig()
+
+    config.arena_width = 0.5
+    config.arena_height = 0.5
+
     N = 16_384
     env = TagEnvironment(config, N)
 
@@ -481,13 +485,13 @@ if __name__ == "__main__":
     auto_step = make_auto_reset_step(env)
 
     # Action linear interpolation
-    waypoint_interval = 50
+    waypoint_interval = 20
     rng, k_c, k_e = random.split(rng, 3)
-    prev_chaser = random.uniform(k_c, (2,), minval=-0.3, maxval=0.3)
-    prev_evader = random.uniform(k_e, (2,), minval=-0.3, maxval=0.3)
+    prev_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
+    prev_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
     rng, k_c, k_e = random.split(rng, 3)
-    next_chaser = random.uniform(k_c, (2,), minval=-0.3, maxval=0.3)
-    next_evader = random.uniform(k_e, (2,), minval=-0.3, maxval=0.3)
+    next_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
+    next_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
 
     frames = []
     renderer = mujoco.Renderer(env.mj_model, height=1080, width=1920)

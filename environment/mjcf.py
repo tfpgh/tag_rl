@@ -187,7 +187,7 @@ def _arena_xml(config: EnvironmentConfig) -> str:
     <geom
         name="floor"
         type="plane"
-        pos="0 0 -0.02"
+        pos="0 0 0"
         size="{arena_half_width + WALL_THICKNESS} {arena_half_height + WALL_THICKNESS} 0.04"
         group="{GEOM_GROUP_FLOOR}"
         rgba="0.2 0.2 0.25 1"

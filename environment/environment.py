@@ -49,8 +49,9 @@ class TagEnvironmentStepInfo(NamedTuple):
 
 
 class TagEnvironment:
-    def __init__(self, config: EnvironmentConfig) -> None:
+    def __init__(self, config: EnvironmentConfig, n_envs: int) -> None:
         self.config = config
+        self.n_envs = n_envs
 
         xml, assets = generate_mjcf(config)
         self.mj_model = mujoco.MjModel.from_xml_string(xml, assets=assets)
@@ -236,7 +237,7 @@ class TagEnvironment:
 
         qvel = jnp.zeros(self.mj_model.nv)
 
-        mjx_data = mjx.make_data(self.mj_model, impl="warp", nconmax=20 * 16_384)
+        mjx_data = mjx.make_data(self.mj_model, impl="warp", nconmax=20 * self.n_envs)
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(self.mjx_model, mjx_data)
 
@@ -397,7 +398,8 @@ if __name__ == "__main__":
     import time
 
     config = EnvironmentConfig()
-    env = TagEnvironment(config)
+    N = 16_384
+    env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")
     print(
@@ -425,7 +427,6 @@ if __name__ == "__main__":
     )
 
     # Vectorized test
-    N = 16_384
     print(f"\nVectorized ({N} envs)...")
     v_reset = jax.vmap(env.reset)
     v_step = jax.vmap(env.step)

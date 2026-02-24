@@ -412,7 +412,7 @@ if __name__ == "__main__":
     config.arena_height = 0.3
     config.wall_margin_factor = 1.0
 
-    N = 8_192
+    N = 1024
     env = TagEnvironment(config, N)
 
     print(f"obs size:     {observation_size(config)}")
@@ -467,7 +467,7 @@ if __name__ == "__main__":
     print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
 
     # Benchmark post-JIT
-    n_iters = 200
+    n_iters = 500
     t0 = time.time()
     for i in tqdm(range(n_iters)):
         if i % waypoint_interval == 0 and i > 0:

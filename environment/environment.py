@@ -410,6 +410,7 @@ if __name__ == "__main__":
 
     config.arena_width = 0.3
     config.arena_height = 0.3
+    config.wall_margin_factor = 1.0
 
     N = 16_384
     env = TagEnvironment(config, N)

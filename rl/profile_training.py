@@ -184,7 +184,7 @@ def profile_env_components():
                 substep, mjx_data, None, length=env.substeps_per_action
             )
             mjx_data = mjx_mod.forward(env.mjx_model, mjx_data)
-            return mjx_data.sensordata
+            return mjx_data.qpos
 
         return jax.vmap(single_physics)(states, actions, actions)
 
@@ -193,17 +193,17 @@ def profile_env_components():
     def rays_only(states):
         def single_rays(state):
             mjx_data = state.mjx_data
-            sensor_data = mjx_data.sensordata
-            ss = env.sensor_slices
+            qpos = mjx_data.qpos
+            jqs = env.joint_qpos_slices
             from environment.mujoco_data import quaternion_to_yaw
 
             # Chaser rays
-            c_pos = sensor_data[ss.chaser_position]
-            c_yaw = quaternion_to_yaw(sensor_data[ss.chaser_quaternion])
+            c_pos = qpos[jqs.chaser_root][:3]
+            c_yaw = quaternion_to_yaw(qpos[jqs.chaser_root][3:7])
             c_dist, c_type = env._cast_rays(env.mjx_model, mjx_data, c_pos, c_yaw)
             # Evader rays
-            e_pos = sensor_data[ss.evader_position]
-            e_yaw = quaternion_to_yaw(sensor_data[ss.evader_quaternion])
+            e_pos = qpos[jqs.evader_root][:3]
+            e_yaw = quaternion_to_yaw(qpos[jqs.evader_root][3:7])
             e_dist, e_type = env._cast_rays(env.mjx_model, mjx_data, e_pos, e_yaw)
             return c_dist, e_dist
 

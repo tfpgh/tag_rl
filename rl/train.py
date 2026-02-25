@@ -56,30 +56,34 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     )
 
     def _auto_reset_step(state, chaser_action, evader_action, rng):
-        stepped, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
-            env.step(state, chaser_action, evader_action)
+        # 1. Physics only (no forward, no obs)
+        stepped, chaser_reward, evader_reward, done, info = (
+            env.step_physics(state, chaser_action, evader_action)
         )
-        reset_state, reset_chaser_obs, reset_evader_obs = env.reset(rng)
 
-        # Swap only essential state fields — avoids jax.tree.map over DataWarp
-        # which leaks tracers on non-vmappable contact fields.
-        # Derived quantities are recomputed by mjx.step()/forward() next step.
+        # 2. Cheap reset (no forward, no obs)
+        reset_qpos, reset_qvel, reset_distance = env.reset_state(rng)
+
+        # 3. Merge
         new_mjx_data = stepped.mjx_data.replace(
-            qpos=jnp.where(done, reset_state.mjx_data.qpos, stepped.mjx_data.qpos),
-            qvel=jnp.where(done, reset_state.mjx_data.qvel, stepped.mjx_data.qvel),
-            time=jnp.where(done, reset_state.mjx_data.time, stepped.mjx_data.time),
+            qpos=jnp.where(done, reset_qpos, stepped.mjx_data.qpos),
+            qvel=jnp.where(done, reset_qvel, stepped.mjx_data.qvel),
+            time=jnp.where(done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time),
         )
+        step_count = jnp.where(done, jnp.int32(0), stepped.step_count)
+
+        # 4. Single forward
+        new_mjx_data = env.forward(new_mjx_data)
+
+        # 5. Observations from merged+forwarded state
+        chaser_obs, evader_obs = env.compute_observations(new_mjx_data, step_count)
+
         state = TagEnvironmentState(
             mjx_data=new_mjx_data,
-            step_count=jnp.where(done, reset_state.step_count, stepped.step_count),
-            tagged=jnp.where(done, reset_state.tagged, stepped.tagged),
-            prev_distance=jnp.where(
-                done, reset_state.prev_distance, stepped.prev_distance
-            ),
+            step_count=step_count,
+            tagged=jnp.where(done, jnp.bool_(False), stepped.tagged),
+            prev_distance=jnp.where(done, reset_distance, stepped.prev_distance),
         )
-
-        chaser_obs = jnp.where(done, reset_chaser_obs, chaser_obs)
-        evader_obs = jnp.where(done, reset_evader_obs, evader_obs)
         return state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info
 
     def linear_schedule(count):

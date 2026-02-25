@@ -5,15 +5,14 @@ import jax
 import jax.numpy as jnp
 import mujoco
 from jax import random
-from jax._src.pjit import JitWrapped
 from mujoco import mjx
 from tqdm import tqdm
 
 from environment.config import EnvironmentConfig
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import (
+    JointDofSlices,
     JointQposSlices,
-    SensorSlices,
     quaternion_to_yaw,
     yaw_to_quaternion,
 )
@@ -58,8 +57,8 @@ class TagEnvironment:
         self.mj_model = mujoco.MjModel.from_xml_string(xml)
         self.mjx_model = mjx.put_model(self.mj_model, impl="warp")
 
-        self.sensor_slices = SensorSlices(self.mj_model)
         self.joint_qpos_slices = JointQposSlices(self.mj_model)
+        self.joint_dof_slices = JointDofSlices(self.mj_model)
 
         # Geom groups for ray hits
         self.geom_groups = jnp.array(self.mj_model.geom_group, dtype=jnp.int32)
@@ -139,22 +138,23 @@ class TagEnvironment:
         step_count: jax.Array,
     ):
         """
-        Build observation vector for one agent
+        Build observation vector for one agent.
+        Reads position/quaternion from qpos, velocity from qvel.
         """
         config = self.config
-        sensor_data = mjx_data.sensordata
-        sensor_slices = self.sensor_slices
+        qpos = mjx_data.qpos
+        qvel = mjx_data.qvel
 
         if is_chaser:
-            my_position = sensor_data[sensor_slices.chaser_position]
-            my_quaternion = sensor_data[sensor_slices.chaser_quaternion]
-            my_velocity = sensor_data[sensor_slices.chaser_velocity]
-            my_angular_velocity = sensor_data[sensor_slices.chaser_angular_velocity]
+            my_position = qpos[self.joint_qpos_slices.chaser_root][:3]
+            my_quaternion = qpos[self.joint_qpos_slices.chaser_root][3:7]
+            my_velocity = qvel[self.joint_dof_slices.chaser_root][:3]
+            my_angular_velocity = qvel[self.joint_dof_slices.chaser_root][3:6]
         else:
-            my_position = sensor_data[sensor_slices.evader_position]
-            my_quaternion = sensor_data[sensor_slices.evader_quaternion]
-            my_velocity = sensor_data[sensor_slices.evader_velocity]
-            my_angular_velocity = sensor_data[sensor_slices.evader_angular_velocity]
+            my_position = qpos[self.joint_qpos_slices.evader_root][:3]
+            my_quaternion = qpos[self.joint_qpos_slices.evader_root][3:7]
+            my_velocity = qvel[self.joint_dof_slices.evader_root][:3]
+            my_angular_velocity = qvel[self.joint_dof_slices.evader_root][3:6]
 
         my_yaw = quaternion_to_yaw(my_quaternion)
 
@@ -185,9 +185,8 @@ class TagEnvironment:
             ]
         )
 
-    @partial(jax.jit, static_argnums=(0,))
-    def reset(self, rng: jax.Array) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        """Reset environment. Returns (state, chaser_obs, evader_obs)."""
+    def _reset_positions(self, rng: jax.Array):
+        """Generate random qpos/qvel for a reset. Returns (qpos, qvel, initial_distance)."""
         config = self.config
         key_chaser_position, key_evader_position, key_chaser_yaw, key_evader_yaw = (
             random.split(rng, 4)
@@ -267,46 +266,45 @@ class TagEnvironment:
 
         qvel = jnp.zeros(self.mj_model.nv)
 
-        mjx_data = self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
-        mjx_data = mjx.forward(self.mjx_model, mjx_data)
-
         initial_distance = jnp.linalg.norm(chaser_xy - evader_xy)
 
-        state = TagEnvironmentState(
-            mjx_data=mjx_data,
-            step_count=jnp.int32(0),
-            tagged=jnp.bool_(False),
-            prev_distance=initial_distance,
-        )
+        return qpos, qvel, initial_distance
 
+    def reset_state(self, rng: jax.Array) -> tuple[jax.Array, jax.Array, jax.Array]:
+        """Generate random qpos/qvel only. NO forward, NO obs.
+
+        Returns (qpos, qvel, initial_distance).
+        """
+        return self._reset_positions(rng)
+
+    def forward(self, mjx_data: mjx.Data) -> mjx.Data:
+        """Thin wrapper around mjx.forward."""
+        return mjx.forward(self.mjx_model, mjx_data)
+
+    def compute_observations(
+        self, mjx_data: mjx.Data, step_count: jax.Array
+    ) -> tuple[jax.Array, jax.Array]:
+        """Compute observations for both agents from forwarded state."""
         chaser_obs = self._compute_observation(
-            self.mjx_model, mjx_data, is_chaser=True, step_count=jnp.int32(0)
+            self.mjx_model, mjx_data, is_chaser=True, step_count=step_count
         )
         evader_obs = self._compute_observation(
-            self.mjx_model, mjx_data, is_chaser=False, step_count=jnp.int32(0)
+            self.mjx_model, mjx_data, is_chaser=False, step_count=step_count
         )
+        return chaser_obs, evader_obs
 
-        return state, chaser_obs, evader_obs
-
-    @partial(jax.jit, static_argnums=(0,))
-    def step(
+    def step_physics(
         self,
         state: TagEnvironmentState,
         chaser_action: jax.Array,
         evader_action: jax.Array,
-    ) -> tuple[
-        TagEnvironmentState,
-        jax.Array,
-        jax.Array,
-        jax.Array,
-        jax.Array,
-        jax.Array,
-        TagEnvironmentStepInfo,
-    ]:
+    ) -> tuple[TagEnvironmentState, jax.Array, jax.Array, jax.Array, TagEnvironmentStepInfo]:
         """
-        Step the environment.
+        Physics + rewards only. NO forward, NO obs.
 
-        Returns (state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info)"""
+        Returns (new_state, chaser_reward, evader_reward, done, info).
+        The new_state contains un-forwarded mjx_data.
+        """
         config = self.config
 
         chaser_action = jnp.clip(chaser_action, -1.0, 1.0)
@@ -321,22 +319,17 @@ class TagEnvironment:
         # Substep physics
         mjx_data = state.mjx_data.replace(ctrl=control_actions)
 
-        sensor_slices = self.sensor_slices
-
         def substep(data: mjx.Data, _) -> tuple[mjx.Data, None]:
             data = mjx.step(self.mjx_model, data)
-
             return data, None
 
         mjx_data, _ = jax.lax.scan(
             substep, mjx_data, None, length=self.substeps_per_action
         )
-        mjx_data = mjx.forward(self.mjx_model, mjx_data)
 
-        sensor_data = mjx_data.sensordata
-
-        chaser_xy = sensor_data[sensor_slices.chaser_position][:2]
-        evader_xy = sensor_data[sensor_slices.evader_position][:2]
+        # Read positions directly from qpos (no forward needed)
+        chaser_xy = mjx_data.qpos[self.joint_qpos_slices.chaser_root][:2]
+        evader_xy = mjx_data.qpos[self.joint_qpos_slices.evader_root][:2]
 
         distance = jnp.linalg.norm(chaser_xy - evader_xy)
         tagged = distance < self.tag_distance
@@ -362,7 +355,7 @@ class TagEnvironment:
             - config.distance_shaping_scale * distance_shaping
         )
 
-        chaser_reward: jax.Array = jnp.where(is_frozen, 0.0, chaser_reward)
+        chaser_reward = jnp.where(is_frozen, 0.0, chaser_reward)
 
         new_state = TagEnvironmentState(
             mjx_data=mjx_data,
@@ -371,19 +364,68 @@ class TagEnvironment:
             prev_distance=distance,
         )
 
-        chaser_obs = self._compute_observation(
-            self.mjx_model, mjx_data, is_chaser=True, step_count=step_count
-        )
-        evader_obs = self._compute_observation(
-            self.mjx_model, mjx_data, is_chaser=False, step_count=step_count
-        )
-
         info = TagEnvironmentStepInfo(
             tagged=tagged,
             time_up=time_up,
             distance=distance,
             step_count=step_count,
             is_frozen=is_frozen,
+        )
+
+        return new_state, chaser_reward, evader_reward, done, info
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, rng: jax.Array) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
+        """Reset environment. Returns (state, chaser_obs, evader_obs).
+
+        Convenience method composing reset_state → forward → compute_observations.
+        """
+        qpos, qvel, initial_distance = self.reset_state(rng)
+
+        mjx_data = self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
+        mjx_data = self.forward(mjx_data)
+
+        state = TagEnvironmentState(
+            mjx_data=mjx_data,
+            step_count=jnp.int32(0),
+            tagged=jnp.bool_(False),
+            prev_distance=initial_distance,
+        )
+
+        chaser_obs, evader_obs = self.compute_observations(mjx_data, jnp.int32(0))
+
+        return state, chaser_obs, evader_obs
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(
+        self,
+        state: TagEnvironmentState,
+        chaser_action: jax.Array,
+        evader_action: jax.Array,
+    ) -> tuple[
+        TagEnvironmentState,
+        jax.Array,
+        jax.Array,
+        jax.Array,
+        jax.Array,
+        jax.Array,
+        TagEnvironmentStepInfo,
+    ]:
+        """
+        Step the environment.
+
+        Convenience method composing step_physics → forward → compute_observations.
+        Returns (state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info)
+        """
+        new_state, chaser_reward, evader_reward, done, info = self.step_physics(
+            state, chaser_action, evader_action
+        )
+
+        mjx_data = self.forward(new_state.mjx_data)
+        new_state = new_state._replace(mjx_data=mjx_data)
+
+        chaser_obs, evader_obs = self.compute_observations(
+            mjx_data, new_state.step_count
         )
 
         return (
@@ -395,53 +437,6 @@ class TagEnvironment:
             done,
             info,
         )
-
-
-def make_auto_reset_step(env: TagEnvironment) -> JitWrapped:
-    @jax.jit
-    def auto_step(
-        state: TagEnvironmentState,
-        chaser_action: jax.Array,
-        evader_action: jax.Array,
-        rng: jax.Array,
-    ) -> tuple[
-        TagEnvironmentState,
-        jax.Array,
-        jax.Array,
-        jax.Array,
-        jax.Array,
-        jax.Array,
-        TagEnvironmentStepInfo,
-    ]:
-        stepped, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
-            env.step(state, chaser_action, evader_action)
-        )
-
-        rng, reset_key = random.split(rng)
-        reset_state, reset_chaser_obs, reset_evader_obs = env.reset(reset_key)
-
-        # Swap only essential state fields — avoids jax.tree.map over DataWarp
-        # which leaks tracers on non-vmappable contact fields.
-        # Derived quantities are recomputed by mjx.step()/forward() next step.
-        new_mjx_data = stepped.mjx_data.replace(
-            qpos=jnp.where(done, reset_state.mjx_data.qpos, stepped.mjx_data.qpos),
-            qvel=jnp.where(done, reset_state.mjx_data.qvel, stepped.mjx_data.qvel),
-            time=jnp.where(done, reset_state.mjx_data.time, stepped.mjx_data.time),
-        )
-        state = TagEnvironmentState(
-            mjx_data=new_mjx_data,
-            step_count=jnp.where(done, reset_state.step_count, stepped.step_count),
-            tagged=jnp.where(done, reset_state.tagged, stepped.tagged),
-            prev_distance=jnp.where(
-                done, reset_state.prev_distance, stepped.prev_distance
-            ),
-        )
-        chaser_obs = jnp.where(done, reset_chaser_obs, chaser_obs)
-        evader_obs = jnp.where(done, reset_evader_obs, evader_obs)
-
-        return state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info
-
-    return auto_step
 
 
 # Testing
@@ -532,60 +527,3 @@ if __name__ == "__main__":
     print(
         f"\n  Throughput: {sps:,.0f} env steps/sec ({n_iters} x {N} in {elapsed:.2f}s)"
     )
-
-    import imageio
-    import numpy as np
-
-    print("\nRecording video...")
-    rng, k = random.split(rng)
-    state, chaser_obs, evader_obs = env.reset(k)
-    auto_step = make_auto_reset_step(env)
-
-    # Action linear interpolation
-    waypoint_interval = 10
-    rng, k_c, k_e = random.split(rng, 3)
-    prev_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
-    prev_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
-    rng, k_c, k_e = random.split(rng, 3)
-    next_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
-    next_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
-
-    frames = []
-    renderer = mujoco.Renderer(env.mj_model, height=1080, width=1920)
-    mj_data = mujoco.MjData(env.mj_model)
-
-    n_video_steps = 1_200
-    for i in range(n_video_steps):
-        # Manually copy qpos/qvel from MJX to CPU MjData
-        mj_data.qpos[:] = np.array(state.mjx_data.qpos)
-        mj_data.qvel[:] = np.array(state.mjx_data.qvel)
-        mujoco.mj_forward(env.mj_model, mj_data)
-        renderer.update_scene(mj_data)
-        frames.append(renderer.render())
-
-        # Random actions in [-1, 1]
-        rng, k_c, k_e, k_reset = random.split(rng, 4)
-        if i % waypoint_interval == 0 and i > 0:
-            prev_chaser = next_chaser
-            prev_evader = next_evader
-            rng, k_c, k_e = random.split(rng, 3)
-            next_chaser = random.uniform(k_c, (2,), minval=-0.5, maxval=0.5)
-            next_evader = random.uniform(k_e, (2,), minval=-0.5, maxval=0.5)
-        t = (i % waypoint_interval) / waypoint_interval
-        chaser_action = prev_chaser + t * (next_chaser - prev_chaser)
-        evader_action = prev_evader + t * (next_evader - prev_evader)
-
-        # Step with auto-reset
-        state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
-            auto_step(state, chaser_action, evader_action, k_reset)
-        )
-
-        if done:
-            print(
-                f"  step {i}: tagged={info.tagged}, time_up={info.time_up}, "
-                f"dist={info.distance:.3f}, steps={info.step_count} -> auto reset"
-            )
-
-    renderer.close()
-    imageio.mimsave("debug.mp4", frames, fps=int(config.action_frequency))
-    print(f"Saved {len(frames)} frames to debug.mp4")

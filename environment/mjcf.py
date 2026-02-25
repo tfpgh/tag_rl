@@ -34,11 +34,11 @@ EVADER_COLOR = "0.435 0.702 0.722 1"
 
 def _agent_mjcf(
     name: str, lid_color: str, starting_pos: str = "0 0 0.0299"
-) -> tuple[str, str, str]:
+) -> tuple[str, str]:
     """
     MJCF XML for an agent
 
-    Returns body_xml, actuator_xml, sensor_xml
+    Returns body_xml, actuator_xml
     """
 
     body_xml = f"""
@@ -161,14 +161,7 @@ def _agent_mjcf(
     />
     """
 
-    sensor_xml = f"""
-    <framepos name="{name}_position" objtype="body" objname="{name}" />
-    <framequat name="{name}_quaternion" objtype="body" objname="{name}" />
-    <framelinvel name="{name}_velocity" objtype="body" objname="{name}" />
-    <frameangvel name="{name}_angular_velocity" objtype="body" objname="{name}" />
-    """
-
-    return body_xml, actuator_xml, sensor_xml
+    return body_xml, actuator_xml
 
 
 def _arena_xml(config: EnvironmentConfig) -> str:
@@ -241,10 +234,10 @@ def _arena_xml(config: EnvironmentConfig) -> str:
 def generate_mjcf(config: EnvironmentConfig) -> str:
     """Build the complete MJCF XML for the environment"""
 
-    chaser_body_xml, chaser_actuator_xml, chaser_sensor_xml = _agent_mjcf(
+    chaser_body_xml, chaser_actuator_xml = _agent_mjcf(
         "chaser", CHASER_COLOR, "0.3 0 0.0299"
     )
-    evader_body_xml, evader_actuator_xml, evader_sensor_xml = _agent_mjcf(
+    evader_body_xml, evader_actuator_xml = _agent_mjcf(
         "evader", EVADER_COLOR, "-0.3 0 0.0299"
     )
 
@@ -268,10 +261,6 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
             {chaser_actuator_xml}
             {evader_actuator_xml}
         </actuator>
-        <sensor>
-            {chaser_sensor_xml}
-            {evader_sensor_xml}
-        </sensor>
     </mujoco>
     """
 

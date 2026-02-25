@@ -13,7 +13,7 @@ class RLConfig:
     lr: float = 3e-4
     anneal_lr: bool = True
     update_epochs: int = 4
-    num_minibatches: int = 16
+    num_minibatches: int = 32
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2

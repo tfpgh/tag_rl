@@ -16,6 +16,7 @@ dependencies = [
     "rich>=14.3.2",
     "setuptools==81.0.0",
     "tensorboard>=2.20.0",
+    "tensorboardX>=2.6",
     "tensorboard-plugin-profile>=2.21.6",
     "tqdm>=4.67.3",
 ]

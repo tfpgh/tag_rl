@@ -48,6 +48,13 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     obs_size = observation_size(env_config)
     action_dim = (2,)
 
+    chaser_network = ActorCriticRNN(
+        action_dim=action_dim, hidden_size=rl_config.hidden_size
+    )
+    evader_network = ActorCriticRNN(
+        action_dim=action_dim, hidden_size=rl_config.hidden_size
+    )
+
     def _auto_reset_step(state, chaser_action, evader_action, rng):
         stepped, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
             env.step(state, chaser_action, evader_action)
@@ -66,7 +73,9 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             mjx_data=new_mjx_data,
             step_count=jnp.where(done, reset_state.step_count, stepped.step_count),
             tagged=jnp.where(done, reset_state.tagged, stepped.tagged),
-            prev_distance=jnp.where(done, reset_state.prev_distance, stepped.prev_distance),
+            prev_distance=jnp.where(
+                done, reset_state.prev_distance, stepped.prev_distance
+            ),
         )
 
         chaser_obs = jnp.where(done, reset_chaser_obs, chaser_obs)
@@ -81,15 +90,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         )
         return rl_config.lr * frac
 
-    def train(rng):
-        # Init networks
-        chaser_network = ActorCriticRNN(
-            action_dim=action_dim, hidden_size=rl_config.hidden_size
-        )
-        evader_network = ActorCriticRNN(
-            action_dim=action_dim, hidden_size=rl_config.hidden_size
-        )
-
+    def init(rng):
         rng, chaser_rng, evader_rng = jax.random.split(rng, 3)
         init_x = (
             jnp.zeros((1, rl_config.num_envs, obs_size)),
@@ -132,364 +133,6 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             rl_config.num_envs, rl_config.hidden_size
         )
 
-        def _calculate_gae(rewards, values, dones, last_val, last_done):
-            def _get_advantages(carry, transition):
-                gae, next_value, next_done = carry
-                done, value, reward = transition
-                delta = reward + rl_config.gamma * next_value * (1 - next_done) - value
-                gae = (
-                    delta
-                    + rl_config.gamma * rl_config.gae_lambda * (1 - next_done) * gae
-                )
-                return (gae, value, done), gae
-
-            _, advantages = jax.lax.scan(
-                _get_advantages,
-                (jnp.zeros_like(last_val), last_val, last_done),
-                (dones, values, rewards),
-                reverse=True,
-                unroll=16,
-            )
-            return advantages, advantages + values
-
-        def _update_agent(
-            network, train_state, init_hstate, agent_traj, advantages, targets, rng
-        ):
-            def _update_epoch(update_state, _):
-                def _update_minibatch(train_state, batch_info):
-                    init_hstate, traj_batch, advantages, targets = batch_info
-
-                    def _loss_fn(params, init_hstate, traj_batch, gae, targets):
-                        _, pi, value = network.apply(
-                            params,
-                            init_hstate[0],
-                            (traj_batch.obs, traj_batch.done),
-                        )
-                        log_prob = pi.log_prob(traj_batch.action)
-
-                        # Value loss
-                        value_pred_clipped = traj_batch.value + (
-                            value - traj_batch.value
-                        ).clip(-rl_config.clip_eps, rl_config.clip_eps)
-                        value_losses = jnp.square(value - targets)
-                        value_losses_clipped = jnp.square(value_pred_clipped - targets)
-                        value_loss = (
-                            0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
-                        )
-
-                        # Actor loss
-                        ratio = jnp.exp(log_prob - traj_batch.log_prob)
-                        gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-                        loss_actor1 = ratio * gae
-                        loss_actor2 = (
-                            jnp.clip(
-                                ratio,
-                                1.0 - rl_config.clip_eps,
-                                1.0 + rl_config.clip_eps,
-                            )
-                            * gae
-                        )
-                        loss_actor = -jnp.minimum(loss_actor1, loss_actor2).mean()
-                        entropy = pi.entropy().mean()
-
-                        total_loss = (
-                            loss_actor
-                            + rl_config.vf_coef * value_loss
-                            - rl_config.ent_coef * entropy
-                        )
-                        return total_loss, (value_loss, loss_actor, entropy)
-
-                    grad_fn = jax.value_and_grad(_loss_fn, has_aux=True)
-                    total_loss, grads = grad_fn(
-                        train_state.params,
-                        init_hstate,
-                        traj_batch,
-                        advantages,
-                        targets,
-                    )
-                    train_state = train_state.apply_gradients(grads=grads)
-                    return train_state, total_loss
-
-                train_state, init_hstate, traj_batch, advantages, targets, rng = (
-                    update_state
-                )
-
-                rng, _rng = jax.random.split(rng)
-                permutation = jax.random.permutation(_rng, rl_config.num_envs)
-                batch = (init_hstate, traj_batch, advantages, targets)
-
-                shuffled_batch = jax.tree.map(
-                    lambda x: jnp.take(x, permutation, axis=1), batch
-                )
-
-                minibatches = jax.tree.map(
-                    lambda x: jnp.swapaxes(
-                        jnp.reshape(
-                            x,
-                            [x.shape[0], rl_config.num_minibatches, -1]
-                            + list(x.shape[2:]),
-                        ),
-                        1,
-                        0,
-                    ),
-                    shuffled_batch,
-                )
-
-                train_state, total_loss = jax.lax.scan(
-                    _update_minibatch, train_state, minibatches
-                )
-                update_state = (
-                    train_state,
-                    init_hstate,
-                    traj_batch,
-                    advantages,
-                    targets,
-                    rng,
-                )
-                return update_state, total_loss
-
-            update_state = (
-                train_state,
-                init_hstate,
-                agent_traj,
-                advantages,
-                targets,
-                rng,
-            )
-            update_state, loss_info = jax.lax.scan(
-                _update_epoch, update_state, None, rl_config.update_epochs
-            )
-            return update_state[0], loss_info
-
-        def _update_step(runner_state, _):
-            def _env_step(carry, _):
-                (
-                    chaser_ts,
-                    evader_ts,
-                    env_state,
-                    chaser_obs,
-                    evader_obs,
-                    done,
-                    chaser_hstate,
-                    evader_hstate,
-                    rng,
-                ) = carry
-
-                last_done = done
-                rng, chaser_rng, evader_rng, step_rng = jax.random.split(rng, 4)
-
-                # Forward pass for chaser
-                chaser_ac_in = (
-                    chaser_obs[np.newaxis, :],
-                    done[np.newaxis, :],
-                )
-                chaser_hstate, chaser_pi, chaser_value = chaser_network.apply(  # type: ignore[reportAssignmentType]
-                    chaser_ts.params, chaser_hstate, chaser_ac_in
-                )
-                chaser_action_raw = chaser_pi.sample(seed=chaser_rng)  # type: ignore[reportAttributeAccessIssue]
-                chaser_log_prob = chaser_pi.log_prob(chaser_action_raw)  # type: ignore[reportAttributeAccessIssue]
-                chaser_value = chaser_value.squeeze(0)
-                chaser_action_raw = chaser_action_raw.squeeze(0)
-                chaser_log_prob = chaser_log_prob.squeeze(0)
-                chaser_action = jnp.clip(chaser_action_raw, -1.0, 1.0)
-
-                # Forward pass for evader
-                evader_ac_in = (
-                    evader_obs[np.newaxis, :],
-                    done[np.newaxis, :],
-                )
-                evader_hstate, evader_pi, evader_value = evader_network.apply(  # type: ignore[reportAssignmentType]
-                    evader_ts.params, evader_hstate, evader_ac_in
-                )
-                evader_action_raw = evader_pi.sample(seed=evader_rng)  # type: ignore[reportAttributeAccessIssue]
-                evader_log_prob = evader_pi.log_prob(evader_action_raw)  # type: ignore[reportAttributeAccessIssue]
-                evader_value = evader_value.squeeze(0)
-                evader_action_raw = evader_action_raw.squeeze(0)
-                evader_log_prob = evader_log_prob.squeeze(0)
-                evader_action = jnp.clip(evader_action_raw, -1.0, 1.0)
-
-                # Step env
-                step_rngs = jax.random.split(step_rng, rl_config.num_envs)
-                (
-                    env_state,
-                    next_chaser_obs,
-                    next_evader_obs,
-                    chaser_reward,
-                    evader_reward,
-                    done,
-                    info,
-                ) = jax.vmap(_auto_reset_step)(
-                    env_state, chaser_action, evader_action, step_rngs
-                )
-
-                transition = Transition(
-                    done=last_done,
-                    chaser_action=chaser_action,
-                    evader_action=evader_action,
-                    chaser_value=chaser_value,
-                    evader_value=evader_value,
-                    chaser_reward=chaser_reward,
-                    evader_reward=evader_reward,
-                    chaser_log_prob=chaser_log_prob,
-                    evader_log_prob=evader_log_prob,
-                    chaser_obs=chaser_obs,
-                    evader_obs=evader_obs,
-                    info=info,
-                )
-                carry = (
-                    chaser_ts,
-                    evader_ts,
-                    env_state,
-                    next_chaser_obs,
-                    next_evader_obs,
-                    done,
-                    chaser_hstate,
-                    evader_hstate,
-                    rng,
-                )
-                return carry, transition
-
-            # Save initial hidden states for PPO update
-            initial_chaser_hstate = runner_state[6]
-            initial_evader_hstate = runner_state[7]
-
-            runner_state, traj_batch = jax.lax.scan(
-                _env_step, runner_state, None, rl_config.num_steps
-            )
-
-            # Unpack runner state
-            (
-                chaser_ts,
-                evader_ts,
-                env_state,
-                last_chaser_obs,
-                last_evader_obs,
-                last_done,
-                chaser_hstate,
-                evader_hstate,
-                rng,
-            ) = runner_state
-
-            # Bootstrap values for both agents
-            chaser_ac_in = (
-                last_chaser_obs[np.newaxis, :],
-                last_done[np.newaxis, :],
-            )
-            _, _, chaser_last_val = chaser_network.apply(  # type: ignore[reportAssignmentType]
-                chaser_ts.params, chaser_hstate, chaser_ac_in
-            )
-            chaser_last_val = chaser_last_val.squeeze(0)
-
-            evader_ac_in = (
-                last_evader_obs[np.newaxis, :],
-                last_done[np.newaxis, :],
-            )
-            _, _, evader_last_val = evader_network.apply(  # type: ignore[reportAssignmentType]
-                evader_ts.params, evader_hstate, evader_ac_in
-            )
-            evader_last_val = evader_last_val.squeeze(0)
-
-            # GAE for both agents
-            chaser_advantages, chaser_targets = _calculate_gae(
-                traj_batch.chaser_reward,
-                traj_batch.chaser_value,
-                traj_batch.done,
-                chaser_last_val,
-                last_done,
-            )
-            evader_advantages, evader_targets = _calculate_gae(
-                traj_batch.evader_reward,
-                traj_batch.evader_value,
-                traj_batch.done,
-                evader_last_val,
-                last_done,
-            )
-
-            # Extract AgentTransition for each agent
-            chaser_traj = AgentTransition(
-                done=traj_batch.done,
-                action=traj_batch.chaser_action,
-                value=traj_batch.chaser_value,
-                reward=traj_batch.chaser_reward,
-                log_prob=traj_batch.chaser_log_prob,
-                obs=traj_batch.chaser_obs,
-            )
-            evader_traj = AgentTransition(
-                done=traj_batch.done,
-                action=traj_batch.evader_action,
-                value=traj_batch.evader_value,
-                reward=traj_batch.evader_reward,
-                log_prob=traj_batch.evader_log_prob,
-                obs=traj_batch.evader_obs,
-            )
-
-            # Update both agents
-            rng, chaser_update_rng, evader_update_rng = jax.random.split(rng, 3)
-
-            chaser_ts, chaser_loss = _update_agent(
-                chaser_network,
-                chaser_ts,
-                initial_chaser_hstate[None, :],
-                chaser_traj,
-                chaser_advantages,
-                chaser_targets,
-                chaser_update_rng,
-            )
-            evader_ts, evader_loss = _update_agent(
-                evader_network,
-                evader_ts,
-                initial_evader_hstate[None, :],
-                evader_traj,
-                evader_advantages,
-                evader_targets,
-                evader_update_rng,
-            )
-
-            # Debug callback
-            if rl_config.debug:
-                metric = traj_batch.info
-
-                def callback(info, chaser_reward, evader_reward):
-                    tag_rate = info.tagged.mean()
-                    finished = info.tagged | info.time_up
-                    finished_steps = info.step_count[finished]
-                    mean_ep_length = (
-                        finished_steps.mean()
-                        if finished_steps.size > 0
-                        else float("nan")
-                    )
-                    mean_distance = info.distance.mean()
-                    mean_chaser_reward = chaser_reward.mean()
-                    mean_evader_reward = evader_reward.mean()
-                    print(
-                        f"tag_rate={tag_rate:.3f}  "
-                        f"ep_len={mean_ep_length:.1f}  "
-                        f"dist={mean_distance:.3f}  "
-                        f"chaser_r={mean_chaser_reward:.4f}  "
-                        f"evader_r={mean_evader_reward:.4f}"
-                    )
-
-                jax.debug.callback(
-                    callback, metric, traj_batch.chaser_reward, traj_batch.evader_reward
-                )
-
-            runner_state = (
-                chaser_ts,
-                evader_ts,
-                env_state,
-                last_chaser_obs,
-                last_evader_obs,
-                last_done,
-                chaser_hstate,
-                evader_hstate,
-                rng,
-            )
-            metrics = {
-                "chaser_loss": chaser_loss,
-                "evader_loss": evader_loss,
-            }
-            return runner_state, metrics
-
         rng, _rng = jax.random.split(rng)
         runner_state = (
             chaser_ts,
@@ -502,26 +145,488 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             evader_hstate,
             _rng,
         )
-        runner_state, metrics = jax.lax.scan(
-            _update_step, runner_state, None, num_updates
-        )
-        return {"runner_state": runner_state, "metrics": metrics}
+        return runner_state
 
-    return train
+    def _calculate_gae(rewards, values, dones, last_val, last_done):
+        def _get_advantages(carry, transition):
+            gae, next_value, next_done = carry
+            done, value, reward = transition
+            delta = reward + rl_config.gamma * next_value * (1 - next_done) - value
+            gae = delta + rl_config.gamma * rl_config.gae_lambda * (1 - next_done) * gae
+            return (gae, value, done), gae
+
+        _, advantages = jax.lax.scan(
+            _get_advantages,
+            (jnp.zeros_like(last_val), last_val, last_done),
+            (dones, values, rewards),
+            reverse=True,
+            unroll=16,
+        )
+        return advantages, advantages + values
+
+    def _update_agent(
+        network, train_state, init_hstate, agent_traj, advantages, targets, rng
+    ):
+        def _update_epoch(update_state, _):
+            def _update_minibatch(train_state, batch_info):
+                init_hstate, traj_batch, advantages, targets = batch_info
+
+                def _loss_fn(params, init_hstate, traj_batch, gae, targets):
+                    _, pi, value = network.apply(
+                        params,
+                        init_hstate[0],
+                        (traj_batch.obs, traj_batch.done),
+                    )
+                    log_prob = pi.log_prob(traj_batch.action)
+
+                    # Value loss
+                    value_pred_clipped = traj_batch.value + (
+                        value - traj_batch.value
+                    ).clip(-rl_config.clip_eps, rl_config.clip_eps)
+                    value_losses = jnp.square(value - targets)
+                    value_losses_clipped = jnp.square(value_pred_clipped - targets)
+                    value_loss = (
+                        0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+                    )
+
+                    # Actor loss
+                    ratio = jnp.exp(log_prob - traj_batch.log_prob)
+                    gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+                    loss_actor1 = ratio * gae
+                    loss_actor2 = (
+                        jnp.clip(
+                            ratio,
+                            1.0 - rl_config.clip_eps,
+                            1.0 + rl_config.clip_eps,
+                        )
+                        * gae
+                    )
+                    loss_actor = -jnp.minimum(loss_actor1, loss_actor2).mean()
+                    entropy = pi.entropy().mean()
+
+                    total_loss = (
+                        loss_actor
+                        + rl_config.vf_coef * value_loss
+                        - rl_config.ent_coef * entropy
+                    )
+                    return total_loss, (value_loss, loss_actor, entropy)
+
+                grad_fn = jax.value_and_grad(_loss_fn, has_aux=True)
+                total_loss, grads = grad_fn(
+                    train_state.params,
+                    init_hstate,
+                    traj_batch,
+                    advantages,
+                    targets,
+                )
+                train_state = train_state.apply_gradients(grads=grads)
+                return train_state, total_loss
+
+            train_state, init_hstate, traj_batch, advantages, targets, rng = (
+                update_state
+            )
+
+            rng, _rng = jax.random.split(rng)
+            permutation = jax.random.permutation(_rng, rl_config.num_envs)
+            batch = (init_hstate, traj_batch, advantages, targets)
+
+            shuffled_batch = jax.tree.map(
+                lambda x: jnp.take(x, permutation, axis=1), batch
+            )
+
+            minibatches = jax.tree.map(
+                lambda x: jnp.swapaxes(
+                    jnp.reshape(
+                        x,
+                        [x.shape[0], rl_config.num_minibatches, -1] + list(x.shape[2:]),
+                    ),
+                    1,
+                    0,
+                ),
+                shuffled_batch,
+            )
+
+            train_state, total_loss = jax.lax.scan(
+                _update_minibatch, train_state, minibatches
+            )
+            update_state = (
+                train_state,
+                init_hstate,
+                traj_batch,
+                advantages,
+                targets,
+                rng,
+            )
+            return update_state, total_loss
+
+        update_state = (
+            train_state,
+            init_hstate,
+            agent_traj,
+            advantages,
+            targets,
+            rng,
+        )
+        update_state, loss_info = jax.lax.scan(
+            _update_epoch, update_state, None, rl_config.update_epochs
+        )
+        return update_state[0], loss_info
+
+    def step(runner_state):
+        def _env_step(carry, _):
+            (
+                chaser_ts,
+                evader_ts,
+                env_state,
+                chaser_obs,
+                evader_obs,
+                done,
+                chaser_hstate,
+                evader_hstate,
+                rng,
+            ) = carry
+
+            last_done = done
+            rng, chaser_rng, evader_rng, step_rng = jax.random.split(rng, 4)
+
+            # Forward pass for chaser
+            chaser_ac_in = (
+                chaser_obs[np.newaxis, :],
+                done[np.newaxis, :],
+            )
+            chaser_hstate, chaser_pi, chaser_value = chaser_network.apply(  # type: ignore[reportAssignmentType]
+                chaser_ts.params, chaser_hstate, chaser_ac_in
+            )
+            chaser_action_raw = chaser_pi.sample(seed=chaser_rng)  # type: ignore[reportAttributeAccessIssue]
+            chaser_log_prob = chaser_pi.log_prob(chaser_action_raw)  # type: ignore[reportAttributeAccessIssue]
+            chaser_value = chaser_value.squeeze(0)
+            chaser_action_raw = chaser_action_raw.squeeze(0)
+            chaser_log_prob = chaser_log_prob.squeeze(0)
+            chaser_action = jnp.clip(chaser_action_raw, -1.0, 1.0)
+
+            # Forward pass for evader
+            evader_ac_in = (
+                evader_obs[np.newaxis, :],
+                done[np.newaxis, :],
+            )
+            evader_hstate, evader_pi, evader_value = evader_network.apply(  # type: ignore[reportAssignmentType]
+                evader_ts.params, evader_hstate, evader_ac_in
+            )
+            evader_action_raw = evader_pi.sample(seed=evader_rng)  # type: ignore[reportAttributeAccessIssue]
+            evader_log_prob = evader_pi.log_prob(evader_action_raw)  # type: ignore[reportAttributeAccessIssue]
+            evader_value = evader_value.squeeze(0)
+            evader_action_raw = evader_action_raw.squeeze(0)
+            evader_log_prob = evader_log_prob.squeeze(0)
+            evader_action = jnp.clip(evader_action_raw, -1.0, 1.0)
+
+            # Step env
+            step_rngs = jax.random.split(step_rng, rl_config.num_envs)
+            (
+                env_state,
+                next_chaser_obs,
+                next_evader_obs,
+                chaser_reward,
+                evader_reward,
+                done,
+                info,
+            ) = jax.vmap(_auto_reset_step)(
+                env_state, chaser_action, evader_action, step_rngs
+            )
+
+            transition = Transition(
+                done=last_done,
+                chaser_action=chaser_action,
+                evader_action=evader_action,
+                chaser_value=chaser_value,
+                evader_value=evader_value,
+                chaser_reward=chaser_reward,
+                evader_reward=evader_reward,
+                chaser_log_prob=chaser_log_prob,
+                evader_log_prob=evader_log_prob,
+                chaser_obs=chaser_obs,
+                evader_obs=evader_obs,
+                info=info,
+            )
+            carry = (
+                chaser_ts,
+                evader_ts,
+                env_state,
+                next_chaser_obs,
+                next_evader_obs,
+                done,
+                chaser_hstate,
+                evader_hstate,
+                rng,
+            )
+            return carry, transition
+
+        # Save initial hidden states for PPO update
+        initial_chaser_hstate = runner_state[6]
+        initial_evader_hstate = runner_state[7]
+
+        runner_state, traj_batch = jax.lax.scan(
+            _env_step, runner_state, None, rl_config.num_steps
+        )
+
+        # Unpack runner state
+        (
+            chaser_ts,
+            evader_ts,
+            env_state,
+            last_chaser_obs,
+            last_evader_obs,
+            last_done,
+            chaser_hstate,
+            evader_hstate,
+            rng,
+        ) = runner_state
+
+        # Bootstrap values for both agents
+        chaser_ac_in = (
+            last_chaser_obs[np.newaxis, :],
+            last_done[np.newaxis, :],
+        )
+        _, _, chaser_last_val = chaser_network.apply(  # type: ignore[reportAssignmentType]
+            chaser_ts.params, chaser_hstate, chaser_ac_in
+        )
+        chaser_last_val = chaser_last_val.squeeze(0)
+
+        evader_ac_in = (
+            last_evader_obs[np.newaxis, :],
+            last_done[np.newaxis, :],
+        )
+        _, _, evader_last_val = evader_network.apply(  # type: ignore[reportAssignmentType]
+            evader_ts.params, evader_hstate, evader_ac_in
+        )
+        evader_last_val = evader_last_val.squeeze(0)
+
+        # GAE for both agents
+        chaser_advantages, chaser_targets = _calculate_gae(
+            traj_batch.chaser_reward,
+            traj_batch.chaser_value,
+            traj_batch.done,
+            chaser_last_val,
+            last_done,
+        )
+        evader_advantages, evader_targets = _calculate_gae(
+            traj_batch.evader_reward,
+            traj_batch.evader_value,
+            traj_batch.done,
+            evader_last_val,
+            last_done,
+        )
+
+        # Extract AgentTransition for each agent
+        chaser_traj = AgentTransition(
+            done=traj_batch.done,
+            action=traj_batch.chaser_action,
+            value=traj_batch.chaser_value,
+            reward=traj_batch.chaser_reward,
+            log_prob=traj_batch.chaser_log_prob,
+            obs=traj_batch.chaser_obs,
+        )
+        evader_traj = AgentTransition(
+            done=traj_batch.done,
+            action=traj_batch.evader_action,
+            value=traj_batch.evader_value,
+            reward=traj_batch.evader_reward,
+            log_prob=traj_batch.evader_log_prob,
+            obs=traj_batch.evader_obs,
+        )
+
+        # Update both agents
+        rng, chaser_update_rng, evader_update_rng = jax.random.split(rng, 3)
+
+        chaser_ts, chaser_loss = _update_agent(
+            chaser_network,
+            chaser_ts,
+            initial_chaser_hstate[None, :],
+            chaser_traj,
+            chaser_advantages,
+            chaser_targets,
+            chaser_update_rng,
+        )
+        evader_ts, evader_loss = _update_agent(
+            evader_network,
+            evader_ts,
+            initial_evader_hstate[None, :],
+            evader_traj,
+            evader_advantages,
+            evader_targets,
+            evader_update_rng,
+        )
+
+        # Compute metrics
+        finished = traj_batch.info.tagged | traj_batch.info.time_up
+        n_finished = finished.astype(jnp.float32).sum()
+        mean_ep_length = jnp.where(
+            n_finished > 0,
+            (traj_batch.info.step_count * finished.astype(jnp.float32)).sum()
+            / n_finished,
+            jnp.float32(0),
+        )
+        tag_rate = jnp.where(
+            n_finished > 0,
+            traj_batch.info.tagged.astype(jnp.float32).sum() / n_finished,
+            jnp.float32(0),
+        )
+
+        metrics = {
+            # Losses (mean over update_epochs x num_minibatches)
+            "chaser/total_loss": chaser_loss[0].mean(),
+            "chaser/value_loss": chaser_loss[1][0].mean(),
+            "chaser/actor_loss": chaser_loss[1][1].mean(),
+            "chaser/entropy": chaser_loss[1][2].mean(),
+            "evader/total_loss": evader_loss[0].mean(),
+            "evader/value_loss": evader_loss[1][0].mean(),
+            "evader/actor_loss": evader_loss[1][1].mean(),
+            "evader/entropy": evader_loss[1][2].mean(),
+            # Environment
+            "env/tag_rate": tag_rate,
+            "env/mean_distance": traj_batch.info.distance.mean(),
+            "env/mean_episode_length": mean_ep_length,
+            # Rewards
+            "chaser/mean_reward": traj_batch.chaser_reward.mean(),
+            "evader/mean_reward": traj_batch.evader_reward.mean(),
+        }
+
+        runner_state = (
+            chaser_ts,
+            evader_ts,
+            env_state,
+            last_chaser_obs,
+            last_evader_obs,
+            last_done,
+            chaser_hstate,
+            evader_hstate,
+            rng,
+        )
+        return runner_state, metrics
+
+    return init, step, num_updates, env, chaser_network, evader_network
+
+
+def record_video(
+    env: TagEnvironment,
+    chaser_network: ActorCriticRNN,
+    evader_network: ActorCriticRNN,
+    runner_state,
+    global_step: int,
+    rng: jax.Array,
+    rl_config: RLConfig,
+    env_config: EnvironmentConfig,
+):
+    import os
+
+    import imageio
+    import mujoco
+
+    os.makedirs("videos", exist_ok=True)
+
+    # Create a single-env instance for video recording
+    video_env = TagEnvironment(env_config, 1)
+
+    # Extract trained params from runner_state
+    chaser_ts = runner_state[0]
+    evader_ts = runner_state[1]
+
+    # Reset single env
+    rng, reset_rng = jax.random.split(rng)
+    state, chaser_obs, evader_obs = video_env.reset(reset_rng)
+
+    # Init hidden states for batch_size=1
+    chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
+    evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
+
+    # Setup renderer
+    renderer = mujoco.Renderer(video_env.mj_model, height=480, width=640)
+    mj_data = mujoco.MjData(video_env.mj_model)
+
+    frames = []
+    done = jnp.bool_(False)
+
+    for _ in range(video_env.max_steps):
+        # Render frame
+        mj_data.qpos[:] = np.array(state.mjx_data.qpos)
+        mj_data.qvel[:] = np.array(state.mjx_data.qvel)
+        mujoco.mj_forward(video_env.mj_model, mj_data)
+        renderer.update_scene(mj_data)
+        frames.append(renderer.render())
+
+        # Network forward pass: obs [1, 1, obs_size], done [1, 1]
+        chaser_ac_in = (
+            chaser_obs[np.newaxis, np.newaxis, :],
+            done[np.newaxis, np.newaxis],
+        )
+        chaser_hstate, chaser_pi, _ = chaser_network.apply(  # type: ignore[reportAssignmentType]
+            chaser_ts.params, chaser_hstate, chaser_ac_in
+        )
+        chaser_action = jnp.clip(chaser_pi.loc.squeeze(0), -1.0, 1.0)  # type: ignore[reportAttributeAccessIssue]
+
+        evader_ac_in = (
+            evader_obs[np.newaxis, np.newaxis, :],
+            done[np.newaxis, np.newaxis],
+        )
+        evader_hstate, evader_pi, _ = evader_network.apply(  # type: ignore[reportAssignmentType]
+            evader_ts.params, evader_hstate, evader_ac_in
+        )
+        evader_action = jnp.clip(evader_pi.loc.squeeze(0), -1.0, 1.0)  # type: ignore[reportAttributeAccessIssue]
+
+        # Step env (single env, no vmap)
+        state, chaser_obs, evader_obs, _, _, done, _ = video_env.step(
+            state, chaser_action.squeeze(0), evader_action.squeeze(0)
+        )
+
+        if done:
+            break
+
+    renderer.close()
+
+    path = f"videos/step_{global_step}.mp4"
+    imageio.mimsave(path, frames, fps=env_config.action_frequency)
+    print(f"Saved video: {path} ({len(frames)} frames)")
 
 
 if __name__ == "__main__":
-    rl_config = RLConfig(
-        num_envs=4,
-        num_steps=16,
-        total_timesteps=1024,
-        num_minibatches=2,
-        seed=0,
-        debug=True,
-    )
-    env_config = EnvironmentConfig()
+    import mujoco  # noqa: F401
+    from tensorboardX import SummaryWriter
+    from tqdm import tqdm
 
+    rl_config = RLConfig()
+    env_config = EnvironmentConfig()
     rng = jax.random.PRNGKey(rl_config.seed)
-    train_fn = make_train(rl_config, env_config)
-    train_jit = jax.jit(train_fn)
-    out = train_jit(rng)
+
+    init_fn, step_fn, num_updates, env, chaser_network, evader_network = make_train(
+        rl_config, env_config
+    )
+    runner_state = jax.jit(init_fn)(rng)
+    step_jit = jax.jit(step_fn)
+
+    writer = SummaryWriter()
+    timesteps_per_update = rl_config.num_steps * rl_config.num_envs
+
+    for update in tqdm(range(num_updates), desc="Training"):
+        runner_state, metrics = step_jit(runner_state)
+        global_step = (update + 1) * timesteps_per_update
+
+        for key, value in metrics.items():
+            writer.add_scalar(key, value.item(), global_step)
+
+        # Periodic video recording
+        if (
+            rl_config.video_interval > 0
+            and (update + 1) % rl_config.video_interval == 0
+        ):
+            rng, video_rng = jax.random.split(rng)
+            record_video(
+                env,
+                chaser_network,
+                evader_network,
+                runner_state,
+                global_step,
+                video_rng,
+                rl_config,
+                env_config,
+            )
+
+    writer.close()

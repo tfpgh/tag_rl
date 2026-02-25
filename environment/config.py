@@ -4,8 +4,8 @@ from dataclasses import dataclass
 @dataclass
 class EnvironmentConfig:
     # Arena wall-to-wall inner dimensions
-    arena_width: float = 1.0
-    arena_height: float = 1.0
+    arena_width: float = 0.5
+    arena_height: float = 0.5
 
     agent_radius: float = 0.05
     agent_z: float = 0.0299  # Chassis center height

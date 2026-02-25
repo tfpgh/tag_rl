@@ -19,6 +19,7 @@ dependencies = [
     "tensorboardX>=2.6",
     "tensorboard-plugin-profile>=2.21.6",
     "tqdm>=4.67.3",
+    "moviepy>=2.2.1",
 ]
 
 [project.optional-dependencies]

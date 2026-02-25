@@ -320,7 +320,6 @@ class TagEnvironment:
         # Substep physics
         mjx_data = state.mjx_data.replace(ctrl=control_actions)
 
-        # Closure can't access self, didn't realize this was a thing in Python
         sensor_slices = self.sensor_slices
 
         def substep(data: mjx.Data, _) -> tuple[mjx.Data, None]:
@@ -410,15 +409,26 @@ def make_auto_reset_step(env: TagEnvironment) -> JitWrapped:
         jax.Array,
         TagEnvironmentStepInfo,
     ]:
-        state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
+        stepped, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
             env.step(state, chaser_action, evader_action)
         )
 
         rng, reset_key = random.split(rng)
         reset_state, reset_chaser_obs, reset_evader_obs = env.reset(reset_key)
 
-        state = jax.tree.map(
-            lambda fresh, old: jnp.where(done, fresh, old), reset_state, state
+        # Swap only essential state fields — avoids jax.tree.map over DataWarp
+        # which leaks tracers on non-vmappable contact fields.
+        # Derived quantities are recomputed by mjx.step()/forward() next step.
+        new_mjx_data = stepped.mjx_data.replace(
+            qpos=jnp.where(done, reset_state.mjx_data.qpos, stepped.mjx_data.qpos),
+            qvel=jnp.where(done, reset_state.mjx_data.qvel, stepped.mjx_data.qvel),
+            time=jnp.where(done, reset_state.mjx_data.time, stepped.mjx_data.time),
+        )
+        state = TagEnvironmentState(
+            mjx_data=new_mjx_data,
+            step_count=jnp.where(done, reset_state.step_count, stepped.step_count),
+            tagged=jnp.where(done, reset_state.tagged, stepped.tagged),
+            prev_distance=jnp.where(done, reset_state.prev_distance, stepped.prev_distance),
         )
         chaser_obs = jnp.where(done, reset_chaser_obs, chaser_obs)
         evader_obs = jnp.where(done, reset_evader_obs, evader_obs)

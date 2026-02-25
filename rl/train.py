@@ -9,6 +9,7 @@ from flax.training.train_state import TrainState
 from environment.config import EnvironmentConfig
 from environment.environment import (
     TagEnvironment,
+    TagEnvironmentState,
     TagEnvironmentStepInfo,
     observation_size,
 )
@@ -48,13 +49,26 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     action_dim = (2,)
 
     def _auto_reset_step(state, chaser_action, evader_action, rng):
-        state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
+        stepped, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info = (
             env.step(state, chaser_action, evader_action)
         )
         reset_state, reset_chaser_obs, reset_evader_obs = env.reset(rng)
-        state = jax.tree.map(
-            lambda fresh, old: jnp.where(done, fresh, old), reset_state, state
+
+        # Swap only essential state fields — avoids jax.tree.map over DataWarp
+        # which leaks tracers on non-vmappable contact fields.
+        # Derived quantities are recomputed by mjx.step()/forward() next step.
+        new_mjx_data = stepped.mjx_data.replace(
+            qpos=jnp.where(done, reset_state.mjx_data.qpos, stepped.mjx_data.qpos),
+            qvel=jnp.where(done, reset_state.mjx_data.qvel, stepped.mjx_data.qvel),
+            time=jnp.where(done, reset_state.mjx_data.time, stepped.mjx_data.time),
         )
+        state = TagEnvironmentState(
+            mjx_data=new_mjx_data,
+            step_count=jnp.where(done, reset_state.step_count, stepped.step_count),
+            tagged=jnp.where(done, reset_state.tagged, stepped.tagged),
+            prev_distance=jnp.where(done, reset_state.prev_distance, stepped.prev_distance),
+        )
+
         chaser_obs = jnp.where(done, reset_chaser_obs, chaser_obs)
         evader_obs = jnp.where(done, reset_evader_obs, evader_obs)
         return state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info

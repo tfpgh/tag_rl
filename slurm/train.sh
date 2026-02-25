@@ -10,4 +10,6 @@
 
 export TQDM_MININTERVAL=15
 export PYTHONUNBUFFERED=1
+export MUJOCO_GL=egl
+
 uv run -m rl.train

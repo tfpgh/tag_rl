@@ -1,9 +1,3 @@
-if __name__ == "__main__":
-    import os
-
-    os.environ["MUJOCO_GL"] = "egl"
-
-
 from functools import partial
 from typing import NamedTuple
 
@@ -428,7 +422,9 @@ def make_auto_reset_step(env: TagEnvironment) -> JitWrapped:
             mjx_data=new_mjx_data,
             step_count=jnp.where(done, reset_state.step_count, stepped.step_count),
             tagged=jnp.where(done, reset_state.tagged, stepped.tagged),
-            prev_distance=jnp.where(done, reset_state.prev_distance, stepped.prev_distance),
+            prev_distance=jnp.where(
+                done, reset_state.prev_distance, stepped.prev_distance
+            ),
         )
         chaser_obs = jnp.where(done, reset_chaser_obs, chaser_obs)
         evader_obs = jnp.where(done, reset_evader_obs, evader_obs)

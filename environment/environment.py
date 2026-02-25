@@ -346,19 +346,20 @@ class TagEnvironment:
         time_up = step_count >= self.max_steps
         done = tagged | time_up
 
-        distance_delta = state.prev_distance - distance  # Positive = getting closer
+        # Potential-based reward shaping: gamma * phi(s') - phi(s) where phi = -distance
+        distance_shaping = state.prev_distance - config.distance_shaping_gamma * distance
 
         chaser_reward = (
             config.win_reward * tagged
             - config.win_reward * time_up
             - config.time_reward
-            + config.distance_shaping_scale * distance_delta
+            + config.distance_shaping_scale * distance_shaping
         )
         evader_reward = (
             -config.win_reward * tagged
             + config.win_reward * time_up
             + config.time_reward
-            - config.distance_shaping_scale * distance_delta
+            - config.distance_shaping_scale * distance_shaping
         )
 
         chaser_reward: jax.Array = jnp.where(is_frozen, 0.0, chaser_reward)

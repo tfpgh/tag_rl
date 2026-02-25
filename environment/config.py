@@ -26,7 +26,8 @@ class EnvironmentConfig:
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
     time_reward: float = 0.001  # + for evader, - for chaser
-    distance_shaping_scale: float = 0.03
+    distance_shaping_scale: float = 0.15
+    distance_shaping_gamma: float = 0.99
 
     # Normalization, not exact
     agent_max_linear_velocity: float = 1.35  # m/s

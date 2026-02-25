@@ -630,6 +630,7 @@ if __name__ == "__main__":
 
         for key, value in metrics.items():
             writer.add_scalar(key, value.item(), global_step)
+        writer.flush()
 
         # Periodic video recording
         if (

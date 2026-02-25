@@ -71,7 +71,7 @@ class ActorCriticRNN(nn.Module):
             bias_init=constant(0.0),
         )(actor_mean)
         actor_log_std = self.param("log_std", constant(-1.0), self.action_dim)
-        actor_log_std = jnp.clip(actor_log_std, -5.0, 2.0)
+        actor_log_std = jnp.clip(actor_log_std, -5.0, 0.5)
 
         pi = distrax.MultivariateNormalDiag(
             loc=actor_mean, scale_diag=jnp.exp(actor_log_std)

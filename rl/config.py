@@ -3,10 +3,10 @@ from dataclasses import dataclass
 
 @dataclass
 class RLConfig:
-    num_envs: int = 4096
+    num_envs: int = 1024
     num_steps: int = 128
 
-    total_timesteps: int = int(1e9)
+    total_timesteps: int = int(2e8)
 
     hidden_size: int = 128
 
@@ -21,5 +21,5 @@ class RLConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 
-    video_interval: int = 10
+    video_interval: int = 50
     seed: int = 0

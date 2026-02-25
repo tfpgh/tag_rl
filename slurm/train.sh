@@ -3,8 +3,8 @@
 #SBATCH --job-name=train
 #SBATCH --output=logs/%j.out
 #SBATCH --partition=gpu-standard
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128gb
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32gb
 #SBATCH --gres=gpu:rtxa6000:1
 #SBATCH --time=1-00:00:00
 

@@ -3,14 +3,14 @@ from dataclasses import dataclass
 
 @dataclass
 class RLConfig:
-    num_envs: int = 2048
+    num_envs: int = 8192
     num_steps: int = 128
 
     total_timesteps: int = int(3e8)
 
     lr: float = 3e-4
     update_epochs: int = 4
-    num_minibatches: int = 8
+    num_minibatches: int = 32
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2

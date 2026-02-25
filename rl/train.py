@@ -506,89 +506,100 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     return init, step, num_updates, env, chaser_network, evader_network
 
 
-def record_video(
-    env: TagEnvironment,
-    chaser_network: ActorCriticRNN,
-    evader_network: ActorCriticRNN,
-    runner_state,
-    global_step: int,
-    rng: jax.Array,
-    rl_config: RLConfig,
-    env_config: EnvironmentConfig,
-):
-    import os
+def make_video_rollout(video_env, chaser_network, evader_network, rl_config):
+    """Create a JIT'd rollout function for video recording (compiles once)."""
 
-    import imageio
+    @jax.jit
+    def rollout(chaser_params, evader_params, rng):
+        state, chaser_obs, evader_obs = video_env.reset(rng)
+        chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
+        evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
+        done = jnp.bool_(False)
+
+        def _scan_step(carry, _):
+            state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done = carry
+            qpos = state.mjx_data.qpos
+            qvel = state.mjx_data.qvel
+
+            chaser_ac_in = (
+                chaser_obs[jnp.newaxis, jnp.newaxis, :],
+                done[jnp.newaxis, jnp.newaxis],
+            )
+            chaser_hstate, chaser_pi, _ = chaser_network.apply(
+                chaser_params, chaser_hstate, chaser_ac_in
+            )
+            chaser_action = jnp.clip(chaser_pi.loc[0, 0], -1.0, 1.0)
+
+            evader_ac_in = (
+                evader_obs[jnp.newaxis, jnp.newaxis, :],
+                done[jnp.newaxis, jnp.newaxis],
+            )
+            evader_hstate, evader_pi, _ = evader_network.apply(
+                evader_params, evader_hstate, evader_ac_in
+            )
+            evader_action = jnp.clip(evader_pi.loc[0, 0], -1.0, 1.0)
+
+            # Zero actions after episode ends so agents stay still
+            chaser_action = jnp.where(done, jnp.zeros(2), chaser_action)
+            evader_action = jnp.where(done, jnp.zeros(2), evader_action)
+
+            state, chaser_obs, evader_obs, _, _, step_done, _ = video_env.step(
+                state, chaser_action, evader_action
+            )
+            done = done | step_done
+
+            carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
+            return carry, (qpos, qvel, step_done)
+
+        init_carry = (
+            state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done
+        )
+        _, (all_qpos, all_qvel, all_done) = jax.lax.scan(
+            _scan_step, init_carry, None, length=video_env.max_steps
+        )
+        return all_qpos, all_qvel, all_done
+
+    return rollout
+
+
+def record_video(video_env, rollout_fn, runner_state, global_step, rng, fps, writer):
     import mujoco
 
-    os.makedirs("videos", exist_ok=True)
+    chaser_params = runner_state[0].params
+    evader_params = runner_state[1].params
+    all_qpos, all_qvel, all_done = rollout_fn(chaser_params, evader_params, rng)
 
-    # Create a single-env instance for video recording
-    video_env = TagEnvironment(env_config, 1)
+    # Find episode end for trimming
+    all_done_np = np.array(all_done)
+    done_indices = np.where(all_done_np)[0]
+    n_frames = int(done_indices[0]) + 1 if len(done_indices) > 0 else len(all_done_np)
 
-    # Extract trained params from runner_state
-    chaser_ts = runner_state[0]
-    evader_ts = runner_state[1]
+    # Transfer to CPU once
+    all_qpos_np = np.array(all_qpos[:n_frames])
+    all_qvel_np = np.array(all_qvel[:n_frames])
 
-    # Reset single env
-    rng, reset_rng = jax.random.split(rng)
-    state, chaser_obs, evader_obs = video_env.reset(reset_rng)
-
-    # Init hidden states for batch_size=1
-    chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
-    evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
-
-    # Setup renderer
+    # Render on CPU
     renderer = mujoco.Renderer(video_env.mj_model, height=480, width=640)
     mj_data = mujoco.MjData(video_env.mj_model)
 
     frames = []
-    done = jnp.bool_(False)
-
-    for _ in range(video_env.max_steps):
-        # Render frame
-        mj_data.qpos[:] = np.array(state.mjx_data.qpos)
-        mj_data.qvel[:] = np.array(state.mjx_data.qvel)
+    for i in range(n_frames):
+        mj_data.qpos[:] = all_qpos_np[i]
+        mj_data.qvel[:] = all_qvel_np[i]
         mujoco.mj_forward(video_env.mj_model, mj_data)
         renderer.update_scene(mj_data)
         frames.append(renderer.render())
 
-        # Network forward pass: obs [1, 1, obs_size], done [1, 1]
-        chaser_ac_in = (
-            chaser_obs[np.newaxis, np.newaxis, :],
-            done[np.newaxis, np.newaxis],
-        )
-        chaser_hstate, chaser_pi, _ = chaser_network.apply(  # type: ignore[reportAssignmentType]
-            chaser_ts.params, chaser_hstate, chaser_ac_in
-        )
-        chaser_action = jnp.clip(chaser_pi.loc.squeeze(0), -1.0, 1.0)  # type: ignore[reportAttributeAccessIssue]
-
-        evader_ac_in = (
-            evader_obs[np.newaxis, np.newaxis, :],
-            done[np.newaxis, np.newaxis],
-        )
-        evader_hstate, evader_pi, _ = evader_network.apply(  # type: ignore[reportAssignmentType]
-            evader_ts.params, evader_hstate, evader_ac_in
-        )
-        evader_action = jnp.clip(evader_pi.loc.squeeze(0), -1.0, 1.0)  # type: ignore[reportAttributeAccessIssue]
-
-        # Step env (single env, no vmap)
-        state, chaser_obs, evader_obs, _, _, done, _ = video_env.step(
-            state, chaser_action.squeeze(0), evader_action.squeeze(0)
-        )
-
-        if done:
-            break
-
     renderer.close()
 
-    path = f"videos/step_{global_step}.mp4"
-    imageio.mimsave(path, frames, fps=env_config.action_frequency)
-    print(f"Saved video: {path} ({len(frames)} frames)")
+    # (T, H, W, C) -> (1, T, C, H, W) for tensorboard
+    video_array = np.stack(frames)
+    video_array = video_array.transpose(0, 3, 1, 2)[np.newaxis, ...]
+    writer.add_video("video/policy", video_array, global_step, fps=fps)
+    print(f"Recorded video at step {global_step} ({n_frames} frames)")
 
 
 if __name__ == "__main__":
-    import mujoco  # noqa: F401
     from tensorboardX import SummaryWriter
     from tqdm import tqdm
 
@@ -601,6 +612,12 @@ if __name__ == "__main__":
     )
     runner_state = jax.jit(init_fn)(rng)
     step_jit = jax.jit(step_fn)
+
+    # Create video env and JIT'd rollout once (compiles on first call)
+    video_env = TagEnvironment(env_config, 1)
+    video_rollout_fn = make_video_rollout(
+        video_env, chaser_network, evader_network, rl_config
+    )
 
     writer = SummaryWriter()
     timesteps_per_update = rl_config.num_steps * rl_config.num_envs
@@ -619,14 +636,13 @@ if __name__ == "__main__":
         ):
             rng, video_rng = jax.random.split(rng)
             record_video(
-                env,
-                chaser_network,
-                evader_network,
+                video_env,
+                video_rollout_fn,
                 runner_state,
                 global_step,
                 video_rng,
-                rl_config,
-                env_config,
+                env_config.action_frequency,
+                writer,
             )
 
     writer.close()

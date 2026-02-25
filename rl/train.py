@@ -488,6 +488,8 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             # Rewards
             "chaser/mean_reward": traj_batch.chaser_reward.mean(),
             "evader/mean_reward": traj_batch.evader_reward.mean(),
+            "chaser/mean_action_magnitude": jnp.abs(traj_batch.chaser_action).mean(),
+            "evader/mean_action_magnitude": jnp.abs(traj_batch.evader_action).mean(),
         }
 
         runner_state = (

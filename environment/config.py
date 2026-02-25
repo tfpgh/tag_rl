@@ -11,7 +11,7 @@ class EnvironmentConfig:
     agent_z: float = 0.0299  # Chassis center height
 
     # Agent radius multiplier for tag distance
-    tag_distance_factor: float = 1.03
+    tag_distance_factor: float = 1.20
 
     # Perception rays
     n_rays: int = 64

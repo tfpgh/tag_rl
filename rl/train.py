@@ -304,8 +304,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             chaser_hstate, chaser_pi, chaser_value = chaser_network.apply(  # type: ignore[reportAssignmentType]
                 chaser_ts.params, chaser_hstate, chaser_ac_in
             )
-            chaser_action_raw = chaser_pi.sample(seed=chaser_rng)  # type: ignore[reportAttributeAccessIssue]
-            chaser_action = jnp.clip(chaser_action_raw, -1.0, 1.0)
+            chaser_action = chaser_pi.sample(seed=chaser_rng)  # type: ignore[reportAttributeAccessIssue]
             chaser_log_prob = chaser_pi.log_prob(chaser_action)  # type: ignore[reportAttributeAccessIssue]
             chaser_value = chaser_value.squeeze(0)
             chaser_action = chaser_action.squeeze(0)
@@ -319,8 +318,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             evader_hstate, evader_pi, evader_value = evader_network.apply(  # type: ignore[reportAssignmentType]
                 evader_ts.params, evader_hstate, evader_ac_in
             )
-            evader_action_raw = evader_pi.sample(seed=evader_rng)  # type: ignore[reportAttributeAccessIssue]
-            evader_action = jnp.clip(evader_action_raw, -1.0, 1.0)
+            evader_action = evader_pi.sample(seed=evader_rng)  # type: ignore[reportAttributeAccessIssue]
             evader_log_prob = evader_pi.log_prob(evader_action)  # type: ignore[reportAttributeAccessIssue]
             evader_value = evader_value.squeeze(0)
             evader_action = evader_action.squeeze(0)

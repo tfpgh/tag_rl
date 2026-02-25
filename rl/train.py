@@ -57,8 +57,8 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
 
     def _auto_reset_step(state, chaser_action, evader_action, rng):
         # 1. Physics only (no forward, no obs)
-        stepped, chaser_reward, evader_reward, done, info = (
-            env.step_physics(state, chaser_action, evader_action)
+        stepped, chaser_reward, evader_reward, done, info = env.step_physics(
+            state, chaser_action, evader_action
         )
 
         # 2. Cheap reset (no forward, no obs)
@@ -68,9 +68,11 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         new_mjx_data = stepped.mjx_data.replace(
             qpos=jnp.where(done, reset_qpos, stepped.mjx_data.qpos),
             qvel=jnp.where(done, reset_qvel, stepped.mjx_data.qvel),
-            time=jnp.where(done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time),
+            time=jnp.where(
+                done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time
+            ),
         )
-        step_count = jnp.where(done, jnp.int32(0), stepped.step_count)
+        step_count: jax.Array = jnp.where(done, jnp.int32(0), stepped.step_count)  # type: ignore[assignment]
 
         # 4. Single forward
         new_mjx_data = env.forward(new_mjx_data)
@@ -78,10 +80,11 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         # 5. Observations from merged+forwarded state
         chaser_obs, evader_obs = env.compute_observations(new_mjx_data, step_count)
 
+        tagged: jax.Array = jnp.where(done, jnp.bool_(False), stepped.tagged)  # type: ignore[assignment]
         state = TagEnvironmentState(
             mjx_data=new_mjx_data,
             step_count=step_count,
-            tagged=jnp.where(done, jnp.bool_(False), stepped.tagged),
+            tagged=tagged,
             prev_distance=jnp.where(done, reset_distance, stepped.prev_distance),
         )
         return state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info

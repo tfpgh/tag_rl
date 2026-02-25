@@ -6,7 +6,6 @@ import jax.numpy as jnp
 import mujoco
 from jax import random
 from mujoco import mjx
-from tqdm import tqdm
 
 from environment.config import EnvironmentConfig
 from environment.mjcf import generate_mjcf
@@ -298,7 +297,9 @@ class TagEnvironment:
         state: TagEnvironmentState,
         chaser_action: jax.Array,
         evader_action: jax.Array,
-    ) -> tuple[TagEnvironmentState, jax.Array, jax.Array, jax.Array, TagEnvironmentStepInfo]:
+    ) -> tuple[
+        TagEnvironmentState, jax.Array, jax.Array, jax.Array, TagEnvironmentStepInfo
+    ]:
         """
         Physics + rewards only. NO forward, NO obs.
 
@@ -340,7 +341,9 @@ class TagEnvironment:
         done = tagged | time_up
 
         # Potential-based reward shaping: gamma * phi(s') - phi(s) where phi = -distance
-        distance_shaping = state.prev_distance - config.distance_shaping_gamma * distance
+        distance_shaping = (
+            state.prev_distance - config.distance_shaping_gamma * distance
+        )
 
         chaser_reward = (
             config.win_reward * tagged
@@ -355,7 +358,7 @@ class TagEnvironment:
             - config.distance_shaping_scale * distance_shaping
         )
 
-        chaser_reward = jnp.where(is_frozen, 0.0, chaser_reward)
+        chaser_reward: jax.Array = jnp.where(is_frozen, 0.0, chaser_reward)  # type: ignore[assignment]
 
         new_state = TagEnvironmentState(
             mjx_data=mjx_data,
@@ -437,93 +440,3 @@ class TagEnvironment:
             done,
             info,
         )
-
-
-# Testing
-if __name__ == "__main__":
-    import os
-    import time
-
-    os.environ["MUJOCO_GL"] = "egl"
-
-    config = EnvironmentConfig()
-
-    config.arena_width = 0.5
-    config.arena_height = 0.5
-    config.wall_margin_factor = 1.2
-
-    N = 4096
-    env = TagEnvironment(config, N)
-
-    print(f"obs size:     {observation_size(config)}")
-    print(
-        f"nq={env.mj_model.nq}  nv={env.mj_model.nv}  "
-        f"nu={env.mj_model.nu}  ngeom={env.mj_model.ngeom}"
-    )
-    print(f"substeps:     {env.substeps_per_action}")
-    print(f"max_steps:    {env.max_steps}")
-    print(f"freeze_steps: {env.freeze_steps}")
-    print(f"tag_distance: {env.tag_distance:.4f}")
-
-    rng = random.PRNGKey(42)
-
-    # Single env
-    rng, k = random.split(rng)
-    state, obs_c, obs_e = env.reset(k)
-    print(f"\nobs shapes: chaser={obs_c.shape}  evader={obs_e.shape}")
-
-    rng, k = random.split(rng)
-    act = jnp.full((4,), 0.05)
-    state, obs_c, obs_e, rew_c, rew_e, done, info = env.step(state, act[:2], act[2:])
-    print(
-        f"step 1: dist={info.distance:.4f}  tagged={info.tagged}  "
-        f"frozen={info.is_frozen}  rew_c={rew_c:.6f}  rew_e={rew_e:.6f}"
-    )
-
-    # Vectorized test
-    print(f"\nVectorized ({N} envs)...")
-    v_reset = jax.vmap(env.reset)
-    v_step = jax.vmap(env.step)
-
-    rng, k = random.split(rng)
-    keys = random.split(k, N)
-
-    t0 = time.time()
-    states, obs_cs, obs_es = v_reset(keys)
-    jax.block_until_ready(obs_cs)
-    print(f"  reset (incl JIT): {time.time() - t0:.1f}s")
-
-    rng, k = random.split(rng)
-    batch_act = jnp.full((N, 4), 0.05)
-
-    waypoint_interval = 10
-    rng, k1, k2 = random.split(rng, 3)
-    prev_actions = random.uniform(k1, (N, 4), minval=-0.5, maxval=0.5)
-    next_actions = random.uniform(k2, (N, 4), minval=-0.5, maxval=0.5)
-
-    t0 = time.time()
-    states, *_ = v_step(states, batch_act[:, :2], batch_act[:, 2:])
-    jax.block_until_ready(states.step_count)
-    print(f"  first step (incl JIT): {time.time() - t0:.1f}s")
-
-    # Benchmark post-JIT
-    n_iters = 100
-    t0 = time.time()
-    for i in tqdm(range(n_iters)):
-        if i % waypoint_interval == 0 and i > 0:
-            prev_actions = next_actions
-            rng, k = random.split(rng)
-            next_actions = random.uniform(k, (N, 4), minval=-0.5, maxval=0.5)
-        t = (i % waypoint_interval) / waypoint_interval
-        batch_act = prev_actions + t * (next_actions - prev_actions)
-
-        states, obs_cs, obs_es, rew_cs, rew_es, dones, infos = v_step(
-            states, batch_act[:, :2], batch_act[:, 2:]
-        )
-        jax.block_until_ready(states.step_count)
-
-    elapsed = time.time() - t0
-    sps = (n_iters * N) / elapsed
-    print(
-        f"\n  Throughput: {sps:,.0f} env steps/sec ({n_iters} x {N} in {elapsed:.2f}s)"
-    )

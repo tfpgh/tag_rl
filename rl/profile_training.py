@@ -253,6 +253,7 @@ def jax_trace_profile():
     trace_dir = "runs/"
     print(f"\nRecording trace to {trace_dir}")
     print("View with: tensorboard --logdir runs/")
+    metrics = None
     jax.profiler.start_trace(trace_dir)
     for _ in range(5):
         runner_state, metrics = step_jit(runner_state)

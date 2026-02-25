@@ -28,8 +28,9 @@ def observation_size(config: EnvironmentConfig) -> int:
         [1] angular velocity (normalized [-1, 1])
         [2:2+N] ray distances (normalized [0, 1])
         [2+N:2+2N] ray hit type encoding (0 for environment, 1 for agent)
+        [2+2N] episode progress (normalized [0, 1])
     """
-    return 2 + 2 * config.n_rays
+    return 3 + 2 * config.n_rays
 
 
 class TagEnvironmentState(NamedTuple):
@@ -135,6 +136,7 @@ class TagEnvironment:
         mjx_model: mjx.Model,
         mjx_data: mjx.Data,
         is_chaser: bool,
+        step_count: jax.Array,
     ):
         """
         Build observation vector for one agent
@@ -172,11 +174,14 @@ class TagEnvironment:
             my_yaw,
         )
 
+        episode_progress = step_count.astype(jnp.float32) / self.max_steps
+
         return jnp.concatenate(
             [
                 jnp.array([normalized_velocity, normalized_angular_velocity]),
                 ray_distances,
                 ray_types,
+                jnp.array([episode_progress]),
             ]
         )
 
@@ -274,9 +279,11 @@ class TagEnvironment:
             prev_distance=initial_distance,
         )
 
-        chaser_obs = self._compute_observation(self.mjx_model, mjx_data, is_chaser=True)
+        chaser_obs = self._compute_observation(
+            self.mjx_model, mjx_data, is_chaser=True, step_count=jnp.int32(0)
+        )
         evader_obs = self._compute_observation(
-            self.mjx_model, mjx_data, is_chaser=False
+            self.mjx_model, mjx_data, is_chaser=False, step_count=jnp.int32(0)
         )
 
         return state, chaser_obs, evader_obs
@@ -363,9 +370,11 @@ class TagEnvironment:
             prev_distance=distance,
         )
 
-        chaser_obs = self._compute_observation(self.mjx_model, mjx_data, is_chaser=True)
+        chaser_obs = self._compute_observation(
+            self.mjx_model, mjx_data, is_chaser=True, step_count=step_count
+        )
         evader_obs = self._compute_observation(
-            self.mjx_model, mjx_data, is_chaser=False
+            self.mjx_model, mjx_data, is_chaser=False, step_count=step_count
         )
 
         info = TagEnvironmentStepInfo(

@@ -250,7 +250,7 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
 
     mjcf_xml = f"""
     <mujoco model="tag">
-        <option timestep="0.005" integrator="implicitfast"/>
+        <option timestep="0.005" integrator="implicitfast" ccd_iterations="100"/>
         <asset>
             <material name="default" rgba="1 1 1 1" />
         </asset>

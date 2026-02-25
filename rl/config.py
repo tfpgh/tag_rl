@@ -8,7 +8,10 @@ class RLConfig:
 
     total_timesteps: int = int(3e8)
 
+    hidden_size: int = 128
+
     lr: float = 3e-4
+    anneal_lr: bool = True
     update_epochs: int = 4
     num_minibatches: int = 32
     gamma: float = 0.99
@@ -18,7 +21,5 @@ class RLConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 
-    anneal_lr: bool = True
     debug: bool = True
-    hidden_size: int = 128
     seed: int = 0

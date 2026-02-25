@@ -17,7 +17,7 @@ class RLConfig:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
-    ent_coef: float = 0.01
+    ent_coef: float = 0.03
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 

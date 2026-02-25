@@ -4,8 +4,8 @@ from dataclasses import dataclass
 @dataclass
 class EnvironmentConfig:
     # Arena wall-to-wall inner dimensions
-    arena_width: float = 1.0
-    arena_height: float = 1.0
+    arena_width: float = 1.5
+    arena_height: float = 1.5
 
     agent_radius: float = 0.05
     agent_z: float = 0.0299  # Chassis center height
@@ -14,7 +14,7 @@ class EnvironmentConfig:
     tag_distance_factor: float = 1.20
 
     # Perception rays
-    n_rays: int = 32
+    n_rays: int = 64
 
     # Action frequency, hz
     action_frequency: int = 20

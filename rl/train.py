@@ -553,9 +553,7 @@ def make_video_rollout(video_env, chaser_network, evader_network, rl_config):
             carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
             return carry, (qpos, qvel, step_done)
 
-        init_carry = (
-            state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done
-        )
+        init_carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
         _, (all_qpos, all_qvel, all_done) = jax.lax.scan(
             _scan_step, init_carry, None, length=video_env.max_steps
         )
@@ -633,9 +631,8 @@ if __name__ == "__main__":
         writer.flush()
 
         # Periodic video recording
-        if (
-            rl_config.video_interval > 0
-            and (update + 1) % rl_config.video_interval == 0
+        if rl_config.video_interval > 0 and (
+            ((update + 1) % rl_config.video_interval == 0) or update == 0
         ):
             rng, video_rng = jax.random.split(rng)
             record_video(

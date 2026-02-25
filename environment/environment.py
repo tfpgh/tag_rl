@@ -62,6 +62,12 @@ class TagEnvironment:
         # Geom groups for ray hits
         self.geom_groups = jnp.array(self.mj_model.geom_group, dtype=jnp.int32)
 
+        # Body IDs for ray exclusion (skip own body geoms)
+        chaser_root = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, "chaser")
+        evader_root = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, "evader")
+        self.chaser_body_ids = self._get_body_subtree(chaser_root)
+        self.evader_body_ids = self._get_body_subtree(evader_root)
+
         self.ray_angles = jnp.linspace(0, 2 * jnp.pi, config.n_rays, endpoint=False)
 
         # Derived step timings
@@ -73,7 +79,6 @@ class TagEnvironment:
 
         # Derived geometry
         self.tag_distance = 2 * config.agent_radius * config.tag_distance_factor
-        self.ray_origin_offset = config.agent_radius + 0.001
         self.arena_diagonal = jnp.sqrt(
             (config.arena_width) ** 2 + (config.arena_height) ** 2
         )
@@ -86,12 +91,26 @@ class TagEnvironment:
             njmax=100,
         )
 
+    def _get_body_subtree(self, root_id: int) -> list[int]:
+        """Get all body IDs in the subtree rooted at root_id (inclusive)."""
+        subtree = [root_id]
+        for i in range(self.mj_model.nbody):
+            if i != root_id:
+                current = i
+                while current != 0:
+                    current = int(self.mj_model.body_parentid[current])
+                    if current == root_id:
+                        subtree.append(i)
+                        break
+        return sorted(subtree)
+
     def _cast_rays(
         self,
         mjx_model: mjx.Model,
         mjx_data: mjx.Data,
         agent_position: jax.Array,
         agent_yaw: jax.Array,
+        bodyexclude: list[int],
     ) -> tuple[jax.Array, jax.Array]:
         """
         Cast config.n_rays horizontally using mjx.ray
@@ -111,7 +130,7 @@ class TagEnvironment:
             axis=-1,
         )
 
-        origins = agent_position + directions * (self.ray_origin_offset)
+        origins = jnp.broadcast_to(agent_position, directions.shape)
 
         def _cast_single_ray(
             origin: jax.Array, direction: jax.Array
@@ -121,6 +140,7 @@ class TagEnvironment:
                 mjx_data,
                 origin,
                 direction,
+                bodyexclude=bodyexclude,
             )
 
             geom_group = self.geom_groups[geom_id]
@@ -171,6 +191,7 @@ class TagEnvironment:
             mjx_data,
             my_position,
             my_yaw,
+            bodyexclude=self.chaser_body_ids if is_chaser else self.evader_body_ids,
         )
 
         episode_progress = step_count.astype(jnp.float32) / self.max_steps

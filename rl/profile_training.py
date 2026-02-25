@@ -16,7 +16,7 @@ import jax
 import jax.numpy as jnp
 
 from environment.config import EnvironmentConfig
-from environment.environment import TagEnvironment, observation_size
+from environment.environment import TagEnvironment
 from rl.config import RLConfig
 from rl.train import make_train
 
@@ -38,7 +38,7 @@ def time_block(label, fn, warmup=2, repeats=10):
 
     avg = sum(times) / len(times)
     std = (sum((t - avg) ** 2 for t in times) / len(times)) ** 0.5
-    print(f"  {label}: {avg*1000:.1f}ms ± {std*1000:.1f}ms")
+    print(f"  {label}: {avg * 1000:.1f}ms ± {std * 1000:.1f}ms")
     return avg
 
 
@@ -52,8 +52,12 @@ def profile_components():
     rng = jax.random.PRNGKey(42)
 
     timesteps_per_update = rl_config.num_steps * rl_config.num_envs
-    print(f"\nConfig: {rl_config.num_envs} envs × {rl_config.num_steps} steps = {timesteps_per_update:,} timesteps/update")
-    print(f"Physics substeps per action: {round(1.0 / (env_config.action_frequency * 0.005))}")
+    print(
+        f"\nConfig: {rl_config.num_envs} envs × {rl_config.num_steps} steps = {timesteps_per_update:,} timesteps/update"
+    )
+    print(
+        f"Physics substeps per action: {round(1.0 / (env_config.action_frequency * 0.005))}"
+    )
     print(f"Rays per agent: {env_config.n_rays}")
 
     # Build training functions
@@ -75,6 +79,7 @@ def profile_components():
 
     # Profile full step
     print("\nFull training step (env rollout + PPO update):")
+
     def full_step():
         nonlocal runner_state
         runner_state, metrics = step_jit(runner_state)
@@ -96,7 +101,7 @@ def profile_components():
         for key, value in metrics.items():
             _ = value.item()
     elapsed = time.perf_counter() - t0
-    print(f"  step + .item() per metric: {elapsed/20*1000:.1f}ms per update")
+    print(f"  step + .item() per metric: {elapsed / 20 * 1000:.1f}ms per update")
 
     # Compare: step only (no .item())
     t0 = time.perf_counter()
@@ -104,7 +109,7 @@ def profile_components():
         runner_state, metrics = step_jit(runner_state)
     jax.block_until_ready(metrics)
     elapsed = time.perf_counter() - t0
-    print(f"  step only (block at end):  {elapsed/20*1000:.1f}ms per update")
+    print(f"  step only (block at end):  {elapsed / 20 * 1000:.1f}ms per update")
 
 
 def profile_env_only():
@@ -114,7 +119,7 @@ def profile_env_only():
 
     env_config = EnvironmentConfig()
 
-    for n_envs in [256, 512, 1024, 2048, 4096]:
+    for n_envs in [256, 512, 1024, 2048]:
         env = TagEnvironment(env_config, n_envs)
         v_step = jax.vmap(env.step)
         v_reset = jax.vmap(env.reset)
@@ -139,7 +144,11 @@ def profile_env_only():
             jax.block_until_ready(states.step_count)
         elapsed = time.perf_counter() - t0
         sps = (n_iters * n_envs) / elapsed
-        print(f"  {n_envs:5d} envs: {sps:>10,.0f} steps/sec  ({elapsed/n_iters*1000:.1f}ms/step)")
+        print(
+            f"  {n_envs:5d} envs: {sps:>10,.0f} steps/sec  ({elapsed / n_iters * 1000:.1f}ms/step)"
+        )
+
+    print("4096 EOMs, didn't run")
 
 
 def profile_env_components():
@@ -166,12 +175,17 @@ def profile_env_components():
             control_actions = jnp.concatenate([chaser_action, evader_action])
             mjx_data = state.mjx_data.replace(ctrl=control_actions)
             from mujoco import mjx as mjx_mod
+
             def substep(data, _):
                 data = mjx_mod.step(env.mjx_model, data)
                 return data, None
-            mjx_data, _ = jax.lax.scan(substep, mjx_data, None, length=env.substeps_per_action)
+
+            mjx_data, _ = jax.lax.scan(
+                substep, mjx_data, None, length=env.substeps_per_action
+            )
             mjx_data = mjx_mod.forward(env.mjx_model, mjx_data)
             return mjx_data.sensordata
+
         return jax.vmap(single_physics)(states, actions, actions)
 
     # Profile ray casting only
@@ -182,6 +196,7 @@ def profile_env_components():
             sensor_data = mjx_data.sensordata
             ss = env.sensor_slices
             from environment.mujoco_data import quaternion_to_yaw
+
             # Chaser rays
             c_pos = sensor_data[ss.chaser_position]
             c_yaw = quaternion_to_yaw(sensor_data[ss.chaser_quaternion])
@@ -191,6 +206,7 @@ def profile_env_components():
             e_yaw = quaternion_to_yaw(sensor_data[ss.evader_quaternion])
             e_dist, e_type = env._cast_rays(env.mjx_model, mjx_data, e_pos, e_yaw)
             return c_dist, e_dist
+
         return jax.vmap(single_rays)(states)
 
     # Profile reset
@@ -206,10 +222,12 @@ def profile_env_components():
 
     rng = jax.random.PRNGKey(1)
     print("\nReset (full reset + mjx.forward):")
+
     def do_reset():
         nonlocal rng
         rng, k = jax.random.split(rng)
         return reset_only(jax.random.split(k, n_envs))
+
     time_block("reset", do_reset, warmup=3, repeats=20)
 
 

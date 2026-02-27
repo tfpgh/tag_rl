@@ -639,7 +639,7 @@ if __name__ == "__main__":
 
         # Periodic video recording
         if rl_config.video_interval > 0 and (
-            ((update + 1) % rl_config.video_interval == 0) or update == 0
+            (update + 1) % rl_config.video_interval == 0
         ):
             rng, video_rng = jax.random.split(rng)
             record_video(

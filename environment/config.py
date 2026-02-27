@@ -5,13 +5,13 @@ from dataclasses import dataclass
 class EnvironmentConfig:
     # Arena wall-to-wall inner dimensions
     arena_width: float = 2.4
-    arena_height: float = 1.2
+    arena_height: float = 2.4
 
     agent_radius: float = 0.05
     agent_z: float = 0.0299  # Chassis center height
 
     # Agent radius multiplier for tag distance
-    tag_distance_factor: float = 1.03
+    tag_distance_factor: float = 1.02
 
     # Perception rays
     n_rays: int = 256
@@ -21,7 +21,7 @@ class EnvironmentConfig:
 
     # Episode timing, seconds
     episode_max_length: int = 30
-    chaser_freeze_seconds: int = 3
+    chaser_freeze_seconds: int = 10
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
@@ -37,5 +37,5 @@ class EnvironmentConfig:
     wall_margin_factor: float = 1.5  # Minimum distance from wall (* agent_radius)
 
     # Obstacles
-    max_obstacles: int = 8  # always allocated in MJCF
-    obstacle_width: float = 0.2  # square box side length (meters)
+    max_obstacles: int = 5  # always allocated in MJCF
+    obstacle_width: float = 0.35  # square box side length (meters)

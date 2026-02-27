@@ -28,6 +28,9 @@ WALL_HEIGHT = 0.1
 CHASSIS_BASE_HEIGHT = 0.038
 CHASSIS_TOP_HEIGHT = 0.003
 
+OBSTACLE_MASS = 1000.0
+OBSTACLE_COLOR = "0.6 0.6 0.65 1"
+
 CHASER_COLOR = "1 0.545 0.545 1"
 EVADER_COLOR = "0.435 0.702 0.722 1"
 
@@ -231,6 +234,29 @@ def _arena_xml(config: EnvironmentConfig) -> str:
     """
 
 
+def _obstacle_mjcf(config: EnvironmentConfig, index: int) -> str:
+    """MJCF XML for a single obstacle body (freejoint box)."""
+    half_w = config.obstacle_width / 2
+    half_h = WALL_HEIGHT / 2
+    name = f"obstacle_{index}"
+
+    return f"""
+    <body name="{name}" pos="0 0 -10">
+        <freejoint name="{name}_root" />
+        <geom
+            name="{name}_geom"
+            type="box"
+            size="{half_w} {half_w} {half_h}"
+            mass="{OBSTACLE_MASS}"
+            group="{GEOM_GROUP_WALL}"
+            rgba="{OBSTACLE_COLOR}"
+            contype="{CONTACTS["wall"][0]}"
+            conaffinity="{CONTACTS["wall"][1]}"
+        />
+    </body>
+    """
+
+
 def generate_mjcf(config: EnvironmentConfig) -> str:
     """Build the complete MJCF XML for the environment"""
 
@@ -239,6 +265,10 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
     )
     evader_body_xml, evader_actuator_xml = _agent_mjcf(
         "evader", EVADER_COLOR, "-0.3 0 0.0299"
+    )
+
+    obstacle_bodies = "\n".join(
+        _obstacle_mjcf(config, i) for i in range(config.max_obstacles)
     )
 
     mjcf_xml = f"""
@@ -256,6 +286,7 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
             {_arena_xml(config)}
             {chaser_body_xml}
             {evader_body_xml}
+            {obstacle_bodies}
         </worldbody>
         <actuator>
             {chaser_actuator_xml}

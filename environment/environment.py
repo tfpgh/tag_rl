@@ -8,7 +8,7 @@ from jax import random
 from mujoco import mjx
 
 from environment.config import EnvironmentConfig
-from environment.mjcf import generate_mjcf
+from environment.mjcf import WALL_HEIGHT, generate_mjcf
 from environment.mjx_ray_patch import patch_mjx_cylinder_rays
 from environment.mujoco_data import (
     JointDofSlices,
@@ -75,6 +75,16 @@ class TagEnvironment:
         self.chaser_body_ids = self._get_body_subtree(chaser_root)
         self.evader_body_ids = self._get_body_subtree(evader_root)
 
+        # Obstacle qpos addresses (freejoint = 7 qpos each)
+        self.obstacle_qpos_adrs: list[int] = []
+        for i in range(config.max_obstacles):
+            jnt_name = f"obstacle_{i}_root"
+            jnt_id = mujoco.mj_name2id(
+                self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, jnt_name
+            )
+            self.obstacle_qpos_adrs.append(int(self.mj_model.jnt_qposadr[jnt_id]))
+        self.obstacle_clearance = config.obstacle_width / 2 + config.agent_radius
+
         self.ray_angles = jnp.linspace(0, 2 * jnp.pi, config.n_rays, endpoint=False)
 
         # Derived step timings
@@ -94,7 +104,7 @@ class TagEnvironment:
         self._template_mjx_data = mjx.make_data(
             self.mj_model,
             impl="warp",
-            naconmax=14 * n_envs,
+            naconmax=(14 + 4 * config.max_obstacles) * n_envs,
             njmax=80,
         )
 
@@ -215,54 +225,115 @@ class TagEnvironment:
     def _reset_positions(self, rng: jax.Array):
         """Generate random qpos/qvel for a reset. Returns (qpos, qvel, initial_distance)."""
         config = self.config
-        key_chaser_position, key_evader_position, key_chaser_yaw, key_evader_yaw = (
-            random.split(rng, 4)
+        (
+            key_obs_count,
+            key_obs_pos,
+            key_chaser_candidates,
+            key_evader_candidates,
+            key_chaser_yaw,
+            key_evader_yaw,
+            key_separation_fallback,
+        ) = random.split(rng, 7)
+
+        # --- Obstacle placement ---
+        n_active = random.randint(key_obs_count, (), 0, config.max_obstacles + 1)
+
+        obs_margin = config.obstacle_width / 2
+        obs_lower = jnp.array(
+            [
+                -(config.arena_width / 2) + obs_margin,
+                -(config.arena_height / 2) + obs_margin,
+            ]
+        )
+        obs_upper = jnp.array(
+            [
+                (config.arena_width / 2) - obs_margin,
+                (config.arena_height / 2) - obs_margin,
+            ]
+        )
+        obstacle_xy = random.uniform(
+            key_obs_pos, (config.max_obstacles, 2), minval=obs_lower, maxval=obs_upper
+        )
+        active_mask = jnp.arange(config.max_obstacles) < n_active  # (max_obstacles,)
+
+        obstacle_z_active = WALL_HEIGHT / 2  # box bottom on floor
+        obstacle_z = jnp.where(active_mask, obstacle_z_active, -10.0)
+
+        # --- Agent placement (candidate-based, JAX-friendly) ---
+        n_candidates = 64
+        agent_margin = config.wall_margin_factor * config.agent_radius
+        agent_lower = jnp.array(
+            [
+                -(config.arena_width / 2) + agent_margin,
+                -(config.arena_height / 2) + agent_margin,
+            ]
+        )
+        agent_upper = jnp.array(
+            [
+                (config.arena_width / 2) - agent_margin,
+                (config.arena_height / 2) - agent_margin,
+            ]
         )
 
-        # Move agents to random positions
-        margin = config.wall_margin_factor * config.agent_radius
-        lower_bounds = jnp.array(
-            [-(config.arena_width / 2) + margin, -(config.arena_height / 2) + margin]
+        chaser_candidates = random.uniform(
+            key_chaser_candidates,
+            (n_candidates, 2),
+            minval=agent_lower,
+            maxval=agent_upper,
         )
-        upper_bounds = jnp.array(
-            [(config.arena_width / 2) - margin, (config.arena_height / 2) - margin]
-        )
-
-        chaser_xy = random.uniform(
-            key_chaser_position, (2,), minval=lower_bounds, maxval=upper_bounds
-        )
-        evader_xy = random.uniform(
-            key_evader_position, (2,), minval=lower_bounds, maxval=upper_bounds
+        evader_candidates = random.uniform(
+            key_evader_candidates,
+            (n_candidates, 2),
+            minval=agent_lower,
+            maxval=agent_upper,
         )
 
-        # Guarantee minimum separation
+        clearance = self.obstacle_clearance
+
+        def _pick_valid(candidates: jax.Array) -> jax.Array:
+            # candidates: (n_candidates, 2), obstacle_xy: (max_obstacles, 2)
+            # Check overlap with each active obstacle (axis-aligned box + circle approx)
+            dx = jnp.abs(
+                candidates[:, None, 0] - obstacle_xy[None, :, 0]
+            )  # (n_cand, max_obs)
+            dy = jnp.abs(candidates[:, None, 1] - obstacle_xy[None, :, 1])
+            overlap = (dx < clearance) & (dy < clearance) & active_mask[None, :]
+            any_overlap = jnp.any(overlap, axis=1)  # (n_candidates,)
+            valid = ~any_overlap
+            # Pick first valid; fallback to index 0 if none valid
+            idx = jnp.argmax(valid)
+            return candidates[idx]
+
+        chaser_xy = _pick_valid(chaser_candidates)
+        evader_xy = _pick_valid(evader_candidates)
+
+        # --- Minimum separation (existing push-apart logic) ---
         delta = evader_xy - chaser_xy
         dist = jnp.linalg.norm(delta)
 
-        # If exactly coincident, pick a random direction
-        random_dir = random.uniform(key_evader_yaw, (2,), minval=-1.0, maxval=1.0)
+        random_dir = random.uniform(
+            key_separation_fallback, (2,), minval=-1.0, maxval=1.0
+        )
         random_dir = random_dir / jnp.linalg.norm(random_dir + 1e-8)
         direction = jnp.where(dist < 1e-6, random_dir, delta / dist)
 
         too_close = dist < config.minimum_starting_separation
 
-        # Phase 1: push evader away from chaser
         evader_candidate = chaser_xy + direction * config.minimum_starting_separation
-        evader_candidate = jnp.clip(evader_candidate, lower_bounds, upper_bounds)
+        evader_candidate = jnp.clip(evader_candidate, agent_lower, agent_upper)
         evader_xy = jnp.where(too_close, evader_candidate, evader_xy)
 
-        # Phase 2: if clamp pulled evader back, push chaser the other way
         new_dist = jnp.linalg.norm(evader_xy - chaser_xy)
         still_too_close = new_dist < config.minimum_starting_separation
         chaser_candidate = evader_xy - direction * config.minimum_starting_separation
-        chaser_candidate = jnp.clip(chaser_candidate, lower_bounds, upper_bounds)
+        chaser_candidate = jnp.clip(chaser_candidate, agent_lower, agent_upper)
         chaser_xy = jnp.where(still_too_close, chaser_candidate, chaser_xy)
 
         chaser_yaw = random.uniform(key_chaser_yaw, (), minval=-jnp.pi, maxval=jnp.pi)
         evader_yaw = random.uniform(key_evader_yaw, (), minval=-jnp.pi, maxval=jnp.pi)
 
+        # --- Build qpos ---
         z = config.agent_z
-
         identity_quaternion = jnp.array([1.0, 0.0, 0.0, 0.0])
 
         qpos = jnp.zeros(self.mj_model.nq)
@@ -290,6 +361,14 @@ class TagEnvironment:
         qpos = qpos.at[self.joint_qpos_slices.evader_caster_ball_joint].set(
             identity_quaternion
         )
+
+        # Obstacle freejoints (Python for-loop, unrolled at trace time)
+        for i in range(config.max_obstacles):
+            adr = self.obstacle_qpos_adrs[i]
+            qpos = qpos.at[adr : adr + 3].set(
+                jnp.array([obstacle_xy[i, 0], obstacle_xy[i, 1], obstacle_z[i]])
+            )
+            qpos = qpos.at[adr + 3 : adr + 7].set(identity_quaternion)
 
         qvel = jnp.zeros(self.mj_model.nv)
 

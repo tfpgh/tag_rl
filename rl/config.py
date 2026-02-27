@@ -6,7 +6,7 @@ class RLConfig:
     num_envs: int = 2048
     num_steps: int = 128
 
-    total_timesteps: int = int(3e7)
+    total_timesteps: int = int(2e8)
 
     hidden_size: int = 128
 
@@ -21,5 +21,5 @@ class RLConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 
-    video_interval: int = 1
+    video_interval: int = 25
     seed: int = 0

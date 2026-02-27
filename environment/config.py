@@ -5,16 +5,16 @@ from dataclasses import dataclass
 class EnvironmentConfig:
     # Arena wall-to-wall inner dimensions
     arena_width: float = 3.0
-    arena_height: float = 3.0
+    arena_height: float = 2.0
 
     agent_radius: float = 0.05
     agent_z: float = 0.0299  # Chassis center height
 
     # Agent radius multiplier for tag distance
-    tag_distance_factor: float = 1.10
+    tag_distance_factor: float = 1.05
 
     # Perception rays
-    n_rays: int = 64
+    n_rays: int = 256
 
     # Action frequency, hz
     action_frequency: int = 20

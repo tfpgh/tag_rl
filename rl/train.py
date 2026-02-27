@@ -570,13 +570,15 @@ def make_video_rollout(video_env, chaser_network, evader_network, rl_config):
             done = done | step_done
 
             carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
-            return carry, (qpos, qvel, step_done)
+            mocap_pos = state.mjx_data.mocap_pos
+            mocap_quat = state.mjx_data.mocap_quat
+            return carry, (qpos, qvel, mocap_pos, mocap_quat, step_done)
 
         init_carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
-        _, (all_qpos, all_qvel, all_done) = jax.lax.scan(
+        _, (all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done) = jax.lax.scan(
             _scan_step, init_carry, None, length=video_env.max_steps
         )
-        return all_qpos, all_qvel, all_done
+        return all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done
 
     return rollout
 
@@ -586,7 +588,9 @@ def record_video(video_env, rollout_fn, runner_state, global_step, rng, fps, wri
 
     chaser_params = runner_state[0].params
     evader_params = runner_state[1].params
-    all_qpos, all_qvel, all_done = rollout_fn(chaser_params, evader_params, rng)
+    all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done = rollout_fn(
+        chaser_params, evader_params, rng
+    )
 
     # Find episode end for trimming
     all_done_np = np.array(all_done)
@@ -596,6 +600,8 @@ def record_video(video_env, rollout_fn, runner_state, global_step, rng, fps, wri
     # Transfer to CPU once
     all_qpos_np = np.array(all_qpos[:n_frames])
     all_qvel_np = np.array(all_qvel[:n_frames])
+    all_mocap_pos_np = np.array(all_mocap_pos[:n_frames])
+    all_mocap_quat_np = np.array(all_mocap_quat[:n_frames])
 
     # Render on CPU
     renderer = mujoco.Renderer(video_env.mj_model, height=480, width=640)
@@ -605,6 +611,8 @@ def record_video(video_env, rollout_fn, runner_state, global_step, rng, fps, wri
     for i in range(n_frames):
         mj_data.qpos[:] = all_qpos_np[i]
         mj_data.qvel[:] = all_qvel_np[i]
+        mj_data.mocap_pos[:] = all_mocap_pos_np[i]
+        mj_data.mocap_quat[:] = all_mocap_quat_np[i]
         mujoco.mj_forward(video_env.mj_model, mj_data)
         renderer.update_scene(mj_data)
         frames.append(renderer.render())

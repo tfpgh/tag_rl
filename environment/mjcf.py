@@ -28,7 +28,6 @@ WALL_HEIGHT = 0.1
 CHASSIS_BASE_HEIGHT = 0.038
 CHASSIS_TOP_HEIGHT = 0.003
 
-OBSTACLE_MASS = 1000.0
 OBSTACLE_COLOR = "0.6 0.6 0.65 1"
 
 CHASER_COLOR = "1 0.545 0.545 1"
@@ -235,19 +234,17 @@ def _arena_xml(config: EnvironmentConfig) -> str:
 
 
 def _obstacle_mjcf(config: EnvironmentConfig, index: int) -> str:
-    """MJCF XML for a single obstacle body (freejoint box)."""
+    """MJCF XML for a single obstacle body (mocap, kinematic)."""
     half_w = config.obstacle_width / 2
     half_h = WALL_HEIGHT / 2
     name = f"obstacle_{index}"
 
     return f"""
-    <body name="{name}" pos="0 0 -10">
-        <freejoint name="{name}_root" />
+    <body name="{name}" mocap="true" pos="0 0 -10">
         <geom
             name="{name}_geom"
             type="box"
             size="{half_w} {half_w} {half_h}"
-            mass="{OBSTACLE_MASS}"
             group="{GEOM_GROUP_WALL}"
             rgba="{OBSTACLE_COLOR}"
             contype="{CONTACTS["wall"][0]}"

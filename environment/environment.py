@@ -75,14 +75,13 @@ class TagEnvironment:
         self.chaser_body_ids = self._get_body_subtree(chaser_root)
         self.evader_body_ids = self._get_body_subtree(evader_root)
 
-        # Obstacle qpos addresses (freejoint = 7 qpos each)
-        self.obstacle_qpos_adrs: list[int] = []
+        # Obstacle mocap body indices (for mocap_pos / mocap_quat)
+        self.obstacle_mocap_ids: list[int] = []
         for i in range(config.max_obstacles):
-            jnt_name = f"obstacle_{i}_root"
-            jnt_id = mujoco.mj_name2id(
-                self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, jnt_name
+            body_id = mujoco.mj_name2id(
+                self.mj_model, mujoco.mjtObj.mjOBJ_BODY, f"obstacle_{i}"
             )
-            self.obstacle_qpos_adrs.append(int(self.mj_model.jnt_qposadr[jnt_id]))
+            self.obstacle_mocap_ids.append(int(self.mj_model.body_mocapid[body_id]))
         self.obstacle_clearance = config.obstacle_width / 2 + config.agent_radius
 
         self.ray_angles = jnp.linspace(0, 2 * jnp.pi, config.n_rays, endpoint=False)
@@ -362,24 +361,25 @@ class TagEnvironment:
             identity_quaternion
         )
 
-        # Obstacle freejoints (Python for-loop, unrolled at trace time)
-        for i in range(config.max_obstacles):
-            adr = self.obstacle_qpos_adrs[i]
-            qpos = qpos.at[adr : adr + 3].set(
-                jnp.array([obstacle_xy[i, 0], obstacle_xy[i, 1], obstacle_z[i]])
-            )
-            qpos = qpos.at[adr + 3 : adr + 7].set(identity_quaternion)
+        # Obstacle mocap positions: (max_obstacles, 3)
+        obstacle_pos = jnp.stack(
+            [obstacle_xy[:, 0], obstacle_xy[:, 1], obstacle_z], axis=-1
+        )
+        # Identity quaternion for all obstacles: (max_obstacles, 4)
+        obstacle_quat = jnp.tile(identity_quaternion, (config.max_obstacles, 1))
 
         qvel = jnp.zeros(self.mj_model.nv)
 
         initial_distance = jnp.linalg.norm(chaser_xy - evader_xy)
 
-        return qpos, qvel, initial_distance
+        return qpos, qvel, initial_distance, obstacle_pos, obstacle_quat
 
-    def reset_state(self, rng: jax.Array) -> tuple[jax.Array, jax.Array, jax.Array]:
+    def reset_state(
+        self, rng: jax.Array
+    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
         """Generate random qpos/qvel only. NO forward, NO obs.
 
-        Returns (qpos, qvel, initial_distance).
+        Returns (qpos, qvel, initial_distance, obstacle_pos, obstacle_quat).
         """
         return self._reset_positions(rng)
 
@@ -490,9 +490,21 @@ class TagEnvironment:
 
         Convenience method composing reset_state → forward → compute_observations.
         """
-        qpos, qvel, initial_distance = self.reset_state(rng)
+        qpos, qvel, initial_distance, obstacle_pos, obstacle_quat = self.reset_state(
+            rng
+        )
 
-        mjx_data = self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
+        # Set obstacle positions via mocap arrays
+        mocap_pos = self._template_mjx_data.mocap_pos
+        mocap_quat = self._template_mjx_data.mocap_quat
+        for i in range(self.config.max_obstacles):
+            mid = self.obstacle_mocap_ids[i]
+            mocap_pos = mocap_pos.at[mid].set(obstacle_pos[i])
+            mocap_quat = mocap_quat.at[mid].set(obstacle_quat[i])
+
+        mjx_data = self._template_mjx_data.replace(
+            qpos=qpos, qvel=qvel, mocap_pos=mocap_pos, mocap_quat=mocap_quat
+        )
         mjx_data = self.forward(mjx_data)
 
         state = TagEnvironmentState(

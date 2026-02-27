@@ -64,15 +64,25 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         )
 
         # 2. Cheap reset (no forward, no obs)
-        reset_qpos, reset_qvel, reset_distance = env.reset_state(rng)
+        reset_qpos, reset_qvel, reset_distance, reset_obs_pos, reset_obs_quat = (
+            env.reset_state(rng)
+        )
 
         # 3. Merge
+        new_mocap_pos = jnp.where(
+            done, reset_obs_pos, stepped.mjx_data.mocap_pos
+        )
+        new_mocap_quat = jnp.where(
+            done, reset_obs_quat, stepped.mjx_data.mocap_quat
+        )
         new_mjx_data = stepped.mjx_data.replace(
             qpos=jnp.where(done, reset_qpos, stepped.mjx_data.qpos),
             qvel=jnp.where(done, reset_qvel, stepped.mjx_data.qvel),
             time=jnp.where(
                 done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time
             ),
+            mocap_pos=new_mocap_pos,
+            mocap_quat=new_mocap_quat,
         )
         step_count: jax.Array = jnp.where(done, jnp.int32(0), stepped.step_count)  # type: ignore[assignment]
 

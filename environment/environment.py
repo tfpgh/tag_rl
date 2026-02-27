@@ -9,12 +9,15 @@ from mujoco import mjx
 
 from environment.config import EnvironmentConfig
 from environment.mjcf import generate_mjcf
+from environment.mjx_ray_patch import patch as _patch_mjx_ray
 from environment.mujoco_data import (
     JointDofSlices,
     JointQposSlices,
     quaternion_to_yaw,
     yaw_to_quaternion,
 )
+
+_patch_mjx_ray()
 
 
 def observation_size(config: EnvironmentConfig) -> int:

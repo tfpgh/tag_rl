@@ -63,8 +63,12 @@ class TagEnvironment:
         self.geom_groups = jnp.array(self.mj_model.geom_group, dtype=jnp.int32)
 
         # Body IDs for ray exclusion (skip own body geoms)
-        chaser_root = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, "chaser")
-        evader_root = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, "evader")
+        chaser_root = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_BODY, "chaser"
+        )
+        evader_root = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_BODY, "evader"
+        )
         self.chaser_body_ids = self._get_body_subtree(chaser_root)
         self.evader_body_ids = self._get_body_subtree(evader_root)
 
@@ -234,7 +238,7 @@ class TagEnvironment:
 
         # If exactly coincident, pick a random direction
         random_dir = random.uniform(key_evader_yaw, (2,), minval=-1.0, maxval=1.0)
-        random_dir = random_dir / jnp.linalg.norm(random_dir)
+        random_dir = random_dir / jnp.linalg.norm(random_dir + 1e-8)
         direction = jnp.where(dist < 1e-6, random_dir, delta / dist)
 
         too_close = dist < config.minimum_starting_separation

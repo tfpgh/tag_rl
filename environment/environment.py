@@ -94,7 +94,7 @@ class TagEnvironment:
         self._template_mjx_data = mjx.make_data(
             self.mj_model,
             impl="warp",
-            naconmax=12 * n_envs,
+            naconmax=14 * n_envs,
             njmax=80,
         )
 

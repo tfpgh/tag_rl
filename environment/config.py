@@ -20,8 +20,8 @@ class EnvironmentConfig:
     action_frequency: int = 20
 
     # Episode timing, seconds
-    episode_max_length: int = 5
-    chaser_freeze_seconds: int = 3
+    episode_max_length: int = 10
+    chaser_freeze_seconds: int = 1
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser

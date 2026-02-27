@@ -4,8 +4,8 @@ from dataclasses import dataclass
 @dataclass
 class EnvironmentConfig:
     # Arena wall-to-wall inner dimensions
-    arena_width: float = 2.0
-    arena_height: float = 2.0
+    arena_width: float = 3.0
+    arena_height: float = 3.0
 
     agent_radius: float = 0.05
     agent_z: float = 0.0299  # Chassis center height
@@ -20,8 +20,8 @@ class EnvironmentConfig:
     action_frequency: int = 20
 
     # Episode timing, seconds
-    episode_max_length: int = 30
-    chaser_freeze_seconds: int = 2
+    episode_max_length: int = 5
+    chaser_freeze_seconds: int = 3
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser

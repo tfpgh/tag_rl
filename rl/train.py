@@ -49,10 +49,14 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     action_dim = (2,)
 
     chaser_network = ActorCriticRNN(
-        action_dim=action_dim, hidden_size=rl_config.hidden_size
+        action_dim=action_dim,
+        n_rays=env_config.n_rays,
+        hidden_size=rl_config.hidden_size,
     )
     evader_network = ActorCriticRNN(
-        action_dim=action_dim, hidden_size=rl_config.hidden_size
+        action_dim=action_dim,
+        n_rays=env_config.n_rays,
+        hidden_size=rl_config.hidden_size,
     )
 
     def _auto_reset_step(state, chaser_action, evader_action, rng):

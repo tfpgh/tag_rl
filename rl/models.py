@@ -40,8 +40,24 @@ class ScannedRNN(nn.Module):
         )
 
 
+class RayEncoder(nn.Module):
+    """1D CNN for ray sensor data with circular padding."""
+
+    features: int = 32
+
+    @nn.compact
+    def __call__(self, rays: jax.Array) -> jax.Array:
+        # rays: (..., n_rays, 2) — leading dims are batch
+        x = nn.Conv(features=16, kernel_size=(7,), padding="CIRCULAR")(rays)
+        x = nn.relu(x)
+        x = nn.Conv(features=self.features, kernel_size=(5,), padding="CIRCULAR")(x)
+        x = nn.relu(x)
+        return x.mean(axis=-2)  # global average pool → (..., features)
+
+
 class ActorCriticRNN(nn.Module):
     action_dim: Sequence[int]
+    n_rays: int = 256
     hidden_size: int = 128
 
     @nn.compact
@@ -49,11 +65,21 @@ class ActorCriticRNN(nn.Module):
         self, hidden: jax.Array, x: tuple[jax.Array, jax.Array]
     ) -> tuple[jax.Array, distrax.MultivariateNormalDiag, jax.Array]:
         obs, dones = x
+
+        # Split: [vel, ang_vel, ray_dist(N), ray_type(N), progress]
+        scalars = jnp.concatenate([obs[..., :2], obs[..., -1:]], axis=-1)
+        ray_dist = obs[..., 2 : 2 + self.n_rays]
+        ray_type = obs[..., 2 + self.n_rays : 2 + 2 * self.n_rays]
+        rays = jnp.stack([ray_dist, ray_type], axis=-1)
+
+        ray_features = RayEncoder()(rays)
+
+        embedding = jnp.concatenate([scalars, ray_features], axis=-1)
         embedding = nn.Dense(
             features=self.hidden_size,
             kernel_init=orthogonal(np.sqrt(2)),
             bias_init=constant(0.0),
-        )(obs)
+        )(embedding)
         embedding = nn.relu(embedding)
 
         rnn_in = (embedding, dones)

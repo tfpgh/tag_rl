@@ -55,10 +55,14 @@ class RayEncoder(nn.Module):
         return x.reshape(*x.shape[:-2], -1)  # flatten → 512
 
 
-class ActorCriticRNN(nn.Module):
+class _ActorCriticBase(nn.Module):
+    """Shared actor-critic head. Subclasses implement _embed(obs)."""
+
     action_dim: Sequence[int]
-    n_rays: int = 256
     hidden_size: int = 128
+
+    def _embed(self, obs: jax.Array) -> jax.Array:
+        raise NotImplementedError
 
     @nn.compact
     def __call__(
@@ -66,15 +70,7 @@ class ActorCriticRNN(nn.Module):
     ) -> tuple[jax.Array, distrax.MultivariateNormalDiag, jax.Array]:
         obs, dones = x
 
-        # Split: [vel, ang_vel, ray_dist(N), ray_type(N), progress]
-        scalars = jnp.concatenate([obs[..., :2], obs[..., -1:]], axis=-1)
-        ray_dist = obs[..., 2 : 2 + self.n_rays]
-        ray_type = obs[..., 2 + self.n_rays : 2 + 2 * self.n_rays]
-        rays = jnp.stack([ray_dist, ray_type], axis=-1)
-
-        ray_features = RayEncoder()(rays)
-
-        embedding = jnp.concatenate([scalars, ray_features], axis=-1)
+        embedding = self._embed(obs)
         embedding = nn.Dense(
             features=self.hidden_size,
             kernel_init=orthogonal(np.sqrt(2)),
@@ -114,3 +110,25 @@ class ActorCriticRNN(nn.Module):
         )(critic)
 
         return hidden, pi, jnp.squeeze(critic, axis=-1)
+
+
+class ActorCriticRNN(_ActorCriticBase):
+    """Flat dense embedding."""
+
+    def _embed(self, obs: jax.Array) -> jax.Array:
+        return obs
+
+
+class ActorCriticCNNRNN(_ActorCriticBase):
+    """1D CNN ray encoder + scalar bypass."""
+
+    n_rays: int = 256
+
+    def _embed(self, obs: jax.Array) -> jax.Array:
+        # Split: [vel, ang_vel, ray_dist(N), ray_type(N), progress]
+        scalars = jnp.concatenate([obs[..., :2], obs[..., -1:]], axis=-1)
+        ray_dist = obs[..., 2 : 2 + self.n_rays]
+        ray_type = obs[..., 2 + self.n_rays : 2 + 2 * self.n_rays]
+        rays = jnp.stack([ray_dist, ray_type], axis=-1)
+        ray_features = RayEncoder()(rays)
+        return jnp.concatenate([scalars, ray_features], axis=-1)

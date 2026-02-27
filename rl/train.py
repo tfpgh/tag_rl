@@ -50,12 +50,10 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
 
     chaser_network = ActorCriticRNN(
         action_dim=action_dim,
-        n_rays=env_config.n_rays,
         hidden_size=rl_config.hidden_size,
     )
     evader_network = ActorCriticRNN(
         action_dim=action_dim,
-        n_rays=env_config.n_rays,
         hidden_size=rl_config.hidden_size,
     )
 

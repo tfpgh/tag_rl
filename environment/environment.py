@@ -94,8 +94,8 @@ class TagEnvironment:
         self._template_mjx_data = mjx.make_data(
             self.mj_model,
             impl="warp",
-            naconmax=20 * n_envs,
-            njmax=100,
+            naconmax=12 * n_envs,
+            njmax=80,
         )
 
     def _get_body_subtree(self, root_id: int) -> list[int]:

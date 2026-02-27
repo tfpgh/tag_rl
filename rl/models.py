@@ -48,11 +48,11 @@ class RayEncoder(nn.Module):
     @nn.compact
     def __call__(self, rays: jax.Array) -> jax.Array:
         # rays: (..., n_rays, 2) — leading dims are batch
-        x = nn.Conv(features=16, kernel_size=(7,), padding="CIRCULAR")(rays)
-        x = nn.relu(x)
-        x = nn.Conv(features=self.features, kernel_size=(5,), padding="CIRCULAR")(x)
-        x = nn.relu(x)
-        return x.mean(axis=-2)  # global average pool → (..., features)
+        x = nn.Conv(features=16, kernel_size=(7,), strides=(4,), padding="CIRCULAR")(rays)
+        x = nn.relu(x)  # (..., 64, 16)
+        x = nn.Conv(features=self.features, kernel_size=(5,), strides=(4,), padding="CIRCULAR")(x)
+        x = nn.relu(x)  # (..., 16, 32)
+        return x.reshape(*x.shape[:-2], -1)  # flatten → 512
 
 
 class ActorCriticRNN(nn.Module):

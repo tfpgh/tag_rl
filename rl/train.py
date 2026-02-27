@@ -14,7 +14,7 @@ from environment.environment import (
     observation_size,
 )
 from rl.config import RLConfig
-from rl.models import ActorCriticRNN, ScannedRNN
+from rl.models import ActorCriticCNNRNN, ScannedRNN
 
 
 class Transition(NamedTuple):
@@ -48,13 +48,15 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     obs_size = observation_size(env_config)
     action_dim = (2,)
 
-    chaser_network = ActorCriticRNN(
+    chaser_network = ActorCriticCNNRNN(
         action_dim=action_dim,
         hidden_size=rl_config.hidden_size,
+        n_rays=env_config.n_rays,
     )
-    evader_network = ActorCriticRNN(
+    evader_network = ActorCriticCNNRNN(
         action_dim=action_dim,
         hidden_size=rl_config.hidden_size,
+        n_rays=env_config.n_rays,
     )
 
     def _auto_reset_step(state, chaser_action, evader_action, rng):
@@ -69,12 +71,8 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         )
 
         # 3. Merge
-        new_mocap_pos = jnp.where(
-            done, reset_obs_pos, stepped.mjx_data.mocap_pos
-        )
-        new_mocap_quat = jnp.where(
-            done, reset_obs_quat, stepped.mjx_data.mocap_quat
-        )
+        new_mocap_pos = jnp.where(done, reset_obs_pos, stepped.mjx_data.mocap_pos)
+        new_mocap_quat = jnp.where(done, reset_obs_quat, stepped.mjx_data.mocap_quat)
         new_mjx_data = stepped.mjx_data.replace(
             qpos=jnp.where(done, reset_qpos, stepped.mjx_data.qpos),
             qvel=jnp.where(done, reset_qvel, stepped.mjx_data.qvel),

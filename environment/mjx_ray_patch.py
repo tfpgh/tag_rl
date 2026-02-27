@@ -23,6 +23,6 @@ def _ray_cylinder(size: jax.Array, pnt: jax.Array, vec: jax.Array) -> jax.Array:
     return jp.minimum(x0, x1)
 
 
-def patch() -> None:
+def patch_mjx_cylinder_rays() -> None:
     """Register cylinder ray intersection with MJX."""
     mjx_ray._RAY_FUNC[GeomType.CYLINDER] = _ray_cylinder

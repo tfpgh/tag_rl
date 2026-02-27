@@ -11,7 +11,7 @@ class EnvironmentConfig:
     agent_z: float = 0.0299  # Chassis center height
 
     # Agent radius multiplier for tag distance
-    tag_distance_factor: float = 1.20
+    tag_distance_factor: float = 1.10
 
     # Perception rays
     n_rays: int = 64
@@ -26,7 +26,7 @@ class EnvironmentConfig:
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
     time_reward: float = 0.001  # + for evader, - for chaser
-    distance_shaping_scale: float = 0.30
+    distance_shaping_scale: float = 0.05
     distance_shaping_gamma: float = 0.99
 
     # Normalization, not exact

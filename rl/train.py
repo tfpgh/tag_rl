@@ -525,105 +525,6 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
     return init, step, num_updates, env, chaser_network, evader_network
 
 
-def make_video_rollout(video_env, chaser_network, evader_network, rl_config):
-    """Create a JIT'd rollout function for video recording (compiles once)."""
-
-    @jax.jit
-    def rollout(chaser_params, evader_params, rng):
-        state, chaser_obs, evader_obs = video_env.reset(rng)
-        chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
-        evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
-        done = jnp.bool_(False)
-
-        def _scan_step(carry, _):
-            state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done = carry
-            qpos = state.mjx_data.qpos
-            qvel = state.mjx_data.qvel
-
-            chaser_ac_in = (
-                chaser_obs[jnp.newaxis, jnp.newaxis, :],
-                done[jnp.newaxis, jnp.newaxis],
-            )
-            chaser_hstate, chaser_pi, _ = chaser_network.apply(
-                chaser_params, chaser_hstate, chaser_ac_in
-            )
-            chaser_action = jnp.clip(chaser_pi.loc[0, 0], -1.0, 1.0)
-
-            evader_ac_in = (
-                evader_obs[jnp.newaxis, jnp.newaxis, :],
-                done[jnp.newaxis, jnp.newaxis],
-            )
-            evader_hstate, evader_pi, _ = evader_network.apply(
-                evader_params, evader_hstate, evader_ac_in
-            )
-            evader_action = jnp.clip(evader_pi.loc[0, 0], -1.0, 1.0)
-
-            # Zero actions after episode ends so agents stay still
-            chaser_action = jnp.where(done, jnp.zeros(2), chaser_action)
-            evader_action = jnp.where(done, jnp.zeros(2), evader_action)
-
-            state, chaser_obs, evader_obs, _, _, step_done, _ = video_env.step(
-                state, chaser_action, evader_action
-            )
-            done = done | step_done
-
-            carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
-            mocap_pos = state.mjx_data.mocap_pos
-            mocap_quat = state.mjx_data.mocap_quat
-            return carry, (qpos, qvel, mocap_pos, mocap_quat, step_done)
-
-        init_carry = (state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done)
-        _, (all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done) = jax.lax.scan(
-            _scan_step, init_carry, None, length=video_env.max_steps
-        )
-        return all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done
-
-    return rollout
-
-
-def record_video(video_env, rollout_fn, runner_state, global_step, rng, fps, writer):
-    import mujoco
-
-    chaser_params = runner_state[0].params
-    evader_params = runner_state[1].params
-    all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done = rollout_fn(
-        chaser_params, evader_params, rng
-    )
-
-    # Find episode end for trimming
-    all_done_np = np.array(all_done)
-    done_indices = np.where(all_done_np)[0]
-    n_frames = int(done_indices[0]) + 1 if len(done_indices) > 0 else len(all_done_np)
-
-    # Transfer to CPU once
-    all_qpos_np = np.array(all_qpos[:n_frames])
-    all_qvel_np = np.array(all_qvel[:n_frames])
-    all_mocap_pos_np = np.array(all_mocap_pos[:n_frames])
-    all_mocap_quat_np = np.array(all_mocap_quat[:n_frames])
-
-    # Render on CPU
-    renderer = mujoco.Renderer(video_env.mj_model, height=480, width=640)
-    mj_data = mujoco.MjData(video_env.mj_model)
-
-    frames = []
-    for i in range(n_frames):
-        mj_data.qpos[:] = all_qpos_np[i]
-        mj_data.qvel[:] = all_qvel_np[i]
-        mj_data.mocap_pos[:] = all_mocap_pos_np[i]
-        mj_data.mocap_quat[:] = all_mocap_quat_np[i]
-        mujoco.mj_forward(video_env.mj_model, mj_data)
-        renderer.update_scene(mj_data)
-        frames.append(renderer.render())
-
-    renderer.close()
-
-    # (T, H, W, C) -> (1, T, C, H, W) for tensorboard
-    video_array = np.stack(frames)
-    video_array = video_array.transpose(0, 3, 1, 2)[np.newaxis, ...]
-    writer.add_video("video/policy", video_array, global_step, fps=fps)
-    print(f"Recorded video at step {global_step} ({n_frames} frames)")
-
-
 def save_checkpoint(runner_state, global_step, checkpoint_dir="checkpoints"):
     import os
     import pickle
@@ -656,15 +557,6 @@ if __name__ == "__main__":
     runner_state = jax.jit(init_fn)(rng)
     step_jit = jax.jit(step_fn)
 
-    # Create video env and JIT'd rollout once (compiles on first call)
-    video_env: TagEnvironment | None = None
-    video_rollout_fn = None
-    if rl_config.video_interval > 0:
-        video_env = TagEnvironment(env_config, 1)
-        video_rollout_fn = make_video_rollout(
-            video_env, chaser_network, evader_network, rl_config
-        )
-
     writer = SummaryWriter()
     checkpoint_dir = os.path.join(writer.logdir, "checkpoints")
     timesteps_per_update = rl_config.num_steps * rl_config.num_envs
@@ -682,21 +574,6 @@ if __name__ == "__main__":
             (update + 1) % rl_config.checkpoint_interval == 0
         ):
             save_checkpoint(runner_state, global_step, checkpoint_dir)
-
-        # Periodic video recording
-        if rl_config.video_interval > 0 and (
-            (update + 1) % rl_config.video_interval == 0
-        ):
-            rng, video_rng = jax.random.split(rng)
-            record_video(
-                video_env,
-                video_rollout_fn,
-                runner_state,
-                global_step,
-                video_rng,
-                env_config.action_frequency,
-                writer,
-            )
 
     # Save final checkpoint
     save_checkpoint(runner_state, num_updates * timesteps_per_update, checkpoint_dir)

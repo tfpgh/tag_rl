@@ -11,7 +11,7 @@ class EnvironmentConfig:
     agent_z: float = 0.0299  # Chassis center height
 
     # Agent radius multiplier for tag distance
-    tag_distance_factor: float = 1.03
+    tag_distance_factor: float = 1.05
 
     # Perception rays
     n_rays: int = 256
@@ -37,5 +37,5 @@ class EnvironmentConfig:
     wall_margin_factor: float = 1.5  # Minimum distance from wall (* agent_radius)
 
     # Obstacles
-    max_obstacles: int = 8  # always allocated in MJCF
-    obstacle_width: float = 0.2  # square box side length (meters)
+    max_obstacles: int = 10  # always allocated in MJCF
+    obstacle_width: float = 0.3  # square box side length (meters)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class RLConfig:
     num_envs: int = 2048
-    num_steps: int = 256
+    num_steps: int = 128
 
     total_timesteps: int = int(1e9)
 

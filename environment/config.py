@@ -24,7 +24,7 @@ class EnvironmentConfig:
     chaser_freeze_seconds: int = 5
 
     # Rewards
-    win_reward: float = 1.0  # timeout for evader, tag for chaser
+    win_reward: float = 0.05  # timeout for evader, tag for chaser
     time_reward: float = 0.001  # + for evader, - for chaser
     distance_shaping_scale: float = 0.00
     distance_shaping_gamma: float = 0.99

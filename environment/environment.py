@@ -227,14 +227,15 @@ class TagEnvironment:
         (
             key_obs_count,
             key_obs_pos,
+            key_obs_yaw,
             key_chaser_candidates,
             key_evader_candidates,
             key_chaser_yaw,
             key_evader_yaw,
             key_separation_fallback,
-        ) = random.split(rng, 7)
+        ) = random.split(rng, 8)
 
-        # --- Obstacle placement ---
+        # --- Obstacle placement (farthest-point sampling) ---
         n_active = random.randint(key_obs_count, (), 0, config.max_obstacles + 1)
 
         obs_margin = config.obstacle_width / 2
@@ -250,12 +251,50 @@ class TagEnvironment:
                 (config.arena_height / 2) - obs_margin,
             ]
         )
-        obstacle_xy = random.uniform(
-            key_obs_pos, (config.max_obstacles, 2), minval=obs_lower, maxval=obs_upper
-        )
-        active_mask = jnp.arange(config.max_obstacles) < n_active  # (max_obstacles,)
 
-        obstacle_z_active = WALL_HEIGHT / 2  # box bottom on floor
+        n_pool = 64
+        pool = random.uniform(
+            key_obs_pos, (n_pool, 2), minval=obs_lower, maxval=obs_upper
+        )
+
+        def _farthest_step(carry, _):
+            chosen, mask = carry  # (max_obs, 2), (n_pool,)
+            # Min distance from each pool point to any already-chosen point
+            dists = jnp.linalg.norm(
+                pool[:, None, :] - chosen[None, :, :], axis=-1
+            )  # (n_pool, max_obs)
+            # Ignore unchosen slots (distance = inf)
+            chosen_mask = jnp.any(chosen != 0, axis=-1)  # (max_obs,)
+            dists = jnp.where(chosen_mask[None, :], dists, jnp.inf)
+            min_dists = jnp.min(dists, axis=1)  # (n_pool,)
+            # Mask out already-picked points
+            min_dists = jnp.where(mask, min_dists, -jnp.inf)
+            idx = jnp.argmax(min_dists)
+            # Append to next open slot
+            slot = jnp.sum(~mask).astype(jnp.int32) - 1
+            # Actually: count how many have been picked so far
+            n_picked = n_pool - jnp.sum(mask)
+            chosen = chosen.at[n_picked].set(pool[idx])
+            mask = mask.at[idx].set(False)
+            return (chosen, mask), None
+
+        # Pick first point randomly (index 0 of shuffled pool)
+        init_chosen = jnp.zeros((config.max_obstacles, 2))
+        init_chosen = init_chosen.at[0].set(pool[0])
+        init_mask = jnp.ones(n_pool, dtype=jnp.bool_).at[0].set(False)
+
+        (obstacle_xy, _), _ = jax.lax.scan(
+            _farthest_step, (init_chosen, init_mask), None,
+            length=config.max_obstacles - 1,
+        )
+
+        # Random yaw per obstacle
+        obstacle_yaws = random.uniform(
+            key_obs_yaw, (config.max_obstacles,), minval=-jnp.pi, maxval=jnp.pi
+        )
+
+        active_mask = jnp.arange(config.max_obstacles) < n_active
+        obstacle_z_active = WALL_HEIGHT / 2
         obstacle_z = jnp.where(active_mask, obstacle_z_active, -10.0)
 
         # --- Agent placement (candidate-based, JAX-friendly) ---
@@ -365,8 +404,8 @@ class TagEnvironment:
         obstacle_pos = jnp.stack(
             [obstacle_xy[:, 0], obstacle_xy[:, 1], obstacle_z], axis=-1
         )
-        # Identity quaternion for all obstacles: (max_obstacles, 4)
-        obstacle_quat = jnp.tile(identity_quaternion, (config.max_obstacles, 1))
+        # Random yaw quaternions: (max_obstacles, 4)
+        obstacle_quat = jax.vmap(yaw_to_quaternion)(obstacle_yaws)
 
         qvel = jnp.zeros(self.mj_model.nv)
 

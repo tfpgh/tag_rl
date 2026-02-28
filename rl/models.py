@@ -77,6 +77,7 @@ class _ActorCriticBase(nn.Module):
             bias_init=constant(0.0),
         )(embedding)
         embedding = nn.relu(embedding)
+        embedding = nn.LayerNorm()(embedding)
 
         rnn_in = (embedding, dones)
         hidden, embedding = ScannedRNN()(hidden, rnn_in)

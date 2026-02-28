@@ -644,10 +644,6 @@ if __name__ == "__main__":
         video_env, chaser_network, evader_network, rl_config
     )
 
-    # Warm up video JIT compilation before training to avoid memory spike
-    rng, warmup_rng = jax.random.split(rng)
-    _ = video_rollout_fn(runner_state[0].params, runner_state[1].params, warmup_rng)
-
     writer = SummaryWriter()
     timesteps_per_update = rl_config.num_steps * rl_config.num_envs
 

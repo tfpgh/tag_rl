@@ -13,11 +13,11 @@ class RLConfig:
     lr: float = 3e-4
     anneal_lr: bool = True
     update_epochs: int = 4
-    num_minibatches: int = 64
-    gamma: float = 0.99
+    num_minibatches: int = 16
+    gamma: float = 0.998
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
-    ent_coef: float = 0.01
+    ent_coef: float = 0.02
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 

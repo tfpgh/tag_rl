@@ -278,7 +278,7 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
             <global offwidth="1920" offheight="1080"/>
             <headlight ambient="0.5 0.5 0.5" />
         </visual>
-        <statistic extent="{config.arena_width * 0.8}" center="0 0 0"/>
+        <statistic extent="{config.arena_width * 0.85}" center="0 0 0"/>
         <worldbody>
             {_arena_xml(config)}
             {chaser_body_xml}

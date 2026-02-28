@@ -17,12 +17,13 @@ from rl.config import RLConfig
 from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
 
 # ── Configuration ──────────────────────────────────────────────────────
-CHECKPOINT_PATH = "path/to/step_XXXXX.pkl"
+CHECKPOINT_PATH = "runs/Feb28_12-38-35_node002/checkpoints/step_419430400.pkl"
 OUTPUT_PATH = "render.mp4"
-NUM_EPISODES = 5
+NUM_EPISODES = 10
 MODEL_TYPE = "cnn_rnn"  # or "rnn"
-VIDEO_HEIGHT = 480
-VIDEO_WIDTH = 640
+VIDEO_HEIGHT = 1080
+VIDEO_WIDTH = 1920
+PRNG_KEY = 0
 
 
 def make_rollout(env, chaser_network, evader_network, rl_config):
@@ -87,8 +88,8 @@ def make_rollout(env, chaser_network, evader_network, rl_config):
             evader_hstate,
             done,
         )
-        _, (all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done) = (
-            jax.lax.scan(_scan_step, init_carry, None, length=env.max_steps)
+        _, (all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done) = jax.lax.scan(
+            _scan_step, init_carry, None, length=env.max_steps
         )
         return all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done
 
@@ -157,7 +158,7 @@ if __name__ == "__main__":
     # Build JIT'd rollout (compiles on first call)
     rollout_fn = make_rollout(env, chaser_network, evader_network, rl_config)
 
-    rng = jax.random.PRNGKey(0)
+    rng = jax.random.PRNGKey(PRNG_KEY)
     all_frames = []
 
     for ep in range(NUM_EPISODES):

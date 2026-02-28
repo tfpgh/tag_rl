@@ -258,33 +258,27 @@ class TagEnvironment:
         )
 
         def _farthest_step(carry, _):
-            chosen, mask = carry  # (max_obs, 2), (n_pool,)
-            # Min distance from each pool point to any already-chosen point
+            chosen, n_chosen, available = carry
             dists = jnp.linalg.norm(
                 pool[:, None, :] - chosen[None, :, :], axis=-1
             )  # (n_pool, max_obs)
-            # Ignore unchosen slots (distance = inf)
-            chosen_mask = jnp.any(chosen != 0, axis=-1)  # (max_obs,)
-            dists = jnp.where(chosen_mask[None, :], dists, jnp.inf)
-            min_dists = jnp.min(dists, axis=1)  # (n_pool,)
-            # Mask out already-picked points
-            min_dists = jnp.where(mask, min_dists, -jnp.inf)
+            slot_mask = jnp.arange(config.max_obstacles) < n_chosen
+            dists = jnp.where(slot_mask[None, :], dists, jnp.inf)
+            min_dists = jnp.min(dists, axis=1)  # pyright: ignore[reportArgumentType]
+            min_dists = jnp.where(available, min_dists, -jnp.inf)
             idx = jnp.argmax(min_dists)
-            # Append to next open slot
-            slot = jnp.sum(~mask).astype(jnp.int32) - 1
-            # Actually: count how many have been picked so far
-            n_picked = n_pool - jnp.sum(mask)
-            chosen = chosen.at[n_picked].set(pool[idx])
-            mask = mask.at[idx].set(False)
-            return (chosen, mask), None
+            chosen = chosen.at[n_chosen].set(pool[idx])
+            available = available.at[idx].set(False)
+            return (chosen, n_chosen + 1, available), None
 
-        # Pick first point randomly (index 0 of shuffled pool)
         init_chosen = jnp.zeros((config.max_obstacles, 2))
         init_chosen = init_chosen.at[0].set(pool[0])
-        init_mask = jnp.ones(n_pool, dtype=jnp.bool_).at[0].set(False)
+        init_available = jnp.ones(n_pool, dtype=jnp.bool_).at[0].set(False)
 
-        (obstacle_xy, _), _ = jax.lax.scan(
-            _farthest_step, (init_chosen, init_mask), None,
+        (obstacle_xy, _, _), _ = jax.lax.scan(
+            _farthest_step,
+            (init_chosen, jnp.int32(1), init_available),
+            None,
             length=config.max_obstacles - 1,
         )
 

@@ -21,5 +21,6 @@ class RLConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 
-    video_interval: int = 25
+    video_interval: int = 0
+    checkpoint_interval: int = 50
     seed: int = 0

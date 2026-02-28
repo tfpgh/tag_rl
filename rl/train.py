@@ -624,6 +624,22 @@ def record_video(video_env, rollout_fn, runner_state, global_step, rng, fps, wri
     print(f"Recorded video at step {global_step} ({n_frames} frames)")
 
 
+def save_checkpoint(runner_state, global_step, checkpoint_dir="checkpoints"):
+    import os
+    import pickle
+
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    path = os.path.join(checkpoint_dir, f"step_{global_step}.pkl")
+    checkpoint = {
+        "chaser_params": jax.device_get(runner_state[0].params),
+        "evader_params": jax.device_get(runner_state[1].params),
+        "global_step": global_step,
+    }
+    with open(path, "wb") as f:
+        pickle.dump(checkpoint, f)
+    print(f"Saved checkpoint at step {global_step}")
+
+
 if __name__ == "__main__":
     from tensorboardX import SummaryWriter
     from tqdm import tqdm
@@ -639,10 +655,13 @@ if __name__ == "__main__":
     step_jit = jax.jit(step_fn)
 
     # Create video env and JIT'd rollout once (compiles on first call)
-    video_env = TagEnvironment(env_config, 1)
-    video_rollout_fn = make_video_rollout(
-        video_env, chaser_network, evader_network, rl_config
-    )
+    video_env: TagEnvironment | None = None
+    video_rollout_fn = None
+    if rl_config.video_interval > 0:
+        video_env = TagEnvironment(env_config, 1)
+        video_rollout_fn = make_video_rollout(
+            video_env, chaser_network, evader_network, rl_config
+        )
 
     writer = SummaryWriter()
     timesteps_per_update = rl_config.num_steps * rl_config.num_envs
@@ -654,6 +673,12 @@ if __name__ == "__main__":
         for key, value in metrics.items():
             writer.add_scalar(key, value.item(), global_step)
         writer.flush()
+
+        # Periodic checkpoint saving
+        if rl_config.checkpoint_interval > 0 and (
+            (update + 1) % rl_config.checkpoint_interval == 0
+        ):
+            save_checkpoint(runner_state, global_step)
 
         # Periodic video recording
         if rl_config.video_interval > 0 and (
@@ -670,4 +695,6 @@ if __name__ == "__main__":
                 writer,
             )
 
+    # Save final checkpoint
+    save_checkpoint(runner_state, num_updates * timesteps_per_update)
     writer.close()

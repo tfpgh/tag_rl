@@ -4,11 +4,11 @@ from dataclasses import dataclass
 @dataclass
 class RLConfig:
     num_envs: int = 2048
-    num_steps: int = 128
+    num_steps: int = 256
 
     total_timesteps: int = int(1e9)
 
-    hidden_size: int = 128
+    hidden_size: int = 256
 
     lr: float = 3e-4
     anneal_lr: bool = True

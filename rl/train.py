@@ -641,6 +641,8 @@ def save_checkpoint(runner_state, global_step, checkpoint_dir="checkpoints"):
 
 
 if __name__ == "__main__":
+    import os
+
     from tensorboardX import SummaryWriter
     from tqdm import tqdm
 
@@ -664,6 +666,7 @@ if __name__ == "__main__":
         )
 
     writer = SummaryWriter()
+    checkpoint_dir = os.path.join(writer.logdir, "checkpoints")
     timesteps_per_update = rl_config.num_steps * rl_config.num_envs
 
     for update in tqdm(range(num_updates), desc="Training"):
@@ -678,7 +681,7 @@ if __name__ == "__main__":
         if rl_config.checkpoint_interval > 0 and (
             (update + 1) % rl_config.checkpoint_interval == 0
         ):
-            save_checkpoint(runner_state, global_step)
+            save_checkpoint(runner_state, global_step, checkpoint_dir)
 
         # Periodic video recording
         if rl_config.video_interval > 0 and (
@@ -696,5 +699,5 @@ if __name__ == "__main__":
             )
 
     # Save final checkpoint
-    save_checkpoint(runner_state, num_updates * timesteps_per_update)
+    save_checkpoint(runner_state, num_updates * timesteps_per_update, checkpoint_dir)
     writer.close()

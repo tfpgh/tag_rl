@@ -58,9 +58,8 @@ calibration_samples: dict[int, list[np.ndarray]] = {i: [] for i in range(4)}
 
 COLOR = (180, 255, 180)
 
-# Inside corner index for each corner tag (the corner closest to mat center)
-# pupil_apriltags corners: [bl, br, tr, tl] of the tag
-INSIDE_CORNER = {0: 2, 1: 3, 2: 0, 3: 1}  # TL→tr, TR→tl, BR→bl, BL→br
+# Direction from tag center toward mat center for each corner tag
+INWARD_DIR = {0: (1, 1), 1: (-1, 1), 2: (-1, -1), 3: (1, -1)}
 
 
 def draw_detections(frame: np.ndarray, detections: list) -> None:
@@ -70,11 +69,15 @@ def draw_detections(frame: np.ndarray, detections: list) -> None:
         corners = det.corners.astype(int)
         for i in range(4):
             cv2.line(frame, tuple(corners[i]), tuple(corners[(i + 1) % 4]), COLOR, 2)
-        cv2.circle(frame, (int(det.center[0]), int(det.center[1])), 4, (0, 0, 255), -1)
+        cx, cy = det.center[0], det.center[1]
+        cv2.circle(frame, (int(cx), int(cy)), 4, (0, 0, 255), -1)
 
-        if det.tag_id in INSIDE_CORNER:
-            c = corners[INSIDE_CORNER[det.tag_id]]
-            inside_pts[det.tag_id] = (c[0], c[1])
+        if det.tag_id in INWARD_DIR:
+            # Half tag width in pixels from average side length
+            side_lengths = [np.linalg.norm(corners[(i + 1) % 4] - corners[i]) for i in range(4)]
+            half = np.mean(side_lengths) / 2
+            dx, dy = INWARD_DIR[det.tag_id]
+            inside_pts[det.tag_id] = (int(cx + dx * half), int(cy + dy * half))
 
     # Draw red rectangle between inside corners of the 4 tags
     if len(inside_pts) == 4:

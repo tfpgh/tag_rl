@@ -47,7 +47,7 @@ DST_POINTS = np.array(
     dtype=np.float32,
 )
 
-CALIBRATION_FRAMES = 100
+CALIBRATION_FRAMES = 30
 
 cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("Camera", FRAME_W, FRAME_H)

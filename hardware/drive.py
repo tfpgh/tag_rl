@@ -1,23 +1,17 @@
 import socket
 import struct
+import sys
+import termios
 import threading
 import time
-
-from pynput import keyboard
-from rich.align import Align
-from rich.console import Console
-from rich.layout import Layout
-from rich.live import Live
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
+import tty
 
 ROBOT_IP = "192.168.1.3"
 UDP_PORT = 8888
 SEND_HZ = 20
 
-LINEAR_STEP = 0.1
-ANGULAR_STEP = 0.01
+LINEAR_STEP = 0.15
+ANGULAR_STEP = 0.015
 LINEAR_MAX = 1.0
 ANGULAR_MAX = 1.0
 MAX_INT16 = 32767
@@ -43,26 +37,19 @@ class Teleop:
     def right(self):
         return clamp(self.lin + self.ang, -1.0, 1.0)
 
-    def on_press(self, key):
-        try:
-            c = key.char
-        except AttributeError:
-            if key == keyboard.Key.space:
-                self.lin = 0.0
-                self.ang = 0.0
-            elif key == keyboard.Key.esc:
-                self.running = False
-            return
-
-        if c == "w":
+    def handle_key(self, ch):
+        if ch == "w":
             self.lin = clamp(self.lin + LINEAR_STEP, -LINEAR_MAX, LINEAR_MAX)
-        elif c == "s":
+        elif ch == "s":
             self.lin = clamp(self.lin - LINEAR_STEP, -LINEAR_MAX, LINEAR_MAX)
-        elif c == "a":
+        elif ch == "a":
             self.ang = clamp(self.ang + ANGULAR_STEP, -ANGULAR_MAX, ANGULAR_MAX)
-        elif c == "d":
+        elif ch == "d":
             self.ang = clamp(self.ang - ANGULAR_STEP, -ANGULAR_MAX, ANGULAR_MAX)
-        elif c == "q":
+        elif ch == " ":
+            self.lin = 0.0
+            self.ang = 0.0
+        elif ch in ("q", "\x1b"):  # q or Esc
             self.running = False
 
     def send_loop(self):
@@ -73,108 +60,58 @@ class Teleop:
             self.sock.sendto(struct.pack("<hh", l16, r16), (ROBOT_IP, UDP_PORT))
             self.packets_sent += 1
             time.sleep(dt)
+        # send stop on exit
         self.sock.sendto(struct.pack("<hh", 0, 0), (ROBOT_IP, UDP_PORT))
         self.sock.close()
 
-    def make_bar(self, value, width=30):
-        mid = width // 2
-        filled = int(abs(value) * mid)
-        bar = [" "] * width
-        if value > 0:
-            for i in range(mid, mid + filled):
-                bar[i] = "█"
-        elif value < 0:
-            for i in range(mid - filled, mid):
-                bar[i] = "█"
-        bar[mid] = "│"
-        color = (
-            "green" if abs(value) < 0.5 else ("yellow" if abs(value) < 0.8 else "red")
-        )
-        return Text("".join(bar), style=f"bold {color}")
-
-    def render(self):
+    def display(self):
         l16 = int(self.left * MAX_INT16)
         r16 = int(self.right * MAX_INT16)
-
-        tbl = Table(show_header=False, box=None, padding=(0, 1))
-        tbl.add_column(width=10, justify="right")
-        tbl.add_column(width=8, justify="right")
-        tbl.add_column(width=32)
-
-        tbl.add_row(
-            Text("linear", style="bold cyan"),
-            Text(f"{self.lin:+.2f}", style="bold white"),
-            self.make_bar(self.lin),
-        )
-        tbl.add_row(
-            Text("angular", style="bold magenta"),
-            Text(f"{self.ang:+.2f}", style="bold white"),
-            self.make_bar(self.ang),
-        )
-        tbl.add_row(Text(""), Text(""), Text(""))
-        tbl.add_row(
-            Text("L motor", style="dim"),
-            Text(f"{l16:+6d}", style="bold white"),
-            self.make_bar(self.left),
-        )
-        tbl.add_row(
-            Text("R motor", style="dim"),
-            Text(f"{r16:+6d}", style="bold white"),
-            self.make_bar(self.right),
-        )
-
-        keys = Text.assemble(
-            ("  W/S ", "bold cyan"),
-            ("linear  ", "dim"),
-            ("  A/D ", "bold magenta"),
-            ("angular  ", "dim"),
-            ("  Space ", "bold yellow"),
-            ("stop  ", "dim"),
-            ("  Q/Esc ", "bold red"),
-            ("quit", "dim"),
-        )
-
-        status = Text.assemble(
-            ("  ● ", "bold green"),
-            (f"{ROBOT_IP}:{UDP_PORT}  ", "dim"),
-            (f"  {SEND_HZ}Hz  ", "dim"),
-            (f"  pkts: {self.packets_sent}", "dim"),
-        )
-
-        layout = Layout()
-        layout.split_column(
-            Layout(Align.center(keys), size=1),
-            Layout(Text("")),
-            Layout(tbl, size=7),
-            Layout(Text("")),
-            Layout(Align.center(status), size=1),
-        )
-
-        return Panel(
-            layout,
-            title="[bold white]🤖 Differential Drive Teleop[/]",
-            border_style="bright_blue",
-            height=14,
-            width=60,
-        )
+        # move cursor to top-left and draw over previous frame
+        sys.stdout.write("\033[H")
+        lines = [
+            "  Differential Drive Teleop",
+            "  ─────────────────────────────────",
+            f"  linear:  {self.lin:+.2f}   angular: {self.ang:+.2f}",
+            f"  L motor: {l16:+6d}    R motor: {r16:+6d}",
+            "  ─────────────────────────────────",
+            "  W/S linear | A/D angular | Space stop | Q quit",
+            f"  -> {ROBOT_IP}:{UDP_PORT}  {SEND_HZ}Hz  pkts:{self.packets_sent}",
+        ]
+        for line in lines:
+            sys.stdout.write(f"{line:<50}\n")
+        sys.stdout.flush()
 
     def run(self):
-        sender = threading.Thread(target=self.send_loop, daemon=True)
-        sender.start()
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            # clear screen once
+            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.flush()
 
-        listener = keyboard.Listener(on_press=self.on_press)
-        listener.start()
+            sender = threading.Thread(target=self.send_loop, daemon=True)
+            sender.start()
 
-        console = Console()
-        with Live(
-            self.render(), console=console, refresh_per_second=SEND_HZ, screen=True
-        ) as live:
+            display_thread = threading.Thread(target=self._display_loop, daemon=True)
+            display_thread.start()
+
             while self.running:
-                live.update(self.render())
-                time.sleep(1.0 / SEND_HZ)
+                ch = sys.stdin.read(1)
+                if ch:
+                    self.handle_key(ch)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            self.running = False
+            # reset terminal
+            sys.stdout.write("\033[?25h\n")
+            sys.stdout.flush()
 
-        listener.stop()
-        sender.join(timeout=1)
+    def _display_loop(self):
+        while self.running:
+            self.display()
+            time.sleep(1.0 / SEND_HZ)
 
 
 if __name__ == "__main__":

@@ -27,25 +27,36 @@ detector = Detector(
 # Mat dimensions (tag center to tag center, mm)
 MAT_W_MM = 2338.4
 MAT_H_MM = 1119.2
+MAT_ASPECT = MAT_W_MM / MAT_H_MM
 
-# Output resolution: 1 px per mm
-OUT_W = int(MAT_W_MM)
-OUT_H = int(MAT_H_MM)
+# Output at 1080p, preserving mat aspect ratio
+OUT_H = 1080
+OUT_W = int(OUT_H * MAT_ASPECT)
 
 # Destination points for the 4 corner tags (TL=0, TR=1, BR=2, BL=3)
+# Place mat in the center of a 1920x1080 output so surrounding area is visible
+PAD_X = (1920 - OUT_W) // 2
+PAD_Y = 0
 DST_POINTS = np.array(
-    [[0, 0], [OUT_W, 0], [OUT_W, OUT_H], [0, OUT_H]],
+    [
+        [PAD_X, PAD_Y],
+        [PAD_X + OUT_W, PAD_Y],
+        [PAD_X + OUT_W, PAD_Y + OUT_H],
+        [PAD_X, PAD_Y + OUT_H],
+    ],
     dtype=np.float32,
 )
 
-# Corner tag IDs mapped to dst index
-TAG_TO_CORNER = {0: 0, 1: 1, 2: 2, 3: 3}
+CORNER_TAG_IDS = {0, 1, 2, 3}
+CALIBRATION_FRAMES = 10
 
 cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
 cv2.namedWindow("Warped", cv2.WINDOW_NORMAL)
 
 prev_time = time.time()
 warp_matrix = None
+calibration_samples: dict[int, list[np.ndarray]] = {i: [] for i in range(4)}
+calibrated = False
 
 while True:
     ret, frame = cap.read()
@@ -57,60 +68,63 @@ while True:
     prev_time = now
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    detections = detector.detect(gray)
 
-    # Build mapping of tag_id -> center for corner tags
-    tag_centers: dict[int, np.ndarray] = {}
+    # Only run detection during calibration
+    if not calibrated:
+        detections = detector.detect(gray)
 
-    for det in detections:
-        corners = det.corners.astype(int)
+        for det in detections:
+            corners = det.corners.astype(int)
+            for i in range(4):
+                cv2.line(
+                    frame, tuple(corners[i]), tuple(corners[(i + 1) % 4]), (0, 255, 0), 2
+                )
 
-        # Draw quad outline
-        for i in range(4):
-            cv2.line(
-                frame, tuple(corners[i]), tuple(corners[(i + 1) % 4]), (0, 255, 0), 2
+            cx, cy = int(det.center[0]), int(det.center[1])
+            cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
+
+            diag1 = np.linalg.norm(corners[2] - corners[0])
+            diag2 = np.linalg.norm(corners[3] - corners[1])
+            size = (diag1 + diag2) / 2.0
+
+            H = det.homography
+            angle = math.degrees(math.atan2(H[1, 0], H[0, 0]))
+
+            label = f"id={det.tag_id} {angle:.0f}deg {size:.0f}px"
+            cv2.putText(
+                frame,
+                label,
+                (cx + 10, cy - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 255, 0),
+                2,
             )
 
-        # Center
-        cx, cy = int(det.center[0]), int(det.center[1])
-        cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
+            if det.tag_id in CORNER_TAG_IDS and len(calibration_samples[det.tag_id]) < CALIBRATION_FRAMES:
+                calibration_samples[det.tag_id].append(np.array(det.center, dtype=np.float32))
 
-        # Size (average of two diagonal lengths in pixels)
-        diag1 = np.linalg.norm(corners[2] - corners[0])
-        diag2 = np.linalg.norm(corners[3] - corners[1])
-        size = (diag1 + diag2) / 2.0
+        # Check if we have enough samples for all 4 corners
+        counts = {tid: len(samples) for tid, samples in calibration_samples.items()}
+        min_count = min(counts.values())
 
-        # 2D rotation from homography
-        H = det.homography
-        angle = math.degrees(math.atan2(H[1, 0], H[0, 0]))
+        if min_count >= CALIBRATION_FRAMES:
+            src_points = np.array(
+                [np.mean(calibration_samples[tid], axis=0) for tid in range(4)],
+                dtype=np.float32,
+            )
+            warp_matrix = cv2.getPerspectiveTransform(src_points, DST_POINTS)
+            calibrated = True
 
-        # Label
-        label = f"id={det.tag_id} {angle:.0f}deg {size:.0f}px"
-        cv2.putText(
-            frame,
-            label,
-            (cx + 10, cy - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 0),
-            2,
-        )
-
-        if det.tag_id in TAG_TO_CORNER:
-            tag_centers[det.tag_id] = np.array(det.center, dtype=np.float32)
-
-    # Update warp matrix when all 4 corner tags are visible
-    if len(tag_centers) == 4:
-        src_points = np.array(
-            [tag_centers[tid] for tid in range(4)],
-            dtype=np.float32,
-        )
-        warp_matrix = cv2.getPerspectiveTransform(src_points, DST_POINTS)
+        # Show calibration progress
+        progress = f"Calibrating: {min_count}/{CALIBRATION_FRAMES}"
+    else:
+        progress = "Calibrated"
 
     h, w = frame.shape[:2]
     cv2.putText(
         frame,
-        f"FPS: {fps:.1f}  Tags: {len(detections)}",
+        f"FPS: {fps:.1f}  {progress}",
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
         1,
@@ -124,7 +138,7 @@ while True:
     cv2.imshow("Camera", frame)
 
     if warp_matrix is not None:
-        warped = cv2.warpPerspective(frame, warp_matrix, (OUT_W, OUT_H))
+        warped = cv2.warpPerspective(frame, warp_matrix, (1920, 1080))
         cv2.imshow("Warped", warped)
 
     if cv2.waitKey(1) & 0xFF == ord("q"):

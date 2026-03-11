@@ -13,6 +13,8 @@ cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
 cap.set(cv2.CAP_PROP_EXPOSURE, 10)
 
+cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
+
 while True:
     ret, frame = cap.read()
     if not ret:

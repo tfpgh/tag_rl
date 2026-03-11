@@ -20,23 +20,31 @@ cap.set(cv2.CAP_PROP_EXPOSURE, 10)
 
 detector = Detector(families="tagStandard41h12", nthreads=7, quad_decimate=2.0)
 
-# Mat tag-center-to-tag-center dimensions (mm)
-MAT_W_MM = 2338.4
-MAT_H_MM = 1119.2
+# Mat dimensions (mm)
+TAG_CENTER_W = 2338.4
+TAG_CENTER_H = 1119.2
+TAG_SIZE = 100.0
+MAT_W = TAG_CENTER_W + TAG_SIZE  # full outer edge
+MAT_H = TAG_CENTER_H + TAG_SIZE
 
-# Fit mat into 1920x1080 with margin, centered
-FRAME_W, FRAME_H = 1920, 1080
-MARGIN = 0.07
-usable_w = FRAME_W * (1 - 2 * MARGIN)
-usable_h = FRAME_H * (1 - 2 * MARGIN)
-scale = min(usable_w / MAT_W_MM, usable_h / MAT_H_MM)
-mat_w_px = MAT_W_MM * scale
-mat_h_px = MAT_H_MM * scale
-x0 = (FRAME_W - mat_w_px) / 2
-y0 = (FRAME_H - mat_h_px) / 2
+# Output: mat fills frame with 1% buffer, stats bar on top
+FRAME_W = 1920
+STATS_H = 35
+BUFFER_PX = int(0.01 * FRAME_W)
+mat_w_px = FRAME_W - 2 * BUFFER_PX
+px_per_mm = mat_w_px / MAT_W
+mat_h_px = int(MAT_H * px_per_mm)
+FRAME_H = STATS_H + BUFFER_PX + mat_h_px + BUFFER_PX
+
+# Tag centers are inset 50mm (half a tag) from the mat edge
+inset = int(TAG_SIZE / 2 * px_per_mm)
+x0 = BUFFER_PX + inset
+y0 = STATS_H + BUFFER_PX + inset
+x1 = BUFFER_PX + mat_w_px - inset
+y1 = STATS_H + BUFFER_PX + mat_h_px - inset
 
 DST_POINTS = np.array(
-    [[x0, y0], [x0 + mat_w_px, y0], [x0 + mat_w_px, y0 + mat_h_px], [x0, y0 + mat_h_px]],
+    [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
     dtype=np.float32,
 )
 
@@ -80,10 +88,6 @@ while True:
     draw_detections(frame, detections)
 
     h, w = frame.shape[:2]
-    cv2.putText(frame, f"FPS: {fps:.1f}  Tags: {len(detections)}", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (180, 255, 180), 2)
-    cv2.putText(frame, f"{w}x{h}", (10, 70),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (180, 255, 180), 2)
 
     # Calibration: collect corner tag positions
     if warp_matrix is None:
@@ -91,7 +95,7 @@ while True:
             if det.tag_id in calibration_samples and len(calibration_samples[det.tag_id]) < CALIBRATION_FRAMES:
                 calibration_samples[det.tag_id].append(np.array(det.center, dtype=np.float32))
         min_count = min(len(s) for s in calibration_samples.values())
-        cv2.putText(frame, f"Calibrating: {min_count}/{CALIBRATION_FRAMES}", (10, 110),
+        cv2.putText(frame, f"Calibrating: {min_count}/{CALIBRATION_FRAMES}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (180, 255, 180), 2)
         if min_count >= CALIBRATION_FRAMES:
             src = np.array([np.mean(calibration_samples[i], axis=0) for i in range(4)], dtype=np.float32)
@@ -99,6 +103,10 @@ while True:
 
     if warp_matrix is not None:
         frame = cv2.warpPerspective(frame, warp_matrix, (FRAME_W, FRAME_H))
+
+    # Stats on top (drawn after warp so text isn't distorted)
+    stats = f"FPS: {fps:.1f}  Tags: {len(detections)}  {w}x{h}"
+    cv2.putText(frame, stats, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 255, 180), 2)
 
     cv2.imshow("Camera", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):

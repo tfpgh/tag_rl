@@ -20,6 +20,7 @@ dependencies = [
     "tqdm>=4.67.3",
     "moviepy>=2.2.1",
     "opencv-python>=4.13.0.92",
+    "pupil-apriltags>=1.0.4.post11",
 ]
 
 [project.optional-dependencies]

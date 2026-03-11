@@ -1852,6 +1852,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pupil-apriltags"
+version = "1.0.4.post11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/d2/06ec5cd9ad9835ebd7e8f28b2a4c808215fca39e180dc4f95f26b98a45e7/pupil_apriltags-1.0.4.post11.tar.gz", hash = "sha256:18980da3d3a341e94401cac341768dd453c992d9f0e19a9e6dfdd5c326ff46c4", size = 1914282, upload-time = "2025-04-22T15:21:10.88Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/46/fab76c4dc791ed9c42aff2938c6f5059959034207aa9cbbb584a2d89a0b6/pupil_apriltags-1.0.4.post11-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:77d80f00a1c3972af90b2ac68e45dd001e816101ddedd9ce1af764125566c770", size = 7774435, upload-time = "2025-04-22T15:20:40.497Z" },
+    { url = "https://files.pythonhosted.org/packages/36/bf/88aa37ba004d782a3c0537f975a36d05a3c7814465a55211d86c22594dc7/pupil_apriltags-1.0.4.post11-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e5c46005e61233a44e912921aeddbe8ebf05ffcddadccd798a2f0b02a9524d7c", size = 4931853, upload-time = "2025-04-22T15:20:57.686Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/e8/f2d47f7257469570994857d2dc34ba5f8dd14fa2741215c2115333d8b5f9/pupil_apriltags-1.0.4.post11-cp313-cp313-win_amd64.whl", hash = "sha256:ada1154cd64bd86f39edd6bdd72d7371ded80ce2cde4a344d4fda2aab923db28", size = 2051847, upload-time = "2025-04-22T15:20:35.744Z" },
+]
+
+[[package]]
 name = "pyasn1"
 version = "0.6.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2255,6 +2269,7 @@ dependencies = [
     { name = "mujoco-mjx" },
     { name = "opencv-python" },
     { name = "optax" },
+    { name = "pupil-apriltags" },
     { name = "pynput" },
     { name = "setuptools" },
     { name = "tensorboard" },
@@ -2290,6 +2305,7 @@ requires-dist = [
     { name = "mujoco-warp", marker = "extra == 'cuda'", git = "https://github.com/google-deepmind/mujoco_warp.git" },
     { name = "opencv-python", specifier = ">=4.13.0.92" },
     { name = "optax", specifier = ">=0.2.6" },
+    { name = "pupil-apriltags", specifier = ">=1.0.4.post11" },
     { name = "pynput", specifier = ">=1.8.1" },
     { name = "setuptools", specifier = "==81.0.0" },
     { name = "tensorboard", specifier = ">=2.20.0" },

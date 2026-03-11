@@ -15,7 +15,7 @@ cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
 # Manual exposure
 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-cap.set(cv2.CAP_PROP_EXPOSURE, 10)
+cap.set(cv2.CAP_PROP_EXPOSURE, 25)
 
 detector = Detector(families="tagStandard41h12", nthreads=7, quad_decimate=2.0)
 
@@ -102,21 +102,40 @@ while True:
     # Calibration: collect corner tag positions
     if warp_matrix is None:
         for det in detections:
-            if det.tag_id in calibration_samples and len(calibration_samples[det.tag_id]) < CALIBRATION_FRAMES:
-                calibration_samples[det.tag_id].append(np.array(det.center, dtype=np.float32))
+            if (
+                det.tag_id in calibration_samples
+                and len(calibration_samples[det.tag_id]) < CALIBRATION_FRAMES
+            ):
+                calibration_samples[det.tag_id].append(
+                    np.array(det.center, dtype=np.float32)
+                )
         min_count = min(len(s) for s in calibration_samples.values())
-        cv2.putText(frame, f"Calibrating: {min_count}/{CALIBRATION_FRAMES}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (180, 255, 180), 2)
+        cv2.putText(
+            frame,
+            f"Calibrating: {min_count}/{CALIBRATION_FRAMES}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (180, 255, 180),
+            2,
+        )
         if min_count >= CALIBRATION_FRAMES:
-            src = np.array([np.mean(calibration_samples[i], axis=0) for i in range(4)], dtype=np.float32)
+            src = np.array(
+                [np.mean(calibration_samples[i], axis=0) for i in range(4)],
+                dtype=np.float32,
+            )
             warp_matrix = cv2.getPerspectiveTransform(src, DST_POINTS)
 
     if warp_matrix is not None:
         frame = cv2.warpPerspective(frame, warp_matrix, (FRAME_W, FRAME_H))
 
     # Stats on top (drawn after warp so text isn't distorted)
-    stats = f"FPS: {fps:.1f}  Tags: {len(detections)}  {w}x{h}  {px_per_mm:.2f}px/mm"
-    cv2.putText(frame, stats, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 255, 180), 2)
+    stats = (
+        f"FPS: {fps:.1f}  Tags: {len(detections)}  {w}x{h}  {1 / px_per_mm:.2f}mm/px"
+    )
+    cv2.putText(
+        frame, stats, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 255, 180), 2
+    )
 
     cv2.imshow("Camera", frame)
     if cv2.waitKey(1) & 0xFF == ord("q"):

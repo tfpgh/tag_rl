@@ -1,4 +1,3 @@
-import math
 import time
 
 import cv2
@@ -57,21 +56,31 @@ warp_matrix = None
 calibration_samples: dict[int, list[np.ndarray]] = {i: [] for i in range(4)}
 
 
+COLOR = (180, 255, 180)
+
+# Inside corner index for each corner tag (the corner closest to mat center)
+# pupil_apriltags corners: [bl, br, tr, tl] of the tag
+INSIDE_CORNER = {0: 2, 1: 3, 2: 0, 3: 1}  # TL→tr, TR→tl, BR→bl, BL→br
+
+
 def draw_detections(frame: np.ndarray, detections: list) -> None:
+    inside_pts: dict[int, tuple[int, int]] = {}
+
     for det in detections:
         corners = det.corners.astype(int)
         for i in range(4):
-            cv2.line(frame, tuple(corners[i]), tuple(corners[(i + 1) % 4]), (0, 255, 0), 2)
-        cx, cy = int(det.center[0]), int(det.center[1])
-        cv2.circle(frame, (cx, cy), 4, (0, 0, 255), -1)
-        diag1 = np.linalg.norm(corners[2] - corners[0])
-        diag2 = np.linalg.norm(corners[3] - corners[1])
-        size = (diag1 + diag2) / 2.0
-        angle = math.degrees(math.atan2(det.homography[1, 0], det.homography[0, 0]))
-        cv2.putText(
-            frame, f"id={det.tag_id} {angle:.0f}deg {size:.0f}px",
-            (cx + 10, cy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2,
-        )
+            cv2.line(frame, tuple(corners[i]), tuple(corners[(i + 1) % 4]), COLOR, 2)
+        cv2.circle(frame, (int(det.center[0]), int(det.center[1])), 4, (0, 0, 255), -1)
+
+        if det.tag_id in INSIDE_CORNER:
+            c = corners[INSIDE_CORNER[det.tag_id]]
+            inside_pts[det.tag_id] = (c[0], c[1])
+
+    # Draw red rectangle between inside corners of the 4 tags
+    if len(inside_pts) == 4:
+        pts = [inside_pts[i] for i in range(4)]
+        for i in range(4):
+            cv2.line(frame, pts[i], pts[(i + 1) % 4], (0, 0, 255), 2)
 
 
 while True:

@@ -73,9 +73,7 @@ def draw_detections(frame: np.ndarray, detections: list) -> None:
         cv2.circle(frame, (int(cx), int(cy)), 4, (0, 0, 255), -1)
 
         if det.tag_id in INWARD_DIR:
-            # Half tag width in pixels from average side length
-            side_lengths = [np.linalg.norm(corners[(i + 1) % 4] - corners[i]) for i in range(4)]
-            half = np.mean(side_lengths) / 2
+            half = TAG_SIZE / 2 * px_per_mm
             dx, dy = INWARD_DIR[det.tag_id]
             inside_pts[det.tag_id] = (int(cx + dx * half), int(cy + dy * half))
 
@@ -117,7 +115,7 @@ while True:
         frame = cv2.warpPerspective(frame, warp_matrix, (FRAME_W, FRAME_H))
 
     # Stats on top (drawn after warp so text isn't distorted)
-    stats = f"FPS: {fps:.1f}  Tags: {len(detections)}  {w}x{h}"
+    stats = f"FPS: {fps:.1f}  Tags: {len(detections)}  {w}x{h}  {px_per_mm:.2f}px/mm"
     cv2.putText(frame, stats, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 255, 180), 2)
 
     cv2.imshow("Camera", frame)

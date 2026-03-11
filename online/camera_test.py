@@ -27,22 +27,25 @@ detector = Detector(
 # Mat dimensions (tag center to tag center, mm)
 MAT_W_MM = 2338.4
 MAT_H_MM = 1119.2
-MAT_ASPECT = MAT_W_MM / MAT_H_MM
 
-# Output at 1080p, preserving mat aspect ratio
-OUT_H = 1080
-OUT_W = int(OUT_H * MAT_ASPECT)
+# Output 1920x1080, fit mat inside with 15% margin so surrounding area is visible
+FRAME_W, FRAME_H = 1920, 1080
+MARGIN = 0.15
+usable_w = FRAME_W * (1 - 2 * MARGIN)
+usable_h = FRAME_H * (1 - 2 * MARGIN)
+scale = min(usable_w / MAT_W_MM, usable_h / MAT_H_MM)
+mat_w_px = MAT_W_MM * scale
+mat_h_px = MAT_H_MM * scale
+x0 = (FRAME_W - mat_w_px) / 2
+y0 = (FRAME_H - mat_h_px) / 2
 
 # Destination points for the 4 corner tags (TL=0, TR=1, BR=2, BL=3)
-# Place mat in the center of a 1920x1080 output so surrounding area is visible
-PAD_X = (1920 - OUT_W) // 2
-PAD_Y = 0
 DST_POINTS = np.array(
     [
-        [PAD_X, PAD_Y],
-        [PAD_X + OUT_W, PAD_Y],
-        [PAD_X + OUT_W, PAD_Y + OUT_H],
-        [PAD_X, PAD_Y + OUT_H],
+        [x0, y0],
+        [x0 + mat_w_px, y0],
+        [x0 + mat_w_px, y0 + mat_h_px],
+        [x0, y0 + mat_h_px],
     ],
     dtype=np.float32,
 )

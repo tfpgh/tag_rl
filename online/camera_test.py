@@ -50,8 +50,7 @@ DST_POINTS = np.array(
 CALIBRATION_FRAMES = 100
 
 cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
-cv2.setWindowProperty("Camera", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-cv2.setWindowProperty("Camera", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+cv2.resizeWindow("Camera", FRAME_W, FRAME_H)
 
 prev_time = time.time()
 warp_matrix = None
@@ -115,7 +114,7 @@ while True:
         cv2.putText(
             frame,
             f"Calibrating: {min_count}/{CALIBRATION_FRAMES}",
-            (10, 30),
+            (10, 55),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             (180, 255, 180),

@@ -20,7 +20,8 @@ cap.set(cv2.CAP_PROP_EXPOSURE, 10)
 
 detector = Detector(
     families="tagStandard41h12",
-    nthreads=8,
+    nthreads=7,
+    quad_decimate=2.0,
 )
 
 cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)

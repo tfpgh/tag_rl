@@ -24,9 +24,28 @@ detector = Detector(
     quad_decimate=2.0,
 )
 
+# Mat dimensions (tag center to tag center, mm)
+MAT_W_MM = 2338.4
+MAT_H_MM = 1119.2
+
+# Output resolution: 1 px per mm
+OUT_W = int(MAT_W_MM)
+OUT_H = int(MAT_H_MM)
+
+# Destination points for the 4 corner tags (TL=0, TR=1, BR=2, BL=3)
+DST_POINTS = np.array(
+    [[0, 0], [OUT_W, 0], [OUT_W, OUT_H], [0, OUT_H]],
+    dtype=np.float32,
+)
+
+# Corner tag IDs mapped to dst index
+TAG_TO_CORNER = {0: 0, 1: 1, 2: 2, 3: 3}
+
 cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
+cv2.namedWindow("Warped", cv2.WINDOW_NORMAL)
 
 prev_time = time.time()
+warp_matrix = None
 
 while True:
     ret, frame = cap.read()
@@ -39,6 +58,9 @@ while True:
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     detections = detector.detect(gray)
+
+    # Build mapping of tag_id -> center for corner tags
+    tag_centers: dict[int, np.ndarray] = {}
 
     for det in detections:
         corners = det.corners.astype(int)
@@ -74,6 +96,17 @@ while True:
             2,
         )
 
+        if det.tag_id in TAG_TO_CORNER:
+            tag_centers[det.tag_id] = np.array(det.center, dtype=np.float32)
+
+    # Update warp matrix when all 4 corner tags are visible
+    if len(tag_centers) == 4:
+        src_points = np.array(
+            [tag_centers[tid] for tid in range(4)],
+            dtype=np.float32,
+        )
+        warp_matrix = cv2.getPerspectiveTransform(src_points, DST_POINTS)
+
     h, w = frame.shape[:2]
     cv2.putText(
         frame,
@@ -89,6 +122,11 @@ while True:
     )
 
     cv2.imshow("Camera", frame)
+
+    if warp_matrix is not None:
+        warped = cv2.warpPerspective(frame, warp_matrix, (OUT_W, OUT_H))
+        cv2.imshow("Warped", warped)
+
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 

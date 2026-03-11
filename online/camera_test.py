@@ -15,7 +15,7 @@ cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
 # Manual exposure
 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-cap.set(cv2.CAP_PROP_EXPOSURE, 25)
+cap.set(cv2.CAP_PROP_EXPOSURE, 17)
 
 detector = Detector(families="tagStandard41h12", nthreads=7, quad_decimate=2.0)
 
@@ -47,9 +47,11 @@ DST_POINTS = np.array(
     dtype=np.float32,
 )
 
-CALIBRATION_FRAMES = 10
+CALIBRATION_FRAMES = 100
 
 cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
+cv2.setWindowProperty("Camera", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+cv2.setWindowProperty("Camera", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
 
 prev_time = time.time()
 warp_matrix = None

@@ -8,7 +8,7 @@ cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-cap.set(cv2.CAP_PROP_FPS, 15)
+cap.set(cv2.CAP_PROP_FPS, 30)
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
 # Manual exposure
@@ -30,10 +30,16 @@ while True:
 
     h, w = frame.shape[:2]
     cv2.putText(
-        frame, f"FPS: {fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
+        frame,
+        f"FPS: {fps:.1f}",
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (180, 255, 180),
+        2,
     )
     cv2.putText(
-        frame, f"{w}x{h}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
+        frame, f"{w}x{h}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (180, 255, 180), 2
     )
 
     cv2.imshow("Camera", frame)

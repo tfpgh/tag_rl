@@ -8,7 +8,7 @@ from jax import random
 from mujoco import mjx
 
 from environment.config import EnvironmentConfig
-from environment.mjcf import WALL_HEIGHT, generate_mjcf
+from environment.mjcf import GEOM_GROUP_WALL, WALL_HEIGHT, generate_mjcf
 from environment.mjx_ray_patch import patch_mjx_cylinder_rays
 from environment.mujoco_data import (
     JointDofSlices,
@@ -48,6 +48,8 @@ class TagEnvironmentStepInfo(NamedTuple):
     distance: jax.Array  # float
     step_count: jax.Array  # int
     is_frozen: jax.Array  # bool
+    chaser_collision: jax.Array  # bool
+    evader_collision: jax.Array  # bool
 
 
 class TagEnvironment:
@@ -98,6 +100,7 @@ class TagEnvironment:
         self.arena_diagonal = jnp.sqrt(
             (config.arena_width) ** 2 + (config.arena_height) ** 2
         )
+        self.collision_epsilon = config.collision_epsilon_factor * config.agent_radius / float(self.arena_diagonal)
 
         # Pre-allocate mjx.Data template (reused by reset to avoid tracer leaks)
         self._template_mjx_data = mjx.make_data(
@@ -164,6 +167,15 @@ class TagEnvironment:
             return normalized_distance, geom_group
 
         return jax.vmap(_cast_single_ray)(origins, directions)
+
+    def collision_from_obs(self, obs: jax.Array) -> jax.Array:
+        """Check if any ray hits a wall/obstacle closer than agent_radius (normalized)."""
+        n = self.config.n_rays
+        ray_distances = obs[2 : 2 + n]
+        ray_types = obs[2 + n : 2 + 2 * n]
+        return jnp.any(
+            (ray_types == GEOM_GROUP_WALL) & (ray_distances < self.collision_epsilon)
+        )
 
     def _compute_observation(
         self,
@@ -513,6 +525,8 @@ class TagEnvironment:
             distance=distance,
             step_count=step_count,
             is_frozen=is_frozen,
+            chaser_collision=jnp.bool_(False),
+            evader_collision=jnp.bool_(False),
         )
 
         return new_state, chaser_reward, evader_reward, done, info

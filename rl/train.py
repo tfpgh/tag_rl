@@ -90,6 +90,16 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         # 5. Observations from merged+forwarded state
         chaser_obs, evader_obs = env.compute_observations(new_mjx_data, step_count)
 
+        # 6. Collision penalty (ray-based)
+        chaser_collision = env.collision_from_obs(chaser_obs)
+        evader_collision = env.collision_from_obs(evader_obs)
+        chaser_reward = chaser_reward - env_config.collision_penalty * chaser_collision * ~info.is_frozen
+        evader_reward = evader_reward - env_config.collision_penalty * evader_collision
+        info = info._replace(
+            chaser_collision=chaser_collision,
+            evader_collision=evader_collision,
+        )
+
         tagged: jax.Array = jnp.where(done, jnp.bool_(False), stepped.tagged)  # type: ignore[assignment]
         state = TagEnvironmentState(
             mjx_data=new_mjx_data,
@@ -507,6 +517,9 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
             "evader/mean_reward": traj_batch.evader_reward.mean(),
             "chaser/mean_action_magnitude": jnp.abs(traj_batch.chaser_action).mean(),
             "evader/mean_action_magnitude": jnp.abs(traj_batch.evader_action).mean(),
+            # Collisions
+            "chaser/collision_rate": traj_batch.info.chaser_collision.astype(jnp.float32).mean(),
+            "evader/collision_rate": traj_batch.info.evader_collision.astype(jnp.float32).mean(),
         }
 
         runner_state = (

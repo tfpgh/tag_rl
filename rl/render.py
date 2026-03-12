@@ -1,7 +1,8 @@
-"""Standalone script to render episodes from a checkpoint to mp4.
+import os
 
-Usage: uv run -m rl.render
-"""
+if __name__ == "__main__":
+    os.environ["MUJOCO_GL"] = "egl"
+
 
 import pickle
 

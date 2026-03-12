@@ -100,14 +100,18 @@ class TagEnvironment:
         self.arena_diagonal = jnp.sqrt(
             (config.arena_width) ** 2 + (config.arena_height) ** 2
         )
-        self.collision_epsilon = config.collision_epsilon_factor * config.agent_radius / float(self.arena_diagonal)
+        self.collision_epsilon = (
+            config.collision_epsilon_factor
+            * config.agent_radius
+            / float(self.arena_diagonal)
+        )
 
         # Pre-allocate mjx.Data template (reused by reset to avoid tracer leaks)
         self._template_mjx_data = mjx.make_data(
             self.mj_model,
             impl="warp",
             naconmax=(14 + 4 * config.max_obstacles) * n_envs,
-            njmax=80,
+            njmax=128,
         )
 
     def _get_body_subtree(self, root_id: int) -> list[int]:

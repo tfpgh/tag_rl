@@ -11,21 +11,21 @@ class EnvironmentConfig:
     agent_z: float = 0.0299  # Chassis center height
 
     # Agent radius multiplier for tag distance
-    tag_distance_factor: float = 1.05
+    tag_distance_factor: float = 1.03
 
     # Perception rays
-    n_rays: int = 360
+    n_rays: int = 256
 
     # Action frequency, hz
     action_frequency: int = 20
 
     # Episode timing, seconds
-    episode_max_length: int = 30
-    chaser_freeze_seconds: int = 4
+    episode_max_length: int = 20
+    chaser_freeze_seconds: int = 5
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
-    time_reward: float = 0.004  # + for evader, - for chaser
+    time_reward: float = 0.005  # + for evader, - for chaser
     distance_shaping_scale: float = 0.00
     distance_shaping_gamma: float = 0.99
     collision_penalty: float = 1.0  # Per-step penalty for wall/obstacle contact
@@ -41,4 +41,4 @@ class EnvironmentConfig:
 
     # Obstacles
     max_obstacles: int = 7  # always allocated in MJCF
-    obstacle_width: float = 0.13  # square box side length (meters)
+    obstacle_width: float = 0.2  # square box side length (meters)

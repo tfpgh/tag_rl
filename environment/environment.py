@@ -111,7 +111,7 @@ class TagEnvironment:
             self.mj_model,
             impl="warp",
             naconmax=(14 + 4 * config.max_obstacles) * n_envs,
-            njmax=110,
+            njmax=128,
         )
 
     def _get_body_subtree(self, root_id: int) -> list[int]:

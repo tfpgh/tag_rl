@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class RLConfig:
-    num_envs: int = 8192
+    num_envs: int = 6144
     num_steps: int = 128
 
     total_timesteps: int = int(3e9)

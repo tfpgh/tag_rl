@@ -70,6 +70,17 @@ def _agent_mjcf(
             contype="{CONTACTS["chassis"][0]}"
             conaffinity="{CONTACTS["chassis"][1]}"
         />
+        <geom
+            name="{name}_bumper"
+            type="capsule"
+            pos="0.0415 0 -0.021"
+            euler="90 0 0"
+            size="0.00635 0.010"
+            group="{GEOM_GROUP_AGENT}"
+            rgba="0.1 0.1 0.1 1"
+            contype="{CONTACTS["chassis"][0]}"
+            conaffinity="{CONTACTS["chassis"][1]}"
+        />
         <body name="{name}_left_wheel" pos="0 0.037123 -0.0099">
             <joint
                 name="{name}_left_wheel_joint"

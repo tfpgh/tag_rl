@@ -274,7 +274,7 @@ def generate_mjcf(config: EnvironmentConfig, mode: SceneMode = "training") -> st
 
     return f"""
     <mujoco model="tag_{mode}">
-        <option timestep="0.005" integrator="implicitfast" solver="Newton" iterations="1" ls_iterations="4"/>
+        <option timestep="0.005" integrator="implicitfast" ccd_iterations="100"/>
         <asset>
             <material name="default" rgba="1 1 1 1" />
         </asset>

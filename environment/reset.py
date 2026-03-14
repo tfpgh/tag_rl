@@ -63,7 +63,8 @@ def sample_reset_state(
         chosen, count = carry
         distances = jnp.linalg.norm(chosen - candidate_xy, axis=1)
         valid_slots = jnp.arange(config.max_obstacles) < count
-        min_distance = jnp.min(jnp.where(valid_slots, distances, jnp.inf))
+        masked_distances = jnp.asarray(jnp.where(valid_slots, distances, jnp.inf))
+        min_distance = cast(jax.Array, masked_distances.min())
         accept = (count == 0) | (min_distance >= min_obstacle_separation)
         write_index = jnp.minimum(count, config.max_obstacles - 1)
         chosen = jnp.where(
@@ -136,12 +137,12 @@ def sample_reset_state(
     evader_xy = choose_agent(evader_candidates)
 
     delta = evader_xy - chaser_xy
-    dist = jnp.linalg.norm(delta)
+    dist = cast(jax.Array, jnp.linalg.norm(delta))
     fallback_dir = random.uniform(
         key_separation_fallback, (2,), minval=-1.0, maxval=1.0
     )
     fallback_dir = fallback_dir / jnp.maximum(jnp.linalg.norm(fallback_dir), 1e-6)
-    direction = jnp.where(dist < 1e-6, fallback_dir, delta / dist)
+    direction = cast(jax.Array, jnp.where(dist < 1e-6, fallback_dir, delta / dist))
 
     too_close = dist < config.minimum_starting_separation
     pushed_evader = jnp.clip(
@@ -151,7 +152,7 @@ def sample_reset_state(
     )
     evader_xy = jnp.where(too_close, pushed_evader, evader_xy)
 
-    new_dist = jnp.linalg.norm(evader_xy - chaser_xy)
+    new_dist = cast(jax.Array, jnp.linalg.norm(evader_xy - chaser_xy))
     still_too_close = new_dist < config.minimum_starting_separation
     pushed_chaser = jnp.clip(
         evader_xy - direction * config.minimum_starting_separation,

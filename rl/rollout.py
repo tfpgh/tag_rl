@@ -101,6 +101,7 @@ def auto_reset_step(
             done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time
         ),
     )
+    new_mjx_data = env.forward(new_mjx_data)
     step_count = jnp.asarray(jnp.where(done, jnp.int32(0), stepped.step_count))
 
     tagged = jnp.asarray(jnp.where(done, jnp.bool_(False), stepped.tagged))

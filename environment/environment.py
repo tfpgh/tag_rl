@@ -47,6 +47,9 @@ class TagEnvironment:
 
         self._template_mjx_data = mjx.make_data(self.mj_model)
 
+    def forward(self, mjx_data: mjx.Data) -> mjx.Data:
+        return mjx.forward(self.mjx_model, mjx_data)
+
     def _agent_kinematics(self, mjx_data: mjx.Data, is_chaser: bool) -> AgentKinematics:
         qpos = mjx_data.qpos
         qvel = mjx_data.qvel
@@ -251,7 +254,7 @@ class TagEnvironment:
             obstacle_yaws,
             obstacle_active,
         ) = self.reset_state(rng)
-        mjx_data = self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
+        mjx_data = self.forward(self._template_mjx_data.replace(qpos=qpos, qvel=qvel))
         state = TagEnvironmentState(
             mjx_data=mjx_data,
             obstacle_positions_xy=obstacle_positions_xy,

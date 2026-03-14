@@ -1,5 +1,4 @@
 from functools import partial
-from collections.abc import Mapping
 
 import jax
 import jax.numpy as jnp
@@ -27,20 +26,11 @@ def observation_size(config: EnvironmentConfig) -> int:
 
 
 class TagEnvironment:
-    def __init__(
-        self,
-        config: EnvironmentConfig,
-        n_envs: int,
-        mjcf_option_overrides: Mapping[str, str | int | float | bool] | None = None,
-    ) -> None:
+    def __init__(self, config: EnvironmentConfig, n_envs: int) -> None:
         self.config = config
         self.n_envs = n_envs
 
-        xml = generate_mjcf(
-            config,
-            mode="training",
-            option_overrides=mjcf_option_overrides,
-        )
+        xml = generate_mjcf(config, mode="training")
         self.mj_model = mujoco.MjModel.from_xml_string(xml)
         self.mjx_model = mjx.put_model(self.mj_model)
 

@@ -9,7 +9,12 @@ from rl.rollout import Transition
 def compute_training_metrics(
     traj_batch: Transition, chaser_loss: LossInfo, evader_loss: LossInfo
 ) -> dict[str, jax.Array]:
-    finished = traj_batch.info.tagged | traj_batch.info.time_up
+    finished = (
+        traj_batch.info.tagged
+        | traj_batch.info.time_up
+        | traj_batch.info.chaser_collision
+        | traj_batch.info.evader_collision
+    )
     n_finished = finished.astype(jnp.float32).sum()
     mean_ep_length = jnp.where(
         n_finished > 0,
@@ -34,6 +39,11 @@ def compute_training_metrics(
             "evader/actor_loss": jnp.asarray(evader_loss[1][1].mean()),
             "evader/entropy": jnp.asarray(evader_loss[1][2].mean()),
             "env/tag_rate": tag_rate,
+            "env/time_up_rate": jnp.where(
+                n_finished > 0,
+                traj_batch.info.time_up.astype(jnp.float32).sum() / n_finished,
+                jnp.float32(0),
+            ),
             "env/mean_distance": traj_batch.info.distance.mean(),
             "env/mean_episode_length": mean_ep_length,
             "chaser/mean_reward": traj_batch.chaser_reward.mean(),
@@ -46,6 +56,16 @@ def compute_training_metrics(
             "evader/collision_rate": traj_batch.info.evader_collision.astype(
                 jnp.float32
             ).mean(),
+            "env/chaser_collision_termination_rate": jnp.where(
+                n_finished > 0,
+                traj_batch.info.chaser_collision.astype(jnp.float32).sum() / n_finished,
+                jnp.float32(0),
+            ),
+            "env/evader_collision_termination_rate": jnp.where(
+                n_finished > 0,
+                traj_batch.info.evader_collision.astype(jnp.float32).sum() / n_finished,
+                jnp.float32(0),
+            ),
         },
     )
     return metrics

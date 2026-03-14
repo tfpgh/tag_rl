@@ -28,7 +28,7 @@ class EnvironmentConfig:
     time_reward: float = 0.004  # + for evader, - for chaser
     distance_shaping_scale: float = 0.00
     distance_shaping_gamma: float = 0.99
-    collision_penalty: float = 1.0  # Terminal penalty for wall/obstacle contact
+    collision_penalty: float = 4.0  # Terminal penalty for wall/obstacle contact
 
     # Normalization, not exact
     agent_max_linear_velocity: float = 1.35  # m/s

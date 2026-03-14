@@ -3,17 +3,17 @@ from dataclasses import dataclass
 
 @dataclass
 class RLConfig:
-    num_envs: int = 1024
+    num_envs: int = 16384
     num_steps: int = 128
 
-    total_timesteps: int = int(1e9)
+    total_timesteps: int = int(3e9)
 
     hidden_size: int = 256
 
     lr: float = 3e-4
     anneal_lr: bool = True
     update_epochs: int = 4
-    num_minibatches: int = 16
+    num_minibatches: int = 32
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2

@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--action-mode",
-        choices=("random", "zero"),
+        choices=("random", "low_random", "forward", "zero"),
         default="random",
         help="Use random actions to stress the sim, or zero actions for a gentler test.",
     )
@@ -39,6 +39,36 @@ def benchmark_cases(
     quick = [
         ("baseline", {}),
         ("dense", {"jacobian": "dense"}),
+        ("newton_8", {"solver": "Newton", "iterations": 8, "ls_iterations": 8}),
+        (
+            "newton_8_dense",
+            {
+                "solver": "Newton",
+                "iterations": 8,
+                "ls_iterations": 8,
+                "jacobian": "dense",
+            },
+        ),
+        ("newton_6", {"solver": "Newton", "iterations": 6, "ls_iterations": 8}),
+        (
+            "newton_6_dense",
+            {
+                "solver": "Newton",
+                "iterations": 6,
+                "ls_iterations": 8,
+                "jacobian": "dense",
+            },
+        ),
+        ("newton_4", {"solver": "Newton", "iterations": 4, "ls_iterations": 6}),
+        (
+            "newton_4_dense",
+            {
+                "solver": "Newton",
+                "iterations": 4,
+                "ls_iterations": 6,
+                "jacobian": "dense",
+            },
+        ),
         ("newton_2", {"solver": "Newton", "iterations": 2, "ls_iterations": 4}),
         (
             "newton_2_dense",
@@ -106,6 +136,16 @@ def build_action_sequence(
 ) -> jax.Array:
     if action_mode == "zero":
         return jnp.zeros((num_action_steps, num_envs, 4), dtype=jnp.float32)
+    if action_mode == "forward":
+        return jnp.full((num_action_steps, num_envs, 4), 0.05, dtype=jnp.float32)
+    if action_mode == "low_random":
+        return jax.random.uniform(
+            jax.random.PRNGKey(seed),
+            (num_action_steps, num_envs, 4),
+            minval=-0.2,
+            maxval=0.2,
+            dtype=jnp.float32,
+        )
     return jax.random.uniform(
         jax.random.PRNGKey(seed),
         (num_action_steps, num_envs, 4),

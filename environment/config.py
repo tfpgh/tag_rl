@@ -38,5 +38,5 @@ class EnvironmentConfig:
     wall_margin_factor: float = 1.5  # Minimum distance from wall (* agent_radius)
 
     # Obstacles
-    max_obstacles: int = 7  # always allocated in MJCF
+    max_obstacles: int = 12  # always allocated in MJCF
     obstacle_width: float = 0.13  # square box side length (meters)

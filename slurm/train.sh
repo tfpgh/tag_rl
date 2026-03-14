@@ -11,5 +11,6 @@
 export TQDM_MININTERVAL=15
 export PYTHONUNBUFFERED=1
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
+export XLA_FLAGS=--xla_gpu_triton_gemm_any=true
 
 uv run -m rl.train

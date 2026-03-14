@@ -85,45 +85,37 @@ def auto_reset_step(
         state, chaser_action, evader_action
     )
 
-    reset_qpos, reset_qvel, reset_distance, reset_obs_pos, reset_obs_quat = (
-        env.reset_state(rng)
-    )
+    (
+        reset_qpos,
+        reset_qvel,
+        reset_distance,
+        reset_obstacle_positions_xy,
+        reset_obstacle_yaws,
+        reset_obstacle_active,
+    ) = env.reset_state(rng)
 
-    new_mocap_pos = jnp.where(done, reset_obs_pos, stepped.mjx_data.mocap_pos)
-    new_mocap_quat = jnp.where(done, reset_obs_quat, stepped.mjx_data.mocap_quat)
     new_mjx_data = stepped.mjx_data.replace(
         qpos=jnp.where(done, reset_qpos, stepped.mjx_data.qpos),
         qvel=jnp.where(done, reset_qvel, stepped.mjx_data.qvel),
         time=jnp.where(
             done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time
         ),
-        mocap_pos=new_mocap_pos,
-        mocap_quat=new_mocap_quat,
     )
     step_count = jnp.asarray(jnp.where(done, jnp.int32(0), stepped.step_count))
-
-    new_mjx_data = env.forward(new_mjx_data)
-    chaser_obs, evader_obs = env.compute_observations(new_mjx_data, step_count)
-
-    chaser_collision = env.collision_from_obs(chaser_obs)
-    evader_collision = env.collision_from_obs(evader_obs)
-    chaser_reward = (
-        chaser_reward
-        - env_config.collision_penalty * chaser_collision * ~info.is_frozen
-    )
-    evader_reward = evader_reward - env_config.collision_penalty * evader_collision
-    info = info._replace(
-        chaser_collision=chaser_collision,
-        evader_collision=evader_collision,
-    )
 
     tagged = jnp.asarray(jnp.where(done, jnp.bool_(False), stepped.tagged))
     state = TagEnvironmentState(
         mjx_data=new_mjx_data,
+        obstacle_positions_xy=jnp.where(
+            done, reset_obstacle_positions_xy, stepped.obstacle_positions_xy
+        ),
+        obstacle_yaws=jnp.where(done, reset_obstacle_yaws, stepped.obstacle_yaws),
+        obstacle_active=jnp.where(done, reset_obstacle_active, stepped.obstacle_active),
         step_count=step_count,
         tagged=tagged,
         prev_distance=jnp.where(done, reset_distance, stepped.prev_distance),
     )
+    chaser_obs, evader_obs = env.compute_observations(state)
     return state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info
 
 

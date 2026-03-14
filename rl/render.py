@@ -17,10 +17,12 @@ import numpy.typing as npt
 
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
+from environment.mjcf import generate_mjcf
+from environment.mujoco_data import yaw_to_quaternion
 from rl.config import RLConfig
 from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
 
-Array5 = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]
+RolloutResult = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]
 RenderFrames = list[npt.NDArray[np.uint8]]
 
 # ── Configuration ──────────────────────────────────────────────────────
@@ -38,11 +40,13 @@ def make_rollout(
     chaser_network: Any,
     evader_network: Any,
     rl_config: RLConfig,
-) -> Callable[[Any, Any, jax.Array], Array5]:
+) -> Callable[[Any, Any, jax.Array], RolloutResult]:
     """Create a JIT'd single-episode rollout function (compiles once)."""
 
     @jax.jit
-    def rollout(chaser_params: Any, evader_params: Any, rng: jax.Array) -> Array5:
+    def rollout(
+        chaser_params: Any, evader_params: Any, rng: jax.Array
+    ) -> RolloutResult:
         state, chaser_obs, evader_obs = env.reset(rng)
         chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
         evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
@@ -60,7 +64,7 @@ def make_rollout(
             _: None,
         ) -> tuple[
             tuple[Any, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array],
-            tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array],
+            tuple[jax.Array, jax.Array, jax.Array],
         ]:
             state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done = carry
             qpos = state.mjx_data.qpos
@@ -101,9 +105,7 @@ def make_rollout(
                 evader_hstate,
                 done,
             )
-            mocap_pos = state.mjx_data.mocap_pos
-            mocap_quat = state.mjx_data.mocap_quat
-            return carry, (qpos, qvel, mocap_pos, mocap_quat, step_done)
+            return carry, (qpos, qvel, step_done)
 
         init_carry = (
             state,
@@ -113,32 +115,67 @@ def make_rollout(
             evader_hstate,
             done,
         )
-        _, (all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done) = jax.lax.scan(
+        _, (all_qpos, all_qvel, all_done) = jax.lax.scan(
             _scan_step, init_carry, None, length=env.max_steps
         )
-        return all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done
+        return (
+            all_qpos,
+            all_qvel,
+            state.obstacle_positions_xy,
+            state.obstacle_yaws,
+            state.obstacle_active,
+            all_done,
+        )
 
     return rollout
+
+
+def obstacle_mocap_buffers(
+    mj_model: mujoco.MjModel,
+    obstacle_positions_xy: npt.NDArray[np.float32 | np.float64],
+    obstacle_yaws: npt.NDArray[np.float32 | np.float64],
+    obstacle_active: npt.NDArray[np.bool_],
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    mocap_pos = np.zeros((mj_model.nmocap, 3), dtype=np.float64)
+    mocap_quat = np.zeros((mj_model.nmocap, 4), dtype=np.float64)
+    mocap_quat[:, 0] = 1.0
+
+    for i in range(len(obstacle_active)):
+        body_id = mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY, f"obstacle_{i}")
+        mocap_id = int(mj_model.body_mocapid[body_id])
+        if obstacle_active[i]:
+            mocap_pos[mocap_id] = np.array(
+                [obstacle_positions_xy[i, 0], obstacle_positions_xy[i, 1], 0.05],
+                dtype=np.float64,
+            )
+            mocap_quat[mocap_id] = np.asarray(yaw_to_quaternion(obstacle_yaws[i]))
+        else:
+            mocap_pos[mocap_id] = np.array([0.0, 0.0, -10.0], dtype=np.float64)
+    return mocap_pos, mocap_quat
 
 
 def render_trajectory(
     mj_model: mujoco.MjModel,
     all_qpos: npt.NDArray[np.float64],
     all_qvel: npt.NDArray[np.float64],
-    all_mocap_pos: npt.NDArray[np.float64],
-    all_mocap_quat: npt.NDArray[np.float64],
+    obstacle_positions_xy: npt.NDArray[np.float64],
+    obstacle_yaws: npt.NDArray[np.float64],
+    obstacle_active: npt.NDArray[np.bool_],
 ) -> RenderFrames:
     """Render a trajectory on CPU, returning a list of RGB frames."""
     renderer = mujoco.Renderer(mj_model, height=VIDEO_HEIGHT, width=VIDEO_WIDTH)
     mj_data = mujoco.MjData(mj_model)
+    mocap_pos, mocap_quat = obstacle_mocap_buffers(
+        mj_model, obstacle_positions_xy, obstacle_yaws, obstacle_active
+    )
 
     frames: RenderFrames = []
     n_frames = len(all_qpos)
     for i in range(n_frames):
         mj_data.qpos[:] = all_qpos[i]
         mj_data.qvel[:] = all_qvel[i]
-        mj_data.mocap_pos[:] = all_mocap_pos[i]
-        mj_data.mocap_quat[:] = all_mocap_quat[i]
+        mj_data.mocap_pos[:] = mocap_pos
+        mj_data.mocap_quat[:] = mocap_quat
         mujoco.mj_forward(mj_model, mj_data)
         renderer.update_scene(mj_data)
         frames.append(renderer.render().copy())
@@ -160,6 +197,9 @@ if __name__ == "__main__":
 
     # Create environment (single instance)
     env = TagEnvironment(env_config, 1)
+    render_model = mujoco.MjModel.from_xml_string(
+        generate_mjcf(env_config, mode="render")
+    )
 
     # Instantiate networks
     action_dim = (2,)
@@ -194,9 +234,14 @@ if __name__ == "__main__":
 
     for ep in range(NUM_EPISODES):
         rng, ep_rng = jax.random.split(rng)
-        all_qpos, all_qvel, all_mocap_pos, all_mocap_quat, all_done = rollout_fn(
-            chaser_params, evader_params, ep_rng
-        )
+        (
+            all_qpos,
+            all_qvel,
+            obstacle_positions_xy,
+            obstacle_yaws,
+            obstacle_active,
+            all_done,
+        ) = rollout_fn(chaser_params, evader_params, ep_rng)
 
         # Trim to first done
         all_done_np = np.array(all_done)
@@ -208,11 +253,17 @@ if __name__ == "__main__":
         # Transfer to CPU and trim
         qpos_np = np.array(all_qpos[:n_frames])
         qvel_np = np.array(all_qvel[:n_frames])
-        mocap_pos_np = np.array(all_mocap_pos[:n_frames])
-        mocap_quat_np = np.array(all_mocap_quat[:n_frames])
+        obstacle_positions_xy_np = np.array(obstacle_positions_xy)
+        obstacle_yaws_np = np.array(obstacle_yaws)
+        obstacle_active_np = np.array(obstacle_active)
 
         frames = render_trajectory(
-            env.mj_model, qpos_np, qvel_np, mocap_pos_np, mocap_quat_np
+            render_model,
+            qpos_np,
+            qvel_np,
+            obstacle_positions_xy_np,
+            obstacle_yaws_np,
+            obstacle_active_np,
         )
         all_frames.extend(frames)
         print(f"Episode {ep + 1}/{NUM_EPISODES}: {n_frames} frames")

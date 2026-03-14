@@ -1,24 +1,24 @@
+from typing import Literal
+
 from environment.config import EnvironmentConfig
 
-GEOM_GROUP_WALL = 0
+SceneMode = Literal["training", "render"]
+
+GEOM_GROUP_ENVIRONMENT = 0
 GEOM_GROUP_AGENT = 1
 GEOM_GROUP_FLOOR = 2
 
-# Contact bitmasks
 CON_BM_VISUAL_ONLY = 0b00000
 CON_BM_FLOOR = 0b00001
 CON_BM_WHEEL = 0b00010
 CON_BM_CASTER_BALL = 0b00100
 CON_BM_CHASSIS = 0b01000
-CON_BM_WALL = 0b10000
 
-# contype and conaffinity
 CONTACTS = {
     "floor": (CON_BM_FLOOR, CON_BM_WHEEL | CON_BM_CASTER_BALL | CON_BM_CHASSIS),
     "wheel": (CON_BM_WHEEL, CON_BM_FLOOR),
     "caster_ball": (CON_BM_CASTER_BALL, CON_BM_FLOOR),
-    "chassis": (CON_BM_CHASSIS, CON_BM_FLOOR | CON_BM_WALL | CON_BM_CHASSIS),
-    "wall": (CON_BM_WALL, CON_BM_CHASSIS),
+    "chassis": (CON_BM_CHASSIS, CON_BM_FLOOR),
     "visual_only": (CON_BM_VISUAL_ONLY, CON_BM_VISUAL_ONLY),
 }
 
@@ -37,16 +37,10 @@ EVADER_COLOR = "0.435 0.702 0.722 1"
 def _agent_mjcf(
     name: str, lid_color: str, starting_pos: str = "0 0 0.0299"
 ) -> tuple[str, str]:
-    """
-    MJCF XML for an agent
-
-    Returns body_xml, actuator_xml
-    """
-
     body_xml = f"""
     <body name="{name}" pos="{starting_pos}">
-	    <freejoint name="{name}_root" />
-	    <inertial
+        <freejoint name="{name}_root" />
+        <inertial
             pos="-0.0148 0 -0.009"
             diaginertia="0.000112 0.000112 0.000188"
             mass="0.15"
@@ -154,7 +148,7 @@ def _agent_mjcf(
                 />
             </body>
         </body>
-	</body>
+    </body>
     """
 
     actuator_xml = f"""
@@ -177,18 +171,9 @@ def _agent_mjcf(
     return body_xml, actuator_xml
 
 
-def _arena_xml(config: EnvironmentConfig) -> str:
-    """
-    MJCF XML for the arena
-
-    Returns just body_xml
-    """
-
+def _floor_xml(config: EnvironmentConfig) -> str:
     arena_half_width = config.arena_width / 2
     arena_half_height = config.arena_height / 2
-    half_wall_thickness = WALL_THICKNESS / 2
-    half_wall_height = WALL_HEIGHT / 2
-
     return f"""
     <geom
         name="floor"
@@ -201,73 +186,78 @@ def _arena_xml(config: EnvironmentConfig) -> str:
         contype="{CONTACTS["floor"][0]}"
         conaffinity="{CONTACTS["floor"][1]}"
     />
+    """
+
+
+def _wall_visual_xml(config: EnvironmentConfig) -> str:
+    arena_half_width = config.arena_width / 2
+    arena_half_height = config.arena_height / 2
+    half_wall_thickness = WALL_THICKNESS / 2
+    half_wall_height = WALL_HEIGHT / 2
+    return f"""
     <geom
         name="wall_north"
         type="box"
         pos="0 {arena_half_height + half_wall_thickness} {half_wall_height}"
         size="{arena_half_width + WALL_THICKNESS} {half_wall_thickness} {half_wall_height}"
-        group="{GEOM_GROUP_WALL}"
+        group="{GEOM_GROUP_ENVIRONMENT}"
         rgba="0.8 0.8 0.8 1"
-        contype="{CONTACTS["wall"][0]}"
-        conaffinity="{CONTACTS["wall"][1]}"
+        contype="{CONTACTS["visual_only"][0]}"
+        conaffinity="{CONTACTS["visual_only"][1]}"
     />
     <geom
         name="wall_south"
         type="box"
         pos="0 {-arena_half_height - half_wall_thickness} {half_wall_height}"
         size="{arena_half_width + WALL_THICKNESS} {half_wall_thickness} {half_wall_height}"
-        group="{GEOM_GROUP_WALL}"
+        group="{GEOM_GROUP_ENVIRONMENT}"
         rgba="0.8 0.8 0.8 1"
-        contype="{CONTACTS["wall"][0]}"
-        conaffinity="{CONTACTS["wall"][1]}"
+        contype="{CONTACTS["visual_only"][0]}"
+        conaffinity="{CONTACTS["visual_only"][1]}"
     />
     <geom
         name="wall_east"
         type="box"
         pos="{arena_half_width + half_wall_thickness} 0 {half_wall_height}"
         size="{half_wall_thickness} {arena_half_height} {half_wall_height}"
-        group="{GEOM_GROUP_WALL}"
+        group="{GEOM_GROUP_ENVIRONMENT}"
         rgba="0.8 0.8 0.8 1"
-        contype="{CONTACTS["wall"][0]}"
-        conaffinity="{CONTACTS["wall"][1]}"
+        contype="{CONTACTS["visual_only"][0]}"
+        conaffinity="{CONTACTS["visual_only"][1]}"
     />
     <geom
         name="wall_west"
         type="box"
         pos="{-arena_half_width - half_wall_thickness} 0 {half_wall_height}"
         size="{half_wall_thickness} {arena_half_height} {half_wall_height}"
-        group="{GEOM_GROUP_WALL}"
+        group="{GEOM_GROUP_ENVIRONMENT}"
         rgba="0.8 0.8 0.8 1"
-        contype="{CONTACTS["wall"][0]}"
-        conaffinity="{CONTACTS["wall"][1]}"
+        contype="{CONTACTS["visual_only"][0]}"
+        conaffinity="{CONTACTS["visual_only"][1]}"
     />
     """
 
 
-def _obstacle_mjcf(config: EnvironmentConfig, index: int) -> str:
-    """MJCF XML for a single obstacle body (mocap, kinematic)."""
+def _obstacle_visual_xml(config: EnvironmentConfig, index: int) -> str:
     half_w = config.obstacle_width / 2
     half_h = WALL_HEIGHT / 2
     name = f"obstacle_{index}"
-
     return f"""
     <body name="{name}" mocap="true" pos="0 0 -10">
         <geom
             name="{name}_geom"
             type="box"
             size="{half_w} {half_w} {half_h}"
-            group="{GEOM_GROUP_WALL}"
+            group="{GEOM_GROUP_ENVIRONMENT}"
             rgba="{OBSTACLE_COLOR}"
-            contype="{CONTACTS["wall"][0]}"
-            conaffinity="{CONTACTS["wall"][1]}"
+            contype="{CONTACTS["visual_only"][0]}"
+            conaffinity="{CONTACTS["visual_only"][1]}"
         />
     </body>
     """
 
 
-def generate_mjcf(config: EnvironmentConfig) -> str:
-    """Build the complete MJCF XML for the environment"""
-
+def generate_mjcf(config: EnvironmentConfig, mode: SceneMode = "training") -> str:
     chaser_body_xml, chaser_actuator_xml = _agent_mjcf(
         "chaser", CHASER_COLOR, "0.3 0 0.0299"
     )
@@ -275,13 +265,16 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
         "evader", EVADER_COLOR, "-0.3 0 0.0299"
     )
 
-    obstacle_bodies = "\n".join(
-        _obstacle_mjcf(config, i) for i in range(config.max_obstacles)
-    )
+    extras = ""
+    if mode == "render":
+        obstacle_bodies = "\n".join(
+            _obstacle_visual_xml(config, i) for i in range(config.max_obstacles)
+        )
+        extras = f"{_wall_visual_xml(config)}\n{obstacle_bodies}"
 
-    mjcf_xml = f"""
-    <mujoco model="tag">
-        <option timestep="0.005" integrator="implicitfast" ccd_iterations="100"/>
+    return f"""
+    <mujoco model="tag_{mode}">
+        <option timestep="0.005" integrator="implicitfast" solver="Newton" iterations="1" ls_iterations="4"/>
         <asset>
             <material name="default" rgba="1 1 1 1" />
         </asset>
@@ -291,10 +284,10 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
         </visual>
         <statistic extent="{config.arena_width * 0.85}" center="0 0 0"/>
         <worldbody>
-            {_arena_xml(config)}
+            {_floor_xml(config)}
+            {extras}
             {chaser_body_xml}
             {evader_body_xml}
-            {obstacle_bodies}
         </worldbody>
         <actuator>
             {chaser_actuator_xml}
@@ -302,5 +295,3 @@ def generate_mjcf(config: EnvironmentConfig) -> str:
         </actuator>
     </mujoco>
     """
-
-    return mjcf_xml

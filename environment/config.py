@@ -28,7 +28,7 @@ class EnvironmentConfig:
     time_reward: float = 0.004  # + for evader, - for chaser
     distance_shaping_scale: float = 0.00
     distance_shaping_gamma: float = 0.99
-    collision_penalty: float = 1.0  # Per-step penalty for wall/obstacle contact
+    collision_penalty: float = 1.0  # Terminal penalty for wall/obstacle contact
 
     # Normalization, not exact
     agent_max_linear_velocity: float = 1.35  # m/s
@@ -36,8 +36,6 @@ class EnvironmentConfig:
 
     minimum_starting_separation: float = 0.13  # m, center to center
     wall_margin_factor: float = 1.5  # Minimum distance from wall (* agent_radius)
-
-    collision_epsilon_factor: float = 1.05
 
     # Obstacles
     max_obstacles: int = 7  # always allocated in MJCF

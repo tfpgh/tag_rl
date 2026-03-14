@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Literal
 
 from environment.config import EnvironmentConfig
@@ -257,7 +258,23 @@ def _obstacle_visual_xml(config: EnvironmentConfig, index: int) -> str:
     """
 
 
-def generate_mjcf(config: EnvironmentConfig, mode: SceneMode = "training") -> str:
+def _option_xml(overrides: Mapping[str, str | int | float | bool] | None) -> str:
+    options: dict[str, str | int | float | bool] = {
+        "timestep": 0.005,
+        "integrator": "implicitfast",
+        "ccd_iterations": 100,
+    }
+    if overrides is not None:
+        options.update(overrides)
+    attrs = " ".join(f'{key}="{value}"' for key, value in options.items())
+    return f"<option {attrs}/>"
+
+
+def generate_mjcf(
+    config: EnvironmentConfig,
+    mode: SceneMode = "training",
+    option_overrides: Mapping[str, str | int | float | bool] | None = None,
+) -> str:
     chaser_body_xml, chaser_actuator_xml = _agent_mjcf(
         "chaser", CHASER_COLOR, "0.3 0 0.0299"
     )
@@ -274,7 +291,7 @@ def generate_mjcf(config: EnvironmentConfig, mode: SceneMode = "training") -> st
 
     return f"""
     <mujoco model="tag_{mode}">
-        <option timestep="0.005" integrator="implicitfast" ccd_iterations="100"/>
+        {_option_xml(option_overrides)}
         <asset>
             <material name="default" rgba="1 1 1 1" />
         </asset>

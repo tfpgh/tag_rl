@@ -5,17 +5,23 @@ if __name__ == "__main__":
 
 
 import pickle
+from collections.abc import Callable
+from typing import Any
 
 import imageio
 import jax
 import jax.numpy as jnp
 import mujoco
 import numpy as np
+import numpy.typing as npt
 
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from rl.config import RLConfig
 from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
+
+Array5 = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]
+RenderFrames = list[npt.NDArray[np.uint8]]
 
 # ── Configuration ──────────────────────────────────────────────────────
 CHECKPOINT_PATH = "runs/Feb28_12-38-35_node002/checkpoints/step_419430400.pkl"
@@ -27,17 +33,35 @@ VIDEO_WIDTH = 1920
 PRNG_KEY = 0
 
 
-def make_rollout(env, chaser_network, evader_network, rl_config):
+def make_rollout(
+    env: TagEnvironment,
+    chaser_network: Any,
+    evader_network: Any,
+    rl_config: RLConfig,
+) -> Callable[[Any, Any, jax.Array], Array5]:
     """Create a JIT'd single-episode rollout function (compiles once)."""
 
     @jax.jit
-    def rollout(chaser_params, evader_params, rng):
+    def rollout(chaser_params: Any, evader_params: Any, rng: jax.Array) -> Array5:
         state, chaser_obs, evader_obs = env.reset(rng)
         chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
         evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
         done = jnp.bool_(False)
 
-        def _scan_step(carry, _):
+        def _scan_step(
+            carry: tuple[
+                Any,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+            ],
+            _: None,
+        ) -> tuple[
+            tuple[Any, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array],
+            tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array],
+        ]:
             state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done = carry
             qpos = state.mjx_data.qpos
             qvel = state.mjx_data.qvel
@@ -97,12 +121,18 @@ def make_rollout(env, chaser_network, evader_network, rl_config):
     return rollout
 
 
-def render_trajectory(mj_model, all_qpos, all_qvel, all_mocap_pos, all_mocap_quat):
+def render_trajectory(
+    mj_model: mujoco.MjModel,
+    all_qpos: npt.NDArray[np.float64],
+    all_qvel: npt.NDArray[np.float64],
+    all_mocap_pos: npt.NDArray[np.float64],
+    all_mocap_quat: npt.NDArray[np.float64],
+) -> RenderFrames:
     """Render a trajectory on CPU, returning a list of RGB frames."""
     renderer = mujoco.Renderer(mj_model, height=VIDEO_HEIGHT, width=VIDEO_WIDTH)
     mj_data = mujoco.MjData(mj_model)
 
-    frames = []
+    frames: RenderFrames = []
     n_frames = len(all_qpos)
     for i in range(n_frames):
         mj_data.qpos[:] = all_qpos[i]

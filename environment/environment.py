@@ -1,5 +1,5 @@
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 import jax
 import jax.numpy as jnp
@@ -187,7 +187,7 @@ class TagEnvironment:
         mjx_data: mjx.Data,
         is_chaser: bool,
         step_count: jax.Array,
-    ):
+    ) -> jax.Array:
         """
         Build observation vector for one agent.
         Reads position/quaternion from qpos, velocity from qvel.
@@ -237,7 +237,9 @@ class TagEnvironment:
             ]
         )
 
-    def _reset_positions(self, rng: jax.Array):
+    def _reset_positions(
+        self, rng: jax.Array
+    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
         """Generate random qpos/qvel for a reset. Returns (qpos, qvel, initial_distance)."""
         config = self.config
         (
@@ -273,14 +275,16 @@ class TagEnvironment:
             key_obs_pos, (n_pool, 2), minval=obs_lower, maxval=obs_upper
         )
 
-        def _farthest_step(carry, _):
+        def _farthest_step(
+            carry: tuple[jax.Array, jax.Array, jax.Array], _: None
+        ) -> tuple[tuple[jax.Array, jax.Array, jax.Array], None]:
             chosen, n_chosen, available = carry
-            dists = jnp.linalg.norm(
-                pool[:, None, :] - chosen[None, :, :], axis=-1
+            dists = jnp.asarray(
+                jnp.linalg.norm(pool[:, None, :] - chosen[None, :, :], axis=-1)
             )  # (n_pool, max_obs)
             slot_mask = jnp.arange(config.max_obstacles) < n_chosen
-            dists = jnp.where(slot_mask[None, :], dists, jnp.inf)
-            min_dists = jnp.min(dists, axis=1)  # pyright: ignore[reportArgumentType]
+            dists = jnp.asarray(jnp.where(slot_mask[None, :], dists, jnp.inf))
+            min_dists = jnp.asarray(jnp.min(cast(jax.Array, dists), axis=1))
             min_dists = jnp.where(available, min_dists, -jnp.inf)
             idx = jnp.argmax(min_dists)
             chosen = chosen.at[n_chosen].set(pool[idx])

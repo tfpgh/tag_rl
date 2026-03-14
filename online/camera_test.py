@@ -1,4 +1,6 @@
 import time
+from collections.abc import Sequence
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -63,7 +65,7 @@ COLOR = (180, 255, 180)
 INWARD_DIR = {0: (1, 1), 1: (-1, 1), 2: (-1, -1), 3: (1, -1)}
 
 
-def draw_detections(frame: np.ndarray, detections: list) -> None:
+def draw_detections(frame: np.ndarray, detections: Sequence[Any]) -> None:
     inside_pts: dict[int, tuple[int, int]] = {}
 
     for det in detections:
@@ -94,8 +96,8 @@ while True:
     fps = 1.0 / (now - prev_time) if now != prev_time else 0.0
     prev_time = now
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    detections = detector.detect(gray)
+    gray = cast(np.ndarray, cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+    detections = cast(Sequence[Any], detector.detect(gray))
     draw_detections(frame, detections)
 
     h, w = frame.shape[:2]

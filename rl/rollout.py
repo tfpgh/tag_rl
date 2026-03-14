@@ -1,8 +1,9 @@
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from flax.training.train_state import TrainState
 
 from environment.config import EnvironmentConfig
 from environment.environment import (
@@ -37,6 +38,33 @@ class AgentTransition(NamedTuple):
     obs: jax.Array
 
 
+class RunnerState(NamedTuple):
+    chaser_ts: TrainState
+    evader_ts: TrainState
+    env_state: TagEnvironmentState
+    chaser_obs: jax.Array
+    evader_obs: jax.Array
+    done: jax.Array
+    chaser_hstate: jax.Array
+    evader_hstate: jax.Array
+    rng: jax.Array
+
+
+class RolloutCarry(NamedTuple):
+    chaser_ts: TrainState
+    evader_ts: TrainState
+    env_state: TagEnvironmentState
+    chaser_obs: jax.Array
+    evader_obs: jax.Array
+    done: jax.Array
+    chaser_hstate: jax.Array
+    evader_hstate: jax.Array
+    rng: jax.Array
+
+
+ActorCriticModule = Any
+
+
 def auto_reset_step(
     env: TagEnvironment,
     env_config: EnvironmentConfig,
@@ -44,7 +72,15 @@ def auto_reset_step(
     chaser_action: jax.Array,
     evader_action: jax.Array,
     rng: jax.Array,
-):
+) -> tuple[
+    TagEnvironmentState,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    TagEnvironmentStepInfo,
+]:
     stepped, chaser_reward, evader_reward, done, info = env.step_physics(
         state, chaser_action, evader_action
     )
@@ -64,7 +100,7 @@ def auto_reset_step(
         mocap_pos=new_mocap_pos,
         mocap_quat=new_mocap_quat,
     )
-    step_count: jax.Array = jnp.where(done, jnp.int32(0), stepped.step_count)  # type: ignore[assignment]
+    step_count = jnp.asarray(jnp.where(done, jnp.int32(0), stepped.step_count))
 
     new_mjx_data = env.forward(new_mjx_data)
     chaser_obs, evader_obs = env.compute_observations(new_mjx_data, step_count)
@@ -81,7 +117,7 @@ def auto_reset_step(
         evader_collision=evader_collision,
     )
 
-    tagged: jax.Array = jnp.where(done, jnp.bool_(False), stepped.tagged)  # type: ignore[assignment]
+    tagged = jnp.asarray(jnp.where(done, jnp.bool_(False), stepped.tagged))
     state = TagEnvironmentState(
         mjx_data=new_mjx_data,
         step_count=step_count,
@@ -92,14 +128,14 @@ def auto_reset_step(
 
 
 def collect_trajectories(
-    runner_state,
+    runner_state: RunnerState,
     env: TagEnvironment,
     env_config: EnvironmentConfig,
     rl_config: RLConfig,
-    chaser_network,
-    evader_network,
-):
-    def _env_step(carry, _):
+    chaser_network: ActorCriticModule,
+    evader_network: ActorCriticModule,
+) -> tuple[RunnerState, Transition]:
+    def _env_step(carry: RolloutCarry, _: None) -> tuple[RolloutCarry, Transition]:
         (
             chaser_ts,
             evader_ts,
@@ -175,7 +211,7 @@ def collect_trajectories(
             evader_obs=evader_obs,
             info=info,
         )
-        carry = (
+        carry = RolloutCarry(
             chaser_ts,
             evader_ts,
             env_state,
@@ -188,14 +224,17 @@ def collect_trajectories(
         )
         return carry, transition
 
-    return jax.lax.scan(_env_step, runner_state, None, rl_config.num_steps)
+    final_carry, traj_batch = jax.lax.scan(
+        _env_step, RolloutCarry(*runner_state), None, rl_config.num_steps
+    )
+    return RunnerState(*final_carry), traj_batch
 
 
 def bootstrap_values(
-    runner_state,
-    chaser_network,
-    evader_network,
-):
+    runner_state: RunnerState,
+    chaser_network: ActorCriticModule,
+    evader_network: ActorCriticModule,
+) -> tuple[jax.Array, jax.Array, jax.Array]:
     (
         chaser_ts,
         evader_ts,

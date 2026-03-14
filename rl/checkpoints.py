@@ -3,8 +3,12 @@ import pickle
 
 import jax
 
+from rl.rollout import RunnerState
 
-def save_checkpoint(runner_state, global_step, checkpoint_dir="checkpoints"):
+
+def save_checkpoint(
+    runner_state: RunnerState, global_step: int, checkpoint_dir: str = "checkpoints"
+) -> None:
     os.makedirs(checkpoint_dir, exist_ok=True)
     path = os.path.join(checkpoint_dir, f"step_{global_step}.pkl")
     checkpoint = {

@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import cast
+
 import jax
 import jax.numpy as jnp
 import optax
@@ -10,10 +13,28 @@ from rl.config import RLConfig
 from rl.metrics import compute_training_metrics
 from rl.models import ActorCriticCNNRNN, ScannedRNN
 from rl.ppo import calculate_gae, update_agent
-from rl.rollout import bootstrap_values, collect_trajectories, split_agent_trajectories
+from rl.rollout import (
+    RunnerState,
+    bootstrap_values,
+    collect_trajectories,
+    split_agent_trajectories,
+)
+
+TrainMetrics = dict[str, jax.Array]
+TrainInitFn = Callable[[jax.Array], RunnerState]
+TrainStepFn = Callable[[RunnerState], tuple[RunnerState, TrainMetrics]]
 
 
-def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
+def make_train(
+    rl_config: RLConfig, env_config: EnvironmentConfig
+) -> tuple[
+    TrainInitFn,
+    TrainStepFn,
+    int,
+    TagEnvironment,
+    ActorCriticCNNRNN,
+    ActorCriticCNNRNN,
+]:
     num_updates = rl_config.total_timesteps // rl_config.num_steps // rl_config.num_envs
 
     env = TagEnvironment(env_config, rl_config.num_envs)
@@ -31,7 +52,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         n_rays=env_config.n_rays,
     )
 
-    def linear_schedule(count):
+    def linear_schedule(count: int | float | jax.Array) -> int | float | jax.Array:
         frac = (
             1.0
             - (count // (rl_config.num_minibatches * rl_config.update_epochs))
@@ -39,7 +60,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         )
         return rl_config.lr * frac
 
-    def init(rng):
+    def init(rng: jax.Array) -> RunnerState:
         rng, chaser_rng, evader_rng = jax.random.split(rng, 3)
         init_x = (
             jnp.zeros((1, rl_config.num_envs, obs_size)),
@@ -55,7 +76,9 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         if rl_config.anneal_lr:
             tx = optax.chain(
                 optax.clip_by_global_norm(rl_config.max_grad_norm),
-                optax.adam(learning_rate=linear_schedule, eps=1e-5),
+                optax.adam(
+                    learning_rate=cast(optax.Schedule, linear_schedule), eps=1e-5
+                ),
             )
         else:
             tx = optax.chain(
@@ -83,7 +106,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         )
 
         rng, _rng = jax.random.split(rng)
-        runner_state = (
+        runner_state = RunnerState(
             chaser_ts,
             evader_ts,
             env_states,
@@ -96,7 +119,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
         )
         return runner_state
 
-    def step(runner_state):
+    def step(runner_state: RunnerState) -> tuple[RunnerState, TrainMetrics]:
         initial_chaser_hstate = runner_state[6]
         initial_evader_hstate = runner_state[7]
 
@@ -160,7 +183,7 @@ def make_train(rl_config: RLConfig, env_config: EnvironmentConfig):
 
         metrics = compute_training_metrics(traj_batch, chaser_loss, evader_loss)
 
-        runner_state = (
+        runner_state = RunnerState(
             chaser_ts,
             evader_ts,
             runner_state[2],

@@ -1,7 +1,24 @@
+from typing import Any
+
 import jax
 import jax.numpy as jnp
+from flax.training.train_state import TrainState
 
 from rl.config import RLConfig
+from rl.rollout import AgentTransition
+
+ActorCriticModule = Any
+LossBreakdown = tuple[jax.Array, jax.Array, jax.Array]
+LossInfo = tuple[jax.Array, LossBreakdown]
+AdvantageCarry = tuple[jax.Array, jax.Array, jax.Array]
+UpdateState = tuple[
+    TrainState,
+    jax.Array,
+    AgentTransition,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+]
 
 
 def calculate_gae(
@@ -11,8 +28,10 @@ def calculate_gae(
     dones: jax.Array,
     last_val: jax.Array,
     last_done: jax.Array,
-):
-    def _get_advantages(carry, transition):
+) -> tuple[jax.Array, jax.Array]:
+    def _get_advantages(
+        carry: AdvantageCarry, transition: tuple[jax.Array, jax.Array, jax.Array]
+    ) -> tuple[AdvantageCarry, jax.Array]:
         gae, next_value, next_done = carry
         done, value, reward = transition
         delta = reward + rl_config.gamma * next_value * (1 - next_done) - value
@@ -31,19 +50,30 @@ def calculate_gae(
 
 def update_agent(
     rl_config: RLConfig,
-    network,
-    train_state,
-    init_hstate,
-    agent_traj,
-    advantages,
-    targets,
-    rng,
-):
-    def _update_epoch(update_state, _):
-        def _update_minibatch(train_state, batch_info):
+    network: ActorCriticModule,
+    train_state: TrainState,
+    init_hstate: jax.Array,
+    agent_traj: AgentTransition,
+    advantages: jax.Array,
+    targets: jax.Array,
+    rng: jax.Array,
+) -> tuple[TrainState, LossInfo]:
+    def _update_epoch(
+        update_state: UpdateState, _: None
+    ) -> tuple[UpdateState, LossInfo]:
+        def _update_minibatch(
+            train_state: TrainState,
+            batch_info: tuple[jax.Array, AgentTransition, jax.Array, jax.Array],
+        ) -> tuple[TrainState, LossInfo]:
             init_hstate, traj_batch, advantages, targets = batch_info
 
-            def _loss_fn(params, init_hstate, traj_batch, gae, targets):
+            def _loss_fn(
+                params: Any,
+                init_hstate: jax.Array,
+                traj_batch: AgentTransition,
+                gae: jax.Array,
+                targets: jax.Array,
+            ) -> tuple[jax.Array, LossBreakdown]:
                 _, pi, value = network.apply(
                     params,
                     init_hstate[0],

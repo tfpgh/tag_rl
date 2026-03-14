@@ -17,12 +17,12 @@ ANGULAR_MAX = 1.0
 MAX_INT16 = 32767
 
 
-def clamp(v, lo, hi):
+def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
 class Teleop:
-    def __init__(self):
+    def __init__(self) -> None:
         self.lin = 0.0
         self.ang = 0.0
         self.running = True
@@ -30,14 +30,14 @@ class Teleop:
         self.packets_sent = 0
 
     @property
-    def left(self):
+    def left(self) -> float:
         return clamp(self.lin - self.ang, -1.0, 1.0)
 
     @property
-    def right(self):
+    def right(self) -> float:
         return clamp(self.lin + self.ang, -1.0, 1.0)
 
-    def handle_key(self, ch):
+    def handle_key(self, ch: str) -> None:
         if ch == "w":
             self.lin = clamp(self.lin + LINEAR_STEP, -LINEAR_MAX, LINEAR_MAX)
         elif ch == "s":
@@ -52,7 +52,7 @@ class Teleop:
         elif ch in ("q", "\x1b"):  # q or Esc
             self.running = False
 
-    def send_loop(self):
+    def send_loop(self) -> None:
         dt = 1.0 / SEND_HZ
         while self.running:
             l16 = int(self.left * MAX_INT16)
@@ -64,7 +64,7 @@ class Teleop:
         self.sock.sendto(struct.pack("<hh", 0, 0), (ROBOT_IP, UDP_PORT))
         self.sock.close()
 
-    def display(self):
+    def display(self) -> None:
         l16 = int(self.left * MAX_INT16)
         r16 = int(self.right * MAX_INT16)
         # move cursor to top-left and draw over previous frame
@@ -82,7 +82,7 @@ class Teleop:
             sys.stdout.write(f"{line:<50}\n")
         sys.stdout.flush()
 
-    def run(self):
+    def run(self) -> None:
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
@@ -108,7 +108,7 @@ class Teleop:
             sys.stdout.write("\033[?25h\n")
             sys.stdout.flush()
 
-    def _display_loop(self):
+    def _display_loop(self) -> None:
         while self.running:
             self.display()
             time.sleep(1.0 / SEND_HZ)

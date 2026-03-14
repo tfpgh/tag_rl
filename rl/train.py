@@ -1,17 +1,26 @@
+import argparse
+import os
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
 import optax
 from flax.training.train_state import TrainState
+from tensorboardX import SummaryWriter
+from tqdm import tqdm
 
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment, observation_size
-from rl.checkpoints import save_checkpoint
+from rl.checkpoints import (
+    load_checkpoint,
+    load_checkpoint_configs,
+    restore_runner_state,
+    save_checkpoint,
+)
 from rl.config import RLConfig
 from rl.metrics import compute_training_metrics
-from rl.models import ActorCriticCNNRNN, ScannedRNN
+from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
 from rl.ppo import calculate_gae, update_agent
 from rl.rollout import (
     RunnerState,
@@ -20,71 +29,76 @@ from rl.rollout import (
     split_agent_trajectories,
 )
 
+AXIS_NAME = "devices"
 TrainMetrics = dict[str, jax.Array]
 TrainInitFn = Callable[[jax.Array], RunnerState]
 TrainStepFn = Callable[[RunnerState], tuple[RunnerState, TrainMetrics]]
 
 
+def build_networks(
+    rl_config: RLConfig, env_config: EnvironmentConfig
+) -> tuple[Any, Any]:
+    action_dim = (2,)
+    if rl_config.model_type == "cnn_rnn":
+        network_ctor = ActorCriticCNNRNN
+        network_kwargs = {
+            "action_dim": action_dim,
+            "hidden_size": rl_config.hidden_size,
+            "n_rays": env_config.n_rays,
+        }
+    elif rl_config.model_type == "rnn":
+        network_ctor = ActorCriticRNN
+        network_kwargs = {
+            "action_dim": action_dim,
+            "hidden_size": rl_config.hidden_size,
+        }
+    else:
+        raise ValueError(f"Unsupported model_type: {rl_config.model_type}")
+
+    return network_ctor(**network_kwargs), network_ctor(**network_kwargs)
+
+
 def make_train(
     rl_config: RLConfig, env_config: EnvironmentConfig
-) -> tuple[
-    TrainInitFn,
-    TrainStepFn,
-    int,
-    TagEnvironment,
-    ActorCriticCNNRNN,
-    ActorCriticCNNRNN,
-]:
-    num_updates = rl_config.total_timesteps // rl_config.num_steps // rl_config.num_envs
+) -> tuple[TrainInitFn, TrainStepFn, int]:
+    num_updates = rl_config.num_updates
+    local_num_envs = rl_config.local_num_envs
 
-    env = TagEnvironment(env_config, rl_config.num_envs)
+    env = TagEnvironment(env_config, local_num_envs)
     obs_size = observation_size(env_config)
-    action_dim = (2,)
-
-    chaser_network = ActorCriticCNNRNN(
-        action_dim=action_dim,
-        hidden_size=rl_config.hidden_size,
-        n_rays=env_config.n_rays,
-    )
-    evader_network = ActorCriticCNNRNN(
-        action_dim=action_dim,
-        hidden_size=rl_config.hidden_size,
-        n_rays=env_config.n_rays,
-    )
+    chaser_network, evader_network = build_networks(rl_config, env_config)
 
     def linear_schedule(count: int | float | jax.Array) -> int | float | jax.Array:
-        frac = (
-            1.0
-            - (count // (rl_config.num_minibatches * rl_config.update_epochs))
-            / num_updates
+        updates_completed = count // (
+            rl_config.num_minibatches * rl_config.update_epochs
         )
+        frac = 1.0 - updates_completed / max(num_updates, 1)
         return rl_config.lr * frac
 
-    def init(rng: jax.Array) -> RunnerState:
-        rng, chaser_rng, evader_rng = jax.random.split(rng, 3)
+    if rl_config.anneal_lr:
+        tx = optax.chain(
+            optax.clip_by_global_norm(rl_config.max_grad_norm),
+            optax.adam(learning_rate=cast(optax.Schedule, linear_schedule), eps=1e-5),
+        )
+    else:
+        tx = optax.chain(
+            optax.clip_by_global_norm(rl_config.max_grad_norm),
+            optax.adam(rl_config.lr, eps=1e-5),
+        )
+
+    def init(base_rng: jax.Array) -> RunnerState:
+        axis_index = jax.lax.axis_index(AXIS_NAME)
+        param_rng, env_rng, runner_rng = jax.random.split(base_rng, 3)
+        chaser_rng, evader_rng = jax.random.split(param_rng)
+
         init_x = (
-            jnp.zeros((1, rl_config.num_envs, obs_size)),
-            jnp.zeros((1, rl_config.num_envs)),
+            jnp.zeros((1, local_num_envs, obs_size)),
+            jnp.zeros((1, local_num_envs)),
         )
-        init_hstate = ScannedRNN.initialize_carry(
-            rl_config.num_envs, rl_config.hidden_size
-        )
+        init_hstate = ScannedRNN.initialize_carry(local_num_envs, rl_config.hidden_size)
 
         chaser_params = chaser_network.init(chaser_rng, init_hstate, init_x)
         evader_params = evader_network.init(evader_rng, init_hstate, init_x)
-
-        if rl_config.anneal_lr:
-            tx = optax.chain(
-                optax.clip_by_global_norm(rl_config.max_grad_norm),
-                optax.adam(
-                    learning_rate=cast(optax.Schedule, linear_schedule), eps=1e-5
-                ),
-            )
-        else:
-            tx = optax.chain(
-                optax.clip_by_global_norm(rl_config.max_grad_norm),
-                optax.adam(rl_config.lr, eps=1e-5),
-            )
 
         chaser_ts = TrainState.create(
             apply_fn=chaser_network.apply, params=chaser_params, tx=tx
@@ -93,35 +107,32 @@ def make_train(
             apply_fn=evader_network.apply, params=evader_params, tx=tx
         )
 
-        # Init env
-        rng, _rng = jax.random.split(rng)
-        reset_rngs = jax.random.split(_rng, rl_config.num_envs)
+        device_env_rng = jax.random.fold_in(env_rng, axis_index)
+        reset_rngs = jax.random.split(device_env_rng, local_num_envs)
         env_states, chaser_obs, evader_obs = jax.vmap(env.reset)(reset_rngs)
 
         chaser_hstate = ScannedRNN.initialize_carry(
-            rl_config.num_envs, rl_config.hidden_size
+            local_num_envs, rl_config.hidden_size
         )
         evader_hstate = ScannedRNN.initialize_carry(
-            rl_config.num_envs, rl_config.hidden_size
+            local_num_envs, rl_config.hidden_size
         )
 
-        rng, _rng = jax.random.split(rng)
-        runner_state = RunnerState(
-            chaser_ts,
-            evader_ts,
-            env_states,
-            chaser_obs,
-            evader_obs,
-            jnp.zeros(rl_config.num_envs, dtype=bool),
-            chaser_hstate,
-            evader_hstate,
-            _rng,
+        return RunnerState(
+            chaser_ts=chaser_ts,
+            evader_ts=evader_ts,
+            env_state=env_states,
+            chaser_obs=chaser_obs,
+            evader_obs=evader_obs,
+            done=jnp.zeros(local_num_envs, dtype=bool),
+            chaser_hstate=chaser_hstate,
+            evader_hstate=evader_hstate,
+            rng=jax.random.fold_in(runner_rng, axis_index),
         )
-        return runner_state
 
     def step(runner_state: RunnerState) -> tuple[RunnerState, TrainMetrics]:
-        initial_chaser_hstate = runner_state[6]
-        initial_evader_hstate = runner_state[7]
+        initial_chaser_hstate = runner_state.chaser_hstate
+        initial_evader_hstate = runner_state.evader_hstate
 
         runner_state, traj_batch = collect_trajectories(
             runner_state,
@@ -157,82 +168,174 @@ def make_train(
 
         chaser_traj, evader_traj = split_agent_trajectories(traj_batch)
 
-        rng = runner_state[-1]
-        rng, chaser_update_rng, evader_update_rng = jax.random.split(rng, 3)
+        rng, chaser_update_rng, evader_update_rng = jax.random.split(
+            runner_state.rng, 3
+        )
 
         chaser_ts, chaser_loss = update_agent(
             rl_config,
             chaser_network,
-            runner_state[0],
+            runner_state.chaser_ts,
             initial_chaser_hstate[None, :],
             chaser_traj,
             chaser_advantages,
             chaser_targets,
             chaser_update_rng,
+            axis_name=AXIS_NAME,
         )
         evader_ts, evader_loss = update_agent(
             rl_config,
             evader_network,
-            runner_state[1],
+            runner_state.evader_ts,
             initial_evader_hstate[None, :],
             evader_traj,
             evader_advantages,
             evader_targets,
             evader_update_rng,
+            axis_name=AXIS_NAME,
         )
 
-        metrics = compute_training_metrics(traj_batch, chaser_loss, evader_loss)
-
-        runner_state = RunnerState(
-            chaser_ts,
-            evader_ts,
-            runner_state[2],
-            runner_state[3],
-            runner_state[4],
-            runner_state[5],
-            runner_state[6],
-            runner_state[7],
-            rng,
+        metrics = compute_training_metrics(
+            traj_batch, chaser_loss, evader_loss, axis_name=AXIS_NAME
         )
-        return runner_state, metrics
 
-    return init, step, num_updates, env, chaser_network, evader_network
+        return (
+            RunnerState(
+                chaser_ts=chaser_ts,
+                evader_ts=evader_ts,
+                env_state=runner_state.env_state,
+                chaser_obs=runner_state.chaser_obs,
+                evader_obs=runner_state.evader_obs,
+                done=runner_state.done,
+                chaser_hstate=runner_state.chaser_hstate,
+                evader_hstate=runner_state.evader_hstate,
+                rng=rng,
+            ),
+            metrics,
+        )
+
+    return init, step, num_updates
 
 
-if __name__ == "__main__":
-    import os
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resume", type=str, default=None)
+    parser.add_argument("--logdir", type=str, default=None)
+    parser.add_argument("--num-devices", type=int, default=None)
+    return parser.parse_args()
 
-    from tensorboardX import SummaryWriter
-    from tqdm import tqdm
 
-    rl_config = RLConfig()
-    env_config = EnvironmentConfig()
-    rng = jax.random.PRNGKey(rl_config.seed)
+def resolve_logdir(logdir: str | None, resume: str | None) -> str | None:
+    if logdir is not None:
+        return logdir
+    if resume is None:
+        return None
+    return os.path.dirname(os.path.dirname(resume))
 
-    init_fn, step_fn, num_updates, env, chaser_network, evader_network = make_train(
-        rl_config, env_config
+
+def unreplicate_metrics(metrics: TrainMetrics) -> dict[str, float]:
+    host_metrics = jax.tree.map(lambda x: jax.device_get(x[0]), metrics)
+    return {key: float(value) for key, value in host_metrics.items()}
+
+
+def load_training_configs(
+    resume_path: str | None, num_devices_override: int | None
+) -> tuple[RLConfig, EnvironmentConfig, dict[str, Any] | None]:
+    if resume_path is None:
+        rl_config = RLConfig()
+        env_config = EnvironmentConfig()
+        checkpoint = None
+    else:
+        checkpoint = load_checkpoint(resume_path)
+        rl_config, env_config = load_checkpoint_configs(checkpoint)
+        if rl_config is None or env_config is None:
+            raise ValueError(
+                "Resume checkpoint does not contain serialized RL/environment configs"
+            )
+
+    if num_devices_override is not None:
+        rl_config.num_devices = num_devices_override
+    return rl_config, env_config, checkpoint
+
+
+def main() -> None:
+    args = parse_args()
+    rl_config, env_config, checkpoint = load_training_configs(
+        args.resume, args.num_devices
     )
-    runner_state = jax.jit(init_fn)(rng)
-    step_jit = jax.jit(step_fn)
 
-    writer = SummaryWriter()
+    devices = jax.local_devices()
+    rl_config.validate(len(devices))
+    print(
+        "Training configuration: "
+        f"devices={rl_config.num_devices}, "
+        f"global_envs={rl_config.num_envs}, "
+        f"local_envs={rl_config.local_num_envs}, "
+        f"num_steps={rl_config.num_steps}, "
+        f"num_minibatches={rl_config.num_minibatches}, "
+        f"timesteps_per_update={rl_config.timesteps_per_update}"
+    )
+
+    init_fn, step_fn, num_updates = make_train(rl_config, env_config)
+    init_pmap = jax.pmap(init_fn, axis_name=AXIS_NAME)
+    step_pmap = jax.pmap(step_fn, axis_name=AXIS_NAME)
+
+    writer = SummaryWriter(logdir=resolve_logdir(args.logdir, args.resume))
     checkpoint_dir = os.path.join(writer.logdir, "checkpoints")
-    timesteps_per_update = rl_config.num_steps * rl_config.num_envs
 
-    for update in tqdm(range(num_updates), desc="Training"):
-        runner_state, metrics = step_jit(runner_state)
-        global_step = (update + 1) * timesteps_per_update
+    if checkpoint is None:
+        rng = jax.random.PRNGKey(rl_config.seed)
+        base_rngs = jnp.broadcast_to(rng, (rl_config.num_devices,) + rng.shape)
+        runner_state = init_pmap(base_rngs)
+        global_step = 0
+        start_update = 0
+    else:
+        rng = jax.random.PRNGKey(rl_config.seed)
+        base_rngs = jnp.broadcast_to(rng, (rl_config.num_devices,) + rng.shape)
+        template_runner_state = init_pmap(base_rngs)
+        runner_state = restore_runner_state(checkpoint, template_runner_state, devices)
+        global_step = int(checkpoint["global_step"])
+        if global_step % rl_config.timesteps_per_update != 0:
+            raise ValueError(
+                "Checkpoint global_step is not aligned with the configured timesteps_per_update"
+            )
+        start_update = global_step // rl_config.timesteps_per_update
+        print(f"Resumed training from {args.resume} at global_step={global_step}")
 
-        for key, value in metrics.items():
-            writer.add_scalar(key, value.item(), global_step)
+    for update in tqdm(
+        range(start_update, num_updates),
+        initial=start_update,
+        total=num_updates,
+        desc="Training",
+    ):
+        runner_state, metrics = step_pmap(runner_state)
+        global_step = (update + 1) * rl_config.timesteps_per_update
+
+        for key, value in unreplicate_metrics(metrics).items():
+            writer.add_scalar(key, value, global_step)
         writer.flush()
 
-        # Periodic checkpoint saving
         if rl_config.checkpoint_interval > 0 and (
             (update + 1) % rl_config.checkpoint_interval == 0
         ):
-            save_checkpoint(runner_state, global_step, checkpoint_dir)
+            save_checkpoint(
+                runner_state,
+                global_step,
+                checkpoint_dir,
+                rl_config,
+                env_config,
+            )
 
-    # Save final checkpoint
-    save_checkpoint(runner_state, num_updates * timesteps_per_update, checkpoint_dir)
+    save_checkpoint(
+        runner_state,
+        global_step,
+        checkpoint_dir,
+        rl_config,
+        env_config,
+    )
     writer.close()
+
+
+if __name__ == "__main__":
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+    main()

@@ -12,7 +12,10 @@ def safe_rate(numerator: jax.Array, denominator: jax.Array) -> jax.Array:
 
 
 def compute_training_metrics(
-    traj_batch: Transition, chaser_loss: LossInfo, evader_loss: LossInfo
+    traj_batch: Transition,
+    chaser_loss: LossInfo,
+    evader_loss: LossInfo,
+    axis_name: str | None = None,
 ) -> dict[str, jax.Array]:
     tagged = traj_batch.info.tagged.astype(jnp.float32)
     time_up = traj_batch.info.time_up.astype(jnp.float32)
@@ -27,34 +30,124 @@ def compute_training_metrics(
     n_finished = finished.astype(jnp.float32).sum()
     finished_f32 = finished.astype(jnp.float32)
 
+    metric_sums = {
+        "chaser_total_loss": chaser_loss[0].sum(),
+        "chaser_total_loss_count": jnp.asarray(chaser_loss[0].size, dtype=jnp.float32),
+        "chaser_value_loss": chaser_loss[1][0].sum(),
+        "chaser_value_loss_count": jnp.asarray(
+            chaser_loss[1][0].size, dtype=jnp.float32
+        ),
+        "chaser_actor_loss": chaser_loss[1][1].sum(),
+        "chaser_actor_loss_count": jnp.asarray(
+            chaser_loss[1][1].size, dtype=jnp.float32
+        ),
+        "chaser_entropy": chaser_loss[1][2].sum(),
+        "chaser_entropy_count": jnp.asarray(chaser_loss[1][2].size, dtype=jnp.float32),
+        "evader_total_loss": evader_loss[0].sum(),
+        "evader_total_loss_count": jnp.asarray(evader_loss[0].size, dtype=jnp.float32),
+        "evader_value_loss": evader_loss[1][0].sum(),
+        "evader_value_loss_count": jnp.asarray(
+            evader_loss[1][0].size, dtype=jnp.float32
+        ),
+        "evader_actor_loss": evader_loss[1][1].sum(),
+        "evader_actor_loss_count": jnp.asarray(
+            evader_loss[1][1].size, dtype=jnp.float32
+        ),
+        "evader_entropy": evader_loss[1][2].sum(),
+        "evader_entropy_count": jnp.asarray(evader_loss[1][2].size, dtype=jnp.float32),
+        "tagged_sum": tagged.sum(),
+        "time_up_sum": time_up.sum(),
+        "chaser_collision_sum": chaser_collision.sum(),
+        "evader_collision_sum": evader_collision.sum(),
+        "n_finished": n_finished,
+        "episode_length_sum": (traj_batch.info.step_count * finished_f32).sum(),
+        "distance_sum": traj_batch.info.distance.sum(),
+        "distance_count": jnp.asarray(traj_batch.info.distance.size, dtype=jnp.float32),
+        "chaser_reward_sum": traj_batch.chaser_reward.sum(),
+        "chaser_reward_count": jnp.asarray(
+            traj_batch.chaser_reward.size, dtype=jnp.float32
+        ),
+        "evader_reward_sum": traj_batch.evader_reward.sum(),
+        "evader_reward_count": jnp.asarray(
+            traj_batch.evader_reward.size, dtype=jnp.float32
+        ),
+        "chaser_action_mag_sum": jnp.abs(traj_batch.chaser_action).sum(),
+        "chaser_action_mag_count": jnp.asarray(
+            traj_batch.chaser_action.size, dtype=jnp.float32
+        ),
+        "evader_action_mag_sum": jnp.abs(traj_batch.evader_action).sum(),
+        "evader_action_mag_count": jnp.asarray(
+            traj_batch.evader_action.size, dtype=jnp.float32
+        ),
+        "chaser_collision_term_sum": chaser_collision.sum(),
+        "evader_collision_term_sum": evader_collision.sum(),
+    }
+
+    if axis_name is not None:
+        metric_sums = jax.lax.psum(metric_sums, axis_name=axis_name)
+
     mean_episode_length = safe_rate(
-        (traj_batch.info.step_count * finished_f32).sum(),
-        n_finished,
+        metric_sums["episode_length_sum"],
+        metric_sums["n_finished"],
     )
-    tag_rate = safe_rate(tagged.sum(), n_finished)
-    time_up_rate = safe_rate(time_up.sum(), n_finished)
-    chaser_collision_termination_rate = safe_rate(chaser_collision.sum(), n_finished)
-    evader_collision_termination_rate = safe_rate(evader_collision.sum(), n_finished)
+    tag_rate = safe_rate(metric_sums["tagged_sum"], metric_sums["n_finished"])
+    time_up_rate = safe_rate(metric_sums["time_up_sum"], metric_sums["n_finished"])
+    chaser_collision_termination_rate = safe_rate(
+        metric_sums["chaser_collision_term_sum"], metric_sums["n_finished"]
+    )
+    evader_collision_termination_rate = safe_rate(
+        metric_sums["evader_collision_term_sum"], metric_sums["n_finished"]
+    )
 
     return {
-        "chaser/total_loss": jnp.asarray(chaser_loss[0].mean()),
-        "chaser/value_loss": jnp.asarray(chaser_loss[1][0].mean()),
-        "chaser/actor_loss": jnp.asarray(chaser_loss[1][1].mean()),
-        "chaser/entropy": jnp.asarray(chaser_loss[1][2].mean()),
-        "evader/total_loss": jnp.asarray(evader_loss[0].mean()),
-        "evader/value_loss": jnp.asarray(evader_loss[1][0].mean()),
-        "evader/actor_loss": jnp.asarray(evader_loss[1][1].mean()),
-        "evader/entropy": jnp.asarray(evader_loss[1][2].mean()),
+        "chaser/total_loss": safe_rate(
+            metric_sums["chaser_total_loss"], metric_sums["chaser_total_loss_count"]
+        ),
+        "chaser/value_loss": safe_rate(
+            metric_sums["chaser_value_loss"], metric_sums["chaser_value_loss_count"]
+        ),
+        "chaser/actor_loss": safe_rate(
+            metric_sums["chaser_actor_loss"], metric_sums["chaser_actor_loss_count"]
+        ),
+        "chaser/entropy": safe_rate(
+            metric_sums["chaser_entropy"], metric_sums["chaser_entropy_count"]
+        ),
+        "evader/total_loss": safe_rate(
+            metric_sums["evader_total_loss"], metric_sums["evader_total_loss_count"]
+        ),
+        "evader/value_loss": safe_rate(
+            metric_sums["evader_value_loss"], metric_sums["evader_value_loss_count"]
+        ),
+        "evader/actor_loss": safe_rate(
+            metric_sums["evader_actor_loss"], metric_sums["evader_actor_loss_count"]
+        ),
+        "evader/entropy": safe_rate(
+            metric_sums["evader_entropy"], metric_sums["evader_entropy_count"]
+        ),
         "env/tag_rate": tag_rate,
         "env/time_up_rate": time_up_rate,
-        "env/mean_distance": traj_batch.info.distance.mean(),
+        "env/mean_distance": safe_rate(
+            metric_sums["distance_sum"], metric_sums["distance_count"]
+        ),
         "env/mean_episode_length": mean_episode_length,
-        "chaser/mean_reward": traj_batch.chaser_reward.mean(),
-        "evader/mean_reward": traj_batch.evader_reward.mean(),
-        "chaser/mean_action_magnitude": jnp.abs(traj_batch.chaser_action).mean(),
-        "evader/mean_action_magnitude": jnp.abs(traj_batch.evader_action).mean(),
-        "chaser/collision_rate": chaser_collision.mean(),
-        "evader/collision_rate": evader_collision.mean(),
+        "chaser/mean_reward": safe_rate(
+            metric_sums["chaser_reward_sum"], metric_sums["chaser_reward_count"]
+        ),
+        "evader/mean_reward": safe_rate(
+            metric_sums["evader_reward_sum"], metric_sums["evader_reward_count"]
+        ),
+        "chaser/mean_action_magnitude": safe_rate(
+            metric_sums["chaser_action_mag_sum"], metric_sums["chaser_action_mag_count"]
+        ),
+        "evader/mean_action_magnitude": safe_rate(
+            metric_sums["evader_action_mag_sum"], metric_sums["evader_action_mag_count"]
+        ),
+        "chaser/collision_rate": safe_rate(
+            metric_sums["chaser_collision_sum"], metric_sums["distance_count"]
+        ),
+        "evader/collision_rate": safe_rate(
+            metric_sums["evader_collision_sum"], metric_sums["distance_count"]
+        ),
         "env/termination_by_chaser_collision_rate": chaser_collision_termination_rate,
         "env/termination_by_evader_collision_rate": evader_collision_termination_rate,
     }

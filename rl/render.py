@@ -4,7 +4,6 @@ if __name__ == "__main__":
     os.environ["MUJOCO_GL"] = "egl"
 
 
-import pickle
 from collections.abc import Callable
 from typing import Any
 
@@ -19,6 +18,7 @@ from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import yaw_to_quaternion
+from rl.checkpoints import load_checkpoint_configs, load_policy_params
 from rl.config import RLConfig
 from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
 
@@ -29,7 +29,7 @@ RenderFrames = list[npt.NDArray[np.uint8]]
 CHECKPOINT_PATH = "runs/Feb28_12-38-35_node002/checkpoints/step_419430400.pkl"
 OUTPUT_PATH = "render.mp4"
 NUM_EPISODES = 10
-MODEL_TYPE = "cnn_rnn"  # or "rnn"
+MODEL_TYPE = "auto"  # auto, cnn_rnn, or rnn
 VIDEO_HEIGHT = 1080
 VIDEO_WIDTH = 1920
 PRNG_KEY = 0
@@ -185,14 +185,17 @@ def render_trajectory(
 
 
 if __name__ == "__main__":
-    rl_config = RLConfig()
-    env_config = EnvironmentConfig()
-
-    # Load checkpoint
-    with open(CHECKPOINT_PATH, "rb") as f:
-        checkpoint = pickle.load(f)
-    chaser_params = jax.device_put(checkpoint["chaser_params"])
-    evader_params = jax.device_put(checkpoint["evader_params"])
+    chaser_params, evader_params, checkpoint = load_policy_params(CHECKPOINT_PATH)
+    checkpoint_rl_config, checkpoint_env_config = load_checkpoint_configs(checkpoint)
+    rl_config = checkpoint_rl_config or RLConfig()
+    env_config = checkpoint_env_config or EnvironmentConfig()
+    model_type = (
+        checkpoint.get("model_type", rl_config.model_type)
+        if MODEL_TYPE == "auto"
+        else MODEL_TYPE
+    )
+    chaser_params = jax.device_put(chaser_params)
+    evader_params = jax.device_put(evader_params)
     print(f"Loaded checkpoint from {CHECKPOINT_PATH}")
 
     # Create environment (single instance)
@@ -203,7 +206,7 @@ if __name__ == "__main__":
 
     # Instantiate networks
     action_dim = (2,)
-    if MODEL_TYPE == "cnn_rnn":
+    if model_type == "cnn_rnn":
         chaser_network = ActorCriticCNNRNN(
             action_dim=action_dim,
             hidden_size=rl_config.hidden_size,
@@ -214,7 +217,7 @@ if __name__ == "__main__":
             hidden_size=rl_config.hidden_size,
             n_rays=env_config.n_rays,
         )
-    elif MODEL_TYPE == "rnn":
+    elif model_type == "rnn":
         chaser_network = ActorCriticRNN(
             action_dim=action_dim,
             hidden_size=rl_config.hidden_size,
@@ -224,7 +227,7 @@ if __name__ == "__main__":
             hidden_size=rl_config.hidden_size,
         )
     else:
-        raise ValueError(f"Unknown MODEL_TYPE: {MODEL_TYPE}")
+        raise ValueError(f"Unknown MODEL_TYPE: {model_type}")
 
     # Build JIT'd rollout (compiles on first call)
     rollout_fn = make_rollout(env, chaser_network, evader_network, rl_config)

@@ -172,7 +172,7 @@ def collect_trajectories(
         evader_log_prob = evader_log_prob.squeeze(0)
         evader_action = jnp.clip(evader_action_raw, -1.0, 1.0)
 
-        step_rngs = jax.random.split(step_rng, rl_config.num_envs)
+        step_rngs = jax.random.split(step_rng, chaser_action.shape[0])
         (
             env_state,
             next_chaser_obs,

@@ -57,6 +57,7 @@ def update_agent(
     advantages: jax.Array,
     targets: jax.Array,
     rng: jax.Array,
+    axis_name: str | None = None,
 ) -> tuple[TrainState, LossInfo]:
     def _update_epoch(
         update_state: UpdateState, _: None
@@ -119,13 +120,18 @@ def update_agent(
                 advantages,
                 targets,
             )
+            if axis_name is not None:
+                grads = jax.lax.pmean(grads, axis_name=axis_name)
+                total_loss = jax.tree.map(
+                    lambda x: jax.lax.pmean(x, axis_name=axis_name), total_loss
+                )
             train_state = train_state.apply_gradients(grads=grads)
             return train_state, total_loss
 
         train_state, init_hstate, traj_batch, advantages, targets, rng = update_state
 
         rng, _rng = jax.random.split(rng)
-        permutation = jax.random.permutation(_rng, rl_config.num_envs)
+        permutation = jax.random.permutation(_rng, traj_batch.done.shape[1])
         batch = (init_hstate, traj_batch, advantages, targets)
 
         shuffled_batch = jax.tree.map(lambda x: jnp.take(x, permutation, axis=1), batch)

@@ -25,9 +25,10 @@ class EnvironmentConfig:
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
-    chaser_time_reward: float = 0.0015
-    evader_time_reward: float = 0.0015
-    collision_penalty: float = 4.0  # Terminal penalty for wall/obstacle contact
+    chaser_time_reward: float = -0.004
+    evader_time_reward: float = 0.004
+    collision_penalty: float = 5.0  # Terminal penalty for wall/obstacle contact
+
     distance_shaping_scale: float = 0.00
     distance_shaping_gamma: float = 0.99
 

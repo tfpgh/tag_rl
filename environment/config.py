@@ -20,8 +20,8 @@ class EnvironmentConfig:
     action_frequency: int = 20
 
     # Episode timing, seconds
-    episode_max_length: int = 30
-    chaser_freeze_seconds: int = 3
+    episode_max_length: int = 20
+    chaser_freeze_seconds: int = 2
 
     # Rewards
     win_reward: float = 1.0  # timeout for evader, tag for chaser
@@ -39,5 +39,5 @@ class EnvironmentConfig:
     wall_margin_factor: float = 1.5  # Minimum distance from wall (* agent_radius)
 
     # Obstacles
-    max_obstacles: int = 12  # always allocated in MJCF
-    obstacle_width: float = 0.13  # square box side length (meters)
+    max_obstacles: int = 8  # always allocated in MJCF
+    obstacle_width: float = 0.10  # square box side length (meters)

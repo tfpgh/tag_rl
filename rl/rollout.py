@@ -17,7 +17,9 @@ from rl.config import RLConfig
 class Transition(NamedTuple):
     done: jax.Array
     chaser_action: jax.Array
+    chaser_action_raw: jax.Array
     evader_action: jax.Array
+    evader_action_raw: jax.Array
     chaser_value: jax.Array
     evader_value: jax.Array
     chaser_reward: jax.Array
@@ -193,7 +195,9 @@ def collect_trajectories(
         transition = Transition(
             done=last_done,
             chaser_action=chaser_action,
+            chaser_action_raw=chaser_action_raw,
             evader_action=evader_action,
+            evader_action_raw=evader_action_raw,
             chaser_value=chaser_value,
             evader_value=evader_value,
             chaser_reward=chaser_reward,

@@ -29,6 +29,18 @@ def compute_training_metrics(
     )
     n_finished = finished.astype(jnp.float32).sum()
     finished_f32 = finished.astype(jnp.float32)
+    chaser_action_clipped = jnp.not_equal(
+        traj_batch.chaser_action, traj_batch.chaser_action_raw
+    ).astype(jnp.float32)
+    evader_action_clipped = jnp.not_equal(
+        traj_batch.evader_action, traj_batch.evader_action_raw
+    ).astype(jnp.float32)
+    chaser_action_any_clipped = jnp.any(chaser_action_clipped > 0, axis=-1).astype(
+        jnp.float32
+    )
+    evader_action_any_clipped = jnp.any(evader_action_clipped > 0, axis=-1).astype(
+        jnp.float32
+    )
 
     metric_sums = {
         "chaser_total_loss": chaser_loss[0].sum(),
@@ -75,9 +87,25 @@ def compute_training_metrics(
         "chaser_action_mag_count": jnp.asarray(
             traj_batch.chaser_action.size, dtype=jnp.float32
         ),
+        "chaser_action_clipped_sum": chaser_action_clipped.sum(),
+        "chaser_action_clipped_count": jnp.asarray(
+            chaser_action_clipped.size, dtype=jnp.float32
+        ),
+        "chaser_action_any_clipped_sum": chaser_action_any_clipped.sum(),
+        "chaser_action_any_clipped_count": jnp.asarray(
+            chaser_action_any_clipped.size, dtype=jnp.float32
+        ),
         "evader_action_mag_sum": jnp.abs(traj_batch.evader_action).sum(),
         "evader_action_mag_count": jnp.asarray(
             traj_batch.evader_action.size, dtype=jnp.float32
+        ),
+        "evader_action_clipped_sum": evader_action_clipped.sum(),
+        "evader_action_clipped_count": jnp.asarray(
+            evader_action_clipped.size, dtype=jnp.float32
+        ),
+        "evader_action_any_clipped_sum": evader_action_any_clipped.sum(),
+        "evader_action_any_clipped_count": jnp.asarray(
+            evader_action_any_clipped.size, dtype=jnp.float32
         ),
         "chaser_collision_term_sum": chaser_collision.sum(),
         "evader_collision_term_sum": evader_collision.sum(),
@@ -139,8 +167,24 @@ def compute_training_metrics(
         "chaser/mean_action_magnitude": safe_rate(
             metric_sums["chaser_action_mag_sum"], metric_sums["chaser_action_mag_count"]
         ),
+        "chaser/action_clipped_fraction": safe_rate(
+            metric_sums["chaser_action_clipped_sum"],
+            metric_sums["chaser_action_clipped_count"],
+        ),
+        "chaser/action_any_clipped_fraction": safe_rate(
+            metric_sums["chaser_action_any_clipped_sum"],
+            metric_sums["chaser_action_any_clipped_count"],
+        ),
         "evader/mean_action_magnitude": safe_rate(
             metric_sums["evader_action_mag_sum"], metric_sums["evader_action_mag_count"]
+        ),
+        "evader/action_clipped_fraction": safe_rate(
+            metric_sums["evader_action_clipped_sum"],
+            metric_sums["evader_action_clipped_count"],
+        ),
+        "evader/action_any_clipped_fraction": safe_rate(
+            metric_sums["evader_action_any_clipped_sum"],
+            metric_sums["evader_action_any_clipped_count"],
         ),
         "chaser/collision_rate": safe_rate(
             metric_sums["chaser_collision_sum"], metric_sums["distance_count"]

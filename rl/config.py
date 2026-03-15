@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class RLConfig:
     num_devices: int = 4
-    num_envs: int = 8192
+    num_envs: int = 16384
     num_steps: int = 128
 
     total_timesteps: int = int(5e9)
@@ -13,7 +13,7 @@ class RLConfig:
 
     lr: float = 3e-4
     anneal_lr: bool = True
-    update_epochs: int = 3
+    update_epochs: int = 4
     num_minibatches: int = 64
     gamma: float = 0.99
     gae_lambda: float = 0.95

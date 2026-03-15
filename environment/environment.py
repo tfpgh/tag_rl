@@ -212,14 +212,14 @@ class TagEnvironment:
         chaser_reward = (
             config.win_reward * tagged
             - config.win_reward * time_up
-            - config.time_reward
+            + config.chaser_time_reward
             + config.distance_shaping_scale * distance_shaping
             - config.collision_penalty * chaser_collision
         )
         evader_reward = (
             -config.win_reward * tagged
             + config.win_reward * time_up
-            + config.time_reward
+            + config.evader_time_reward
             - config.distance_shaping_scale * distance_shaping
             - config.collision_penalty * evader_collision
         )

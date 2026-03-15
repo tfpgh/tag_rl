@@ -1,14 +1,43 @@
 import os
 import pickle
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Sequence
 
 import jax
 
 from environment.config import EnvironmentConfig
 from rl.config import RLConfig
 from rl.rollout import RunnerState
-from rl.sharding import TrainingShardings, shard_runner_state
+
+
+def _unreplicate_tree(tree: Any) -> Any:
+    return jax.tree.map(lambda x: jax.device_get(x[0]), tree)
+
+
+def _host_to_sharded_tree(tree: Any, devices: Sequence[Any]) -> Any:
+    n_devices = len(devices)
+    return jax.tree.map(
+        lambda x: jax.device_put_sharded([x[i] for i in range(n_devices)], devices),
+        tree,
+    )
+
+
+def _require_device_count(runner_state: dict[str, Any], num_devices: int) -> None:
+    sharded_keys = (
+        "env_state",
+        "chaser_obs",
+        "evader_obs",
+        "prev_done",
+        "chaser_hstate",
+        "evader_hstate",
+        "rng",
+    )
+    for key in sharded_keys:
+        value = runner_state[key]
+        if getattr(value, "shape", (None,))[0] != num_devices:
+            raise ValueError(
+                f"Checkpoint {key} expects {getattr(value, 'shape', None)} but active device count is {num_devices}"
+            )
 
 
 def _extract_policy_params(checkpoint: dict[str, Any]) -> tuple[Any, Any]:
@@ -48,8 +77,12 @@ def save_checkpoint(
     os.makedirs(checkpoint_dir, exist_ok=True)
     path = os.path.join(checkpoint_dir, f"step_{global_step}.pkl")
 
-    chaser_train_state = _serialize_train_state(runner_state.chaser_ts)
-    evader_train_state = _serialize_train_state(runner_state.evader_ts)
+    chaser_train_state = _serialize_train_state(
+        _unreplicate_tree(runner_state.chaser_ts)
+    )
+    evader_train_state = _serialize_train_state(
+        _unreplicate_tree(runner_state.evader_ts)
+    )
     checkpoint = {
         "global_step": global_step,
         "rl_config": asdict(rl_config),
@@ -84,33 +117,46 @@ def load_checkpoint(path: str) -> dict[str, Any]:
 def restore_runner_state(
     checkpoint: dict[str, Any],
     template_runner_state: RunnerState,
-    shardings: TrainingShardings,
+    devices: Sequence[Any],
 ) -> RunnerState:
     runner_state = checkpoint.get("runner_state")
     if not isinstance(runner_state, dict):
         raise ValueError(
             "Checkpoint does not contain full runner state; it cannot be resumed for training"
         )
+    _require_device_count(runner_state, len(devices))
 
     try:
         restored = RunnerState(
             chaser_ts=_restore_train_state(
-                template_runner_state.chaser_ts, runner_state["chaser_train_state"]
+                _unreplicate_tree(template_runner_state.chaser_ts),
+                runner_state["chaser_train_state"],
             ),
             evader_ts=_restore_train_state(
-                template_runner_state.evader_ts, runner_state["evader_train_state"]
+                _unreplicate_tree(template_runner_state.evader_ts),
+                runner_state["evader_train_state"],
             ),
-            env_state=runner_state["env_state"],
-            chaser_obs=runner_state["chaser_obs"],
-            evader_obs=runner_state["evader_obs"],
-            prev_done=runner_state["prev_done"],
-            chaser_hstate=runner_state["chaser_hstate"],
-            evader_hstate=runner_state["evader_hstate"],
-            rng=runner_state["rng"],
+            chaser_obs=_host_to_sharded_tree(runner_state["chaser_obs"], devices),
+            evader_obs=_host_to_sharded_tree(runner_state["evader_obs"], devices),
+            env_state=_host_to_sharded_tree(runner_state["env_state"], devices),
+            prev_done=_host_to_sharded_tree(runner_state["prev_done"], devices),
+            chaser_hstate=_host_to_sharded_tree(runner_state["chaser_hstate"], devices),
+            evader_hstate=_host_to_sharded_tree(runner_state["evader_hstate"], devices),
+            rng=_host_to_sharded_tree(runner_state["rng"], devices),
         )
     except KeyError as exc:
         raise ValueError("Checkpoint runner_state is missing required fields") from exc
-    return shard_runner_state(restored, shardings)
+    return RunnerState(
+        chaser_ts=jax.device_put_replicated(restored.chaser_ts, devices),
+        evader_ts=jax.device_put_replicated(restored.evader_ts, devices),
+        env_state=restored.env_state,
+        chaser_obs=restored.chaser_obs,
+        evader_obs=restored.evader_obs,
+        prev_done=restored.prev_done,
+        chaser_hstate=restored.chaser_hstate,
+        evader_hstate=restored.evader_hstate,
+        rng=restored.rng,
+    )
 
 
 def load_policy_params(path: str) -> tuple[Any, Any, dict[str, Any]]:

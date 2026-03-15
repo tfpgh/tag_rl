@@ -29,18 +29,19 @@ from rl.rollout import (
     collect_trajectories,
     split_agent_trajectories,
 )
-from rl.sharding import make_shardings, shard_runner_state
 
+AXIS_NAME = "devices"
 TrainMetrics = dict[str, jax.Array]
 TrainInitFn = Callable[[jax.Array], RunnerState]
 TrainStepFn = Callable[[RunnerState], tuple[RunnerState, TrainMetrics]]
 
 
 def make_train(
-    rl_config: RLConfig, env_config: EnvironmentConfig
+    rl_config: RLConfig, env_config: EnvironmentConfig, num_devices: int
 ) -> tuple[TrainInitFn, TrainStepFn, int]:
     num_updates = rl_config.num_updates
     num_envs = rl_config.num_envs
+    local_num_envs = num_envs // num_devices
 
     env = TagEnvironment(env_config)
     obs_size = observation_size(env_config)
@@ -65,14 +66,15 @@ def make_train(
         )
 
     def init(base_rng: jax.Array) -> RunnerState:
+        axis_index = jax.lax.axis_index(AXIS_NAME)
         param_rng, env_rng, runner_rng = jax.random.split(base_rng, 3)
         chaser_rng, evader_rng = jax.random.split(param_rng)
 
         init_x = (
-            jnp.zeros((1, num_envs, obs_size)),
-            jnp.zeros((1, num_envs)),
+            jnp.zeros((1, local_num_envs, obs_size)),
+            jnp.zeros((1, local_num_envs)),
         )
-        init_hstate = ScannedRNN.initialize_carry(num_envs, rl_config.hidden_size)
+        init_hstate = ScannedRNN.initialize_carry(local_num_envs, rl_config.hidden_size)
 
         chaser_params = chaser_network.init(chaser_rng, init_hstate, init_x)
         evader_params = evader_network.init(evader_rng, init_hstate, init_x)
@@ -84,11 +86,16 @@ def make_train(
             apply_fn=evader_network.apply, params=evader_params, tx=tx
         )
 
-        reset_rngs = jax.random.split(env_rng, num_envs)
+        device_env_rng = jax.random.fold_in(env_rng, axis_index)
+        reset_rngs = jax.random.split(device_env_rng, local_num_envs)
         env_states, chaser_obs, evader_obs = jax.vmap(env.reset)(reset_rngs)
 
-        chaser_hstate = ScannedRNN.initialize_carry(num_envs, rl_config.hidden_size)
-        evader_hstate = ScannedRNN.initialize_carry(num_envs, rl_config.hidden_size)
+        chaser_hstate = ScannedRNN.initialize_carry(
+            local_num_envs, rl_config.hidden_size
+        )
+        evader_hstate = ScannedRNN.initialize_carry(
+            local_num_envs, rl_config.hidden_size
+        )
 
         return RunnerState(
             chaser_ts=chaser_ts,
@@ -96,10 +103,10 @@ def make_train(
             env_state=env_states,
             chaser_obs=chaser_obs,
             evader_obs=evader_obs,
-            prev_done=jnp.zeros(num_envs, dtype=bool),
+            prev_done=jnp.zeros(local_num_envs, dtype=bool),
             chaser_hstate=chaser_hstate,
             evader_hstate=evader_hstate,
-            rng=runner_rng,
+            rng=jax.random.fold_in(runner_rng, axis_index),
         )
 
     def step(runner_state: RunnerState) -> tuple[RunnerState, TrainMetrics]:
@@ -152,6 +159,7 @@ def make_train(
             chaser_advantages,
             chaser_targets,
             chaser_update_rng,
+            axis_name=AXIS_NAME,
         )
         evader_ts, evader_loss = update_agent(
             rl_config,
@@ -162,9 +170,12 @@ def make_train(
             evader_advantages,
             evader_targets,
             evader_update_rng,
+            axis_name=AXIS_NAME,
         )
 
-        metrics = compute_training_metrics(traj_batch, chaser_loss, evader_loss)
+        metrics = compute_training_metrics(
+            traj_batch, chaser_loss, evader_loss, axis_name=AXIS_NAME
+        )
 
         return (
             RunnerState(
@@ -206,7 +217,7 @@ def resolve_logdir(logdir: str | None, resume: str | None) -> str | None:
 
 
 def unreplicate_metrics(metrics: TrainMetrics) -> dict[str, float]:
-    host_metrics = jax.device_get(metrics)
+    host_metrics = jax.tree.map(lambda x: jax.device_get(x[0]), metrics)
     return {key: float(value) for key, value in host_metrics.items()}
 
 
@@ -244,20 +255,19 @@ def main() -> None:
     devices = resolve_devices(args.num_devices)
     env_config.validate()
     rl_config.validate(len(devices))
-    shardings = make_shardings(devices)
     print(
         "Training configuration: "
         f"devices={len(devices)}, "
         f"global_envs={rl_config.num_envs}, "
-        f"envs_per_device={rl_config.num_envs // len(devices)}, "
+        f"local_envs={rl_config.num_envs // len(devices)}, "
         f"num_steps={rl_config.num_steps}, "
         f"num_minibatches={rl_config.num_minibatches}, "
         f"timesteps_per_update={rl_config.timesteps_per_update}"
     )
 
-    init_fn, step_fn, num_updates = make_train(rl_config, env_config)
-    init_jit = jax.jit(init_fn, device=devices[0])
-    step_jit = jax.jit(step_fn, donate_argnums=(0,))
+    init_fn, step_fn, num_updates = make_train(rl_config, env_config, len(devices))
+    init_pmap = jax.pmap(init_fn, axis_name=AXIS_NAME, devices=devices)
+    step_pmap = jax.pmap(step_fn, axis_name=AXIS_NAME, devices=devices)
 
     writer = SummaryWriter(logdir=resolve_logdir(args.logdir, args.resume))
     checkpoint_dir = os.path.join(writer.logdir, "checkpoints")
@@ -265,15 +275,15 @@ def main() -> None:
 
     if checkpoint is None:
         rng = jax.random.PRNGKey(rl_config.seed)
-        runner_state = shard_runner_state(init_jit(rng), shardings)
+        base_rngs = jnp.broadcast_to(rng, (len(devices),) + rng.shape)
+        runner_state = init_pmap(base_rngs)
         global_step = 0
         start_update = 0
     else:
         rng = jax.random.PRNGKey(rl_config.seed)
-        template_runner_state = init_jit(rng)
-        runner_state = restore_runner_state(
-            checkpoint, template_runner_state, shardings
-        )
+        base_rngs = jnp.broadcast_to(rng, (len(devices),) + rng.shape)
+        template_runner_state = init_pmap(base_rngs)
+        runner_state = restore_runner_state(checkpoint, template_runner_state, devices)
         global_step = int(cast(int, checkpoint["global_step"]))
         if global_step % rl_config.timesteps_per_update != 0:
             raise ValueError(
@@ -288,7 +298,7 @@ def main() -> None:
         total=num_updates,
         desc="Training",
     ):
-        runner_state, metrics = step_jit(runner_state)
+        runner_state, metrics = step_pmap(runner_state)
         global_step = (update + 1) * rl_config.timesteps_per_update
 
         for key, value in unreplicate_metrics(metrics).items():

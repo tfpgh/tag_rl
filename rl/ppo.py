@@ -57,6 +57,7 @@ def update_agent(
     advantages: jax.Array,
     targets: jax.Array,
     rng: jax.Array,
+    axis_name: str | None = None,
 ) -> tuple[TrainState, LossInfo]:
     def _update_epoch(
         update_state: UpdateState, _: None
@@ -119,6 +120,11 @@ def update_agent(
                 advantages,
                 targets,
             )
+            if axis_name is not None:
+                grads = jax.lax.pmean(grads, axis_name=axis_name)
+                total_loss = jax.tree.map(
+                    lambda x: jax.lax.pmean(x, axis_name=axis_name), total_loss
+                )
             train_state = train_state.apply_gradients(grads=grads)
             return train_state, total_loss
 

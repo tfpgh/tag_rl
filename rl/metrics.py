@@ -15,6 +15,7 @@ def compute_training_metrics(
     traj_batch: Transition,
     chaser_loss: LossInfo,
     evader_loss: LossInfo,
+    axis_name: str | None = None,
 ) -> dict[str, jax.Array]:
     tagged = traj_batch.info.tagged.astype(jnp.float32)
     time_up = traj_batch.info.time_up.astype(jnp.float32)
@@ -109,6 +110,9 @@ def compute_training_metrics(
         "chaser_collision_term_sum": chaser_collision.sum(),
         "evader_collision_term_sum": evader_collision.sum(),
     }
+
+    if axis_name is not None:
+        metric_sums = jax.lax.psum(metric_sums, axis_name=axis_name)
 
     mean_episode_length = safe_rate(
         metric_sums["episode_length_sum"],

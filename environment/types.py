@@ -24,7 +24,6 @@ class TagEnvironmentState(NamedTuple):
     obstacle_yaws: jax.Array
     obstacle_active: jax.Array
     step_count: jax.Array
-    tagged: jax.Array
     prev_distance: jax.Array
 
 
@@ -33,6 +32,5 @@ class TagEnvironmentStepInfo(NamedTuple):
     time_up: jax.Array
     distance: jax.Array
     step_count: jax.Array
-    is_frozen: jax.Array
     chaser_collision: jax.Array
     evader_collision: jax.Array

@@ -18,6 +18,14 @@ def rotate_into_box_frame(
     return jnp.stack([x, y], axis=-1)
 
 
+def rotate_directions(directions: jax.Array, yaw: jax.Array) -> jax.Array:
+    c = jnp.cos(yaw)
+    s = jnp.sin(yaw)
+    x = directions[..., 0] * c - directions[..., 1] * s
+    y = directions[..., 0] * s + directions[..., 1] * c
+    return jnp.stack([x, y], axis=-1)
+
+
 def circle_intersects_box(
     circle_xy: jax.Array,
     radius: float,
@@ -137,7 +145,7 @@ def ray_arena_distance(
 
 def raycast_scene(
     origin_xy: jax.Array,
-    ray_angles: jax.Array,
+    ray_directions: jax.Array,
     agent_yaw: jax.Array,
     other_agent_xy: jax.Array,
     other_agent_radius: float,
@@ -148,11 +156,9 @@ def raycast_scene(
 ) -> tuple[jax.Array, jax.Array]:
     obstacle_half_extent = config.obstacle_width / 2
     arena_diagonal = jnp.sqrt(config.arena_width**2 + config.arena_height**2)
+    directions = rotate_directions(ray_directions, agent_yaw)
 
-    def cast_single(ray_angle: jax.Array) -> tuple[jax.Array, jax.Array]:
-        angle = ray_angle + agent_yaw
-        direction = jnp.array([jnp.cos(angle), jnp.sin(angle)])
-
+    def cast_single(direction: jax.Array) -> tuple[jax.Array, jax.Array]:
         wall_distance = ray_arena_distance(origin_xy, direction, config)
         obstacle_distances = jax.vmap(
             ray_box_distance, in_axes=(None, None, 0, 0, None)
@@ -180,4 +186,4 @@ def raycast_scene(
         normalized_distance = jnp.clip(distance / arena_diagonal, 0.0, 1.0)
         return normalized_distance, hit_type
 
-    return jax.vmap(cast_single)(ray_angles)
+    return jax.vmap(cast_single)(directions)

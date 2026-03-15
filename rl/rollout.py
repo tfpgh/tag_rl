@@ -1,17 +1,16 @@
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 from flax.training.train_state import TrainState
 
-from environment.config import EnvironmentConfig
 from environment.environment import (
     TagEnvironment,
     TagEnvironmentState,
     TagEnvironmentStepInfo,
 )
 from rl.config import RLConfig
+from rl.policy import PolicyModule
 
 
 class Transition(NamedTuple):
@@ -46,7 +45,7 @@ class RunnerState(NamedTuple):
     env_state: TagEnvironmentState
     chaser_obs: jax.Array
     evader_obs: jax.Array
-    done: jax.Array
+    prev_done: jax.Array
     chaser_hstate: jax.Array
     evader_hstate: jax.Array
     rng: jax.Array
@@ -58,18 +57,14 @@ class RolloutCarry(NamedTuple):
     env_state: TagEnvironmentState
     chaser_obs: jax.Array
     evader_obs: jax.Array
-    done: jax.Array
+    prev_done: jax.Array
     chaser_hstate: jax.Array
     evader_hstate: jax.Array
     rng: jax.Array
 
 
-ActorCriticModule = Any
-
-
 def auto_reset_step(
     env: TagEnvironment,
-    env_config: EnvironmentConfig,
     state: TagEnvironmentState,
     chaser_action: jax.Array,
     evader_action: jax.Array,
@@ -87,48 +82,25 @@ def auto_reset_step(
         state, chaser_action, evader_action
     )
 
-    (
-        reset_qpos,
-        reset_qvel,
-        reset_distance,
-        reset_obstacle_positions_xy,
-        reset_obstacle_yaws,
-        reset_obstacle_active,
-    ) = env.reset_state(rng)
+    def reset_branch(_: None) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
+        return env.reset(rng)
 
-    new_mjx_data = stepped.mjx_data.replace(
-        qpos=jnp.where(done, reset_qpos, stepped.mjx_data.qpos),
-        qvel=jnp.where(done, reset_qvel, stepped.mjx_data.qvel),
-        time=jnp.where(
-            done, jnp.zeros_like(stepped.mjx_data.time), stepped.mjx_data.time
-        ),
-    )
-    new_mjx_data = env.forward(new_mjx_data)
-    step_count = jnp.asarray(jnp.where(done, jnp.int32(0), stepped.step_count))
+    def continue_branch(_: None) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
+        chaser_obs, evader_obs = env.compute_observations(stepped)
+        return stepped, chaser_obs, evader_obs
 
-    tagged = jnp.asarray(jnp.where(done, jnp.bool_(False), stepped.tagged))
-    state = TagEnvironmentState(
-        mjx_data=new_mjx_data,
-        obstacle_positions_xy=jnp.where(
-            done, reset_obstacle_positions_xy, stepped.obstacle_positions_xy
-        ),
-        obstacle_yaws=jnp.where(done, reset_obstacle_yaws, stepped.obstacle_yaws),
-        obstacle_active=jnp.where(done, reset_obstacle_active, stepped.obstacle_active),
-        step_count=step_count,
-        tagged=tagged,
-        prev_distance=jnp.where(done, reset_distance, stepped.prev_distance),
+    state, chaser_obs, evader_obs = jax.lax.cond(
+        done, reset_branch, continue_branch, operand=None
     )
-    chaser_obs, evader_obs = env.compute_observations(state)
     return state, chaser_obs, evader_obs, chaser_reward, evader_reward, done, info
 
 
 def collect_trajectories(
     runner_state: RunnerState,
     env: TagEnvironment,
-    env_config: EnvironmentConfig,
     rl_config: RLConfig,
-    chaser_network: ActorCriticModule,
-    evader_network: ActorCriticModule,
+    chaser_network: PolicyModule,
+    evader_network: PolicyModule,
 ) -> tuple[RunnerState, Transition]:
     def _env_step(carry: RolloutCarry, _: None) -> tuple[RolloutCarry, Transition]:
         (
@@ -137,38 +109,38 @@ def collect_trajectories(
             env_state,
             chaser_obs,
             evader_obs,
-            done,
+            prev_done,
             chaser_hstate,
             evader_hstate,
             rng,
         ) = carry
 
-        last_done = done
+        transition_done = prev_done
         rng, chaser_rng, evader_rng, step_rng = jax.random.split(rng, 4)
 
         chaser_ac_in = (
-            chaser_obs[np.newaxis, :],
-            done[np.newaxis, :],
+            chaser_obs[None, :],
+            prev_done[None, :],
         )
-        chaser_hstate, chaser_pi, chaser_value = chaser_network.apply(  # type: ignore[reportAssignmentType]
+        chaser_hstate, chaser_pi, chaser_value = chaser_network.apply(
             chaser_ts.params, chaser_hstate, chaser_ac_in
         )
-        chaser_action_raw = chaser_pi.sample(seed=chaser_rng)  # type: ignore[reportAttributeAccessIssue]
-        chaser_log_prob = chaser_pi.log_prob(chaser_action_raw)  # type: ignore[reportAttributeAccessIssue]
+        chaser_action_raw = chaser_pi.sample(seed=chaser_rng)
+        chaser_log_prob = jnp.asarray(chaser_pi.log_prob(chaser_action_raw))
         chaser_value = chaser_value.squeeze(0)
         chaser_action_raw = chaser_action_raw.squeeze(0)
         chaser_log_prob = chaser_log_prob.squeeze(0)
         chaser_action = jnp.clip(chaser_action_raw, -1.0, 1.0)
 
         evader_ac_in = (
-            evader_obs[np.newaxis, :],
-            done[np.newaxis, :],
+            evader_obs[None, :],
+            prev_done[None, :],
         )
-        evader_hstate, evader_pi, evader_value = evader_network.apply(  # type: ignore[reportAssignmentType]
+        evader_hstate, evader_pi, evader_value = evader_network.apply(
             evader_ts.params, evader_hstate, evader_ac_in
         )
-        evader_action_raw = evader_pi.sample(seed=evader_rng)  # type: ignore[reportAttributeAccessIssue]
-        evader_log_prob = evader_pi.log_prob(evader_action_raw)  # type: ignore[reportAttributeAccessIssue]
+        evader_action_raw = evader_pi.sample(seed=evader_rng)
+        evader_log_prob = jnp.asarray(evader_pi.log_prob(evader_action_raw))
         evader_value = evader_value.squeeze(0)
         evader_action_raw = evader_action_raw.squeeze(0)
         evader_log_prob = evader_log_prob.squeeze(0)
@@ -181,11 +153,10 @@ def collect_trajectories(
             next_evader_obs,
             chaser_reward,
             evader_reward,
-            done,
+            next_prev_done,
             info,
-        ) = jax.vmap(auto_reset_step, in_axes=(None, None, 0, 0, 0, 0))(
+        ) = jax.vmap(auto_reset_step, in_axes=(None, 0, 0, 0, 0))(
             env,
-            env_config,
             env_state,
             chaser_action,
             evader_action,
@@ -193,7 +164,7 @@ def collect_trajectories(
         )
 
         transition = Transition(
-            done=last_done,
+            done=transition_done,
             chaser_action=chaser_action,
             chaser_action_raw=chaser_action_raw,
             evader_action=evader_action,
@@ -214,7 +185,7 @@ def collect_trajectories(
             env_state,
             next_chaser_obs,
             next_evader_obs,
-            done,
+            next_prev_done,
             chaser_hstate,
             evader_hstate,
             rng,
@@ -229,8 +200,8 @@ def collect_trajectories(
 
 def bootstrap_values(
     runner_state: RunnerState,
-    chaser_network: ActorCriticModule,
-    evader_network: ActorCriticModule,
+    chaser_network: PolicyModule,
+    evader_network: PolicyModule,
 ) -> tuple[jax.Array, jax.Array, jax.Array]:
     (
         chaser_ts,
@@ -238,29 +209,29 @@ def bootstrap_values(
         _,
         last_chaser_obs,
         last_evader_obs,
-        last_done,
+        last_prev_done,
         chaser_hstate,
         evader_hstate,
         _,
     ) = runner_state
 
     chaser_ac_in = (
-        last_chaser_obs[np.newaxis, :],
-        last_done[np.newaxis, :],
+        last_chaser_obs[None, :],
+        last_prev_done[None, :],
     )
-    _, _, chaser_last_val = chaser_network.apply(  # type: ignore[reportAssignmentType]
+    _, _, chaser_last_val = chaser_network.apply(
         chaser_ts.params, chaser_hstate, chaser_ac_in
     )
 
     evader_ac_in = (
-        last_evader_obs[np.newaxis, :],
-        last_done[np.newaxis, :],
+        last_evader_obs[None, :],
+        last_prev_done[None, :],
     )
-    _, _, evader_last_val = evader_network.apply(  # type: ignore[reportAssignmentType]
+    _, _, evader_last_val = evader_network.apply(
         evader_ts.params, evader_hstate, evader_ac_in
     )
 
-    return chaser_last_val.squeeze(0), evader_last_val.squeeze(0), last_done
+    return chaser_last_val.squeeze(0), evader_last_val.squeeze(0), last_prev_done
 
 
 def split_agent_trajectories(

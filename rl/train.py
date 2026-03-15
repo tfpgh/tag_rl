@@ -20,7 +20,8 @@ from rl.checkpoints import (
 )
 from rl.config import RLConfig
 from rl.metrics import compute_training_metrics
-from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
+from rl.models import ScannedRNN
+from rl.policy import build_policies
 from rl.ppo import calculate_gae, update_agent
 from rl.rollout import (
     RunnerState,
@@ -28,45 +29,22 @@ from rl.rollout import (
     collect_trajectories,
     split_agent_trajectories,
 )
+from rl.sharding import make_shardings, shard_runner_state
 
-AXIS_NAME = "devices"
 TrainMetrics = dict[str, jax.Array]
 TrainInitFn = Callable[[jax.Array], RunnerState]
 TrainStepFn = Callable[[RunnerState], tuple[RunnerState, TrainMetrics]]
-
-
-def build_networks(
-    rl_config: RLConfig, env_config: EnvironmentConfig
-) -> tuple[Any, Any]:
-    action_dim = (2,)
-    if rl_config.model_type == "cnn_rnn":
-        network_ctor = ActorCriticCNNRNN
-        network_kwargs = {
-            "action_dim": action_dim,
-            "hidden_size": rl_config.hidden_size,
-            "n_rays": env_config.n_rays,
-        }
-    elif rl_config.model_type == "rnn":
-        network_ctor = ActorCriticRNN
-        network_kwargs = {
-            "action_dim": action_dim,
-            "hidden_size": rl_config.hidden_size,
-        }
-    else:
-        raise ValueError(f"Unsupported model_type: {rl_config.model_type}")
-
-    return network_ctor(**network_kwargs), network_ctor(**network_kwargs)
 
 
 def make_train(
     rl_config: RLConfig, env_config: EnvironmentConfig
 ) -> tuple[TrainInitFn, TrainStepFn, int]:
     num_updates = rl_config.num_updates
-    local_num_envs = rl_config.local_num_envs
+    num_envs = rl_config.num_envs
 
-    env = TagEnvironment(env_config, local_num_envs)
+    env = TagEnvironment(env_config)
     obs_size = observation_size(env_config)
-    chaser_network, evader_network = build_networks(rl_config, env_config)
+    chaser_network, evader_network = build_policies(rl_config.hidden_size, env_config)
 
     def linear_schedule(count: int | float | jax.Array) -> int | float | jax.Array:
         updates_completed = count // (
@@ -87,15 +65,14 @@ def make_train(
         )
 
     def init(base_rng: jax.Array) -> RunnerState:
-        axis_index = jax.lax.axis_index(AXIS_NAME)
         param_rng, env_rng, runner_rng = jax.random.split(base_rng, 3)
         chaser_rng, evader_rng = jax.random.split(param_rng)
 
         init_x = (
-            jnp.zeros((1, local_num_envs, obs_size)),
-            jnp.zeros((1, local_num_envs)),
+            jnp.zeros((1, num_envs, obs_size)),
+            jnp.zeros((1, num_envs)),
         )
-        init_hstate = ScannedRNN.initialize_carry(local_num_envs, rl_config.hidden_size)
+        init_hstate = ScannedRNN.initialize_carry(num_envs, rl_config.hidden_size)
 
         chaser_params = chaser_network.init(chaser_rng, init_hstate, init_x)
         evader_params = evader_network.init(evader_rng, init_hstate, init_x)
@@ -107,16 +84,11 @@ def make_train(
             apply_fn=evader_network.apply, params=evader_params, tx=tx
         )
 
-        device_env_rng = jax.random.fold_in(env_rng, axis_index)
-        reset_rngs = jax.random.split(device_env_rng, local_num_envs)
+        reset_rngs = jax.random.split(env_rng, num_envs)
         env_states, chaser_obs, evader_obs = jax.vmap(env.reset)(reset_rngs)
 
-        chaser_hstate = ScannedRNN.initialize_carry(
-            local_num_envs, rl_config.hidden_size
-        )
-        evader_hstate = ScannedRNN.initialize_carry(
-            local_num_envs, rl_config.hidden_size
-        )
+        chaser_hstate = ScannedRNN.initialize_carry(num_envs, rl_config.hidden_size)
+        evader_hstate = ScannedRNN.initialize_carry(num_envs, rl_config.hidden_size)
 
         return RunnerState(
             chaser_ts=chaser_ts,
@@ -124,10 +96,10 @@ def make_train(
             env_state=env_states,
             chaser_obs=chaser_obs,
             evader_obs=evader_obs,
-            done=jnp.zeros(local_num_envs, dtype=bool),
+            prev_done=jnp.zeros(num_envs, dtype=bool),
             chaser_hstate=chaser_hstate,
             evader_hstate=evader_hstate,
-            rng=jax.random.fold_in(runner_rng, axis_index),
+            rng=runner_rng,
         )
 
     def step(runner_state: RunnerState) -> tuple[RunnerState, TrainMetrics]:
@@ -137,7 +109,6 @@ def make_train(
         runner_state, traj_batch = collect_trajectories(
             runner_state,
             env,
-            env_config,
             rl_config,
             chaser_network,
             evader_network,
@@ -181,7 +152,6 @@ def make_train(
             chaser_advantages,
             chaser_targets,
             chaser_update_rng,
-            axis_name=AXIS_NAME,
         )
         evader_ts, evader_loss = update_agent(
             rl_config,
@@ -192,12 +162,9 @@ def make_train(
             evader_advantages,
             evader_targets,
             evader_update_rng,
-            axis_name=AXIS_NAME,
         )
 
-        metrics = compute_training_metrics(
-            traj_batch, chaser_loss, evader_loss, axis_name=AXIS_NAME
-        )
+        metrics = compute_training_metrics(traj_batch, chaser_loss, evader_loss)
 
         return (
             RunnerState(
@@ -206,7 +173,7 @@ def make_train(
                 env_state=runner_state.env_state,
                 chaser_obs=runner_state.chaser_obs,
                 evader_obs=runner_state.evader_obs,
-                done=runner_state.done,
+                prev_done=runner_state.prev_done,
                 chaser_hstate=runner_state.chaser_hstate,
                 evader_hstate=runner_state.evader_hstate,
                 rng=rng,
@@ -230,17 +197,22 @@ def resolve_logdir(logdir: str | None, resume: str | None) -> str | None:
         return logdir
     if resume is None:
         return None
-    return os.path.dirname(os.path.dirname(resume))
+    checkpoint_dir = os.path.dirname(resume)
+    if os.path.basename(checkpoint_dir) != "checkpoints":
+        raise ValueError(
+            "Resumed checkpoints must live under a 'checkpoints' directory when logdir is omitted"
+        )
+    return os.path.dirname(checkpoint_dir)
 
 
 def unreplicate_metrics(metrics: TrainMetrics) -> dict[str, float]:
-    host_metrics = jax.tree.map(lambda x: jax.device_get(x[0]), metrics)
+    host_metrics = jax.device_get(metrics)
     return {key: float(value) for key, value in host_metrics.items()}
 
 
 def load_training_configs(
-    resume_path: str | None, num_devices_override: int | None
-) -> tuple[RLConfig, EnvironmentConfig, dict[str, Any] | None]:
+    resume_path: str | None,
+) -> tuple[RLConfig, EnvironmentConfig, dict[str, object] | None]:
     if resume_path is None:
         rl_config = RLConfig()
         env_config = EnvironmentConfig()
@@ -248,53 +220,61 @@ def load_training_configs(
     else:
         checkpoint = load_checkpoint(resume_path)
         rl_config, env_config = load_checkpoint_configs(checkpoint)
-        if rl_config is None or env_config is None:
-            raise ValueError(
-                "Resume checkpoint does not contain serialized RL/environment configs"
-            )
 
-    if num_devices_override is not None:
-        rl_config.num_devices = num_devices_override
     return rl_config, env_config, checkpoint
+
+
+def resolve_devices(num_devices_override: int | None) -> list[Any]:
+    devices = list(jax.local_devices())
+    if num_devices_override is None:
+        return devices
+    if num_devices_override <= 0:
+        raise ValueError("--num-devices must be positive")
+    if num_devices_override > len(devices):
+        raise ValueError(
+            f"Requested {num_devices_override} devices but only {len(devices)} are available"
+        )
+    return devices[:num_devices_override]
 
 
 def main() -> None:
     args = parse_args()
-    rl_config, env_config, checkpoint = load_training_configs(
-        args.resume, args.num_devices
-    )
+    rl_config, env_config, checkpoint = load_training_configs(args.resume)
 
-    devices = jax.local_devices()
+    devices = resolve_devices(args.num_devices)
+    env_config.validate()
     rl_config.validate(len(devices))
+    shardings = make_shardings(devices)
     print(
         "Training configuration: "
-        f"devices={rl_config.num_devices}, "
+        f"devices={len(devices)}, "
         f"global_envs={rl_config.num_envs}, "
-        f"local_envs={rl_config.local_num_envs}, "
+        f"envs_per_device={rl_config.num_envs // len(devices)}, "
         f"num_steps={rl_config.num_steps}, "
         f"num_minibatches={rl_config.num_minibatches}, "
         f"timesteps_per_update={rl_config.timesteps_per_update}"
     )
 
     init_fn, step_fn, num_updates = make_train(rl_config, env_config)
-    init_pmap = jax.pmap(init_fn, axis_name=AXIS_NAME)
-    step_pmap = jax.pmap(step_fn, axis_name=AXIS_NAME)
+    init_jit = jax.jit(init_fn, device=devices[0])
+    step_jit = jax.jit(step_fn, donate_argnums=(0,))
 
     writer = SummaryWriter(logdir=resolve_logdir(args.logdir, args.resume))
     checkpoint_dir = os.path.join(writer.logdir, "checkpoints")
+    flush_interval = 10
 
     if checkpoint is None:
         rng = jax.random.PRNGKey(rl_config.seed)
-        base_rngs = jnp.broadcast_to(rng, (rl_config.num_devices,) + rng.shape)
-        runner_state = init_pmap(base_rngs)
+        runner_state = shard_runner_state(init_jit(rng), shardings)
         global_step = 0
         start_update = 0
     else:
         rng = jax.random.PRNGKey(rl_config.seed)
-        base_rngs = jnp.broadcast_to(rng, (rl_config.num_devices,) + rng.shape)
-        template_runner_state = init_pmap(base_rngs)
-        runner_state = restore_runner_state(checkpoint, template_runner_state, devices)
-        global_step = int(checkpoint["global_step"])
+        template_runner_state = init_jit(rng)
+        runner_state = restore_runner_state(
+            checkpoint, template_runner_state, shardings
+        )
+        global_step = int(cast(int, checkpoint["global_step"]))
         if global_step % rl_config.timesteps_per_update != 0:
             raise ValueError(
                 "Checkpoint global_step is not aligned with the configured timesteps_per_update"
@@ -308,12 +288,13 @@ def main() -> None:
         total=num_updates,
         desc="Training",
     ):
-        runner_state, metrics = step_pmap(runner_state)
+        runner_state, metrics = step_jit(runner_state)
         global_step = (update + 1) * rl_config.timesteps_per_update
 
         for key, value in unreplicate_metrics(metrics).items():
             writer.add_scalar(key, value, global_step)
-        writer.flush()
+        if (update + 1) % flush_interval == 0:
+            writer.flush()
 
         if rl_config.checkpoint_interval > 0 and (
             (update + 1) % rl_config.checkpoint_interval == 0
@@ -325,6 +306,7 @@ def main() -> None:
                 rl_config,
                 env_config,
             )
+            writer.flush()
 
     save_checkpoint(
         runner_state,
@@ -333,9 +315,9 @@ def main() -> None:
         rl_config,
         env_config,
     )
+    writer.flush()
     writer.close()
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
     main()

@@ -42,3 +42,33 @@ class EnvironmentConfig:
     # Obstacles
     max_obstacles: int = 8  # always allocated in MJCF
     obstacle_width: float = 0.10  # square box side length (meters)
+
+    def validate(self) -> None:
+        if self.arena_width <= 0 or self.arena_height <= 0:
+            raise ValueError("arena dimensions must be positive")
+        if self.agent_radius <= 0 or self.agent_z <= 0:
+            raise ValueError("agent dimensions must be positive")
+        if self.tag_distance_factor <= 0:
+            raise ValueError("tag_distance_factor must be positive")
+        if self.n_rays <= 0:
+            raise ValueError("n_rays must be positive")
+        if self.action_frequency <= 0:
+            raise ValueError("action_frequency must be positive")
+        if self.episode_max_length <= 0:
+            raise ValueError("episode_max_length must be positive")
+        if self.chaser_freeze_seconds < 0:
+            raise ValueError("chaser_freeze_seconds cannot be negative")
+        if self.agent_max_linear_velocity <= 0:
+            raise ValueError("agent_max_linear_velocity must be positive")
+        if self.agent_max_angular_velocity <= 0:
+            raise ValueError("agent_max_angular_velocity must be positive")
+        if self.minimum_starting_separation <= 0:
+            raise ValueError("minimum_starting_separation must be positive")
+        if self.wall_margin_factor <= 0:
+            raise ValueError("wall_margin_factor must be positive")
+        if self.max_obstacles < 0:
+            raise ValueError("max_obstacles cannot be negative")
+        if self.max_obstacles > 0 and self.obstacle_width <= 0:
+            raise ValueError(
+                "obstacle_width must be positive when obstacles are enabled"
+            )

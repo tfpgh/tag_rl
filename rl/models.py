@@ -1,11 +1,11 @@
 import functools
+import math
 from typing import Sequence
 
 import distrax
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import numpy as np
 from flax.linen.initializers import constant, orthogonal
 
 
@@ -25,7 +25,7 @@ class ScannedRNN(nn.Module):
         rnn_state = carry
         ins, resets = x
         rnn_state = jnp.where(
-            resets[:, np.newaxis],
+            resets[:, None],
             self.initialize_carry(ins.shape[0], ins.shape[1]),
             rnn_state,
         )
@@ -48,9 +48,13 @@ class RayEncoder(nn.Module):
     @nn.compact
     def __call__(self, rays: jax.Array) -> jax.Array:
         # rays: (..., n_rays, 2) — leading dims are batch
-        x = nn.Conv(features=16, kernel_size=(7,), strides=(4,), padding="CIRCULAR")(rays)
+        x = nn.Conv(features=16, kernel_size=(7,), strides=(4,), padding="CIRCULAR")(
+            rays
+        )
         x = nn.relu(x)  # (..., 64, 16)
-        x = nn.Conv(features=self.features, kernel_size=(5,), strides=(4,), padding="CIRCULAR")(x)
+        x = nn.Conv(
+            features=self.features, kernel_size=(5,), strides=(4,), padding="CIRCULAR"
+        )(x)
         x = nn.relu(x)  # (..., 16, 32)
         return x.reshape(*x.shape[:-2], -1)  # flatten → 512
 
@@ -73,7 +77,7 @@ class _ActorCriticBase(nn.Module):
         embedding = self._embed(obs)
         embedding = nn.Dense(
             features=self.hidden_size,
-            kernel_init=orthogonal(np.sqrt(2)),
+            kernel_init=orthogonal(math.sqrt(2.0)),
             bias_init=constant(0.0),
         )(embedding)
         embedding = nn.relu(embedding)
@@ -113,14 +117,7 @@ class _ActorCriticBase(nn.Module):
         return hidden, pi, jnp.squeeze(critic, axis=-1)
 
 
-class ActorCriticRNN(_ActorCriticBase):
-    """Flat dense embedding."""
-
-    def _embed(self, obs: jax.Array) -> jax.Array:
-        return obs
-
-
-class ActorCriticCNNRNN(_ActorCriticBase):
+class ActorCriticPolicy(_ActorCriticBase):
     """1D CNN ray encoder + scalar bypass."""
 
     n_rays: int = 256

@@ -14,13 +14,12 @@ import mujoco
 import numpy as np
 import numpy.typing as npt
 
-from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import yaw_to_quaternion
 from rl.checkpoints import load_checkpoint_configs, load_policy_params
-from rl.config import RLConfig
-from rl.models import ActorCriticCNNRNN, ActorCriticRNN, ScannedRNN
+from rl.models import ScannedRNN
+from rl.policy import build_policies
 
 RolloutResult = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]
 RenderFrames = list[npt.NDArray[np.uint8]]
@@ -29,7 +28,6 @@ RenderFrames = list[npt.NDArray[np.uint8]]
 CHECKPOINT_PATH = "runs/Feb28_12-38-35_node002/checkpoints/step_419430400.pkl"
 OUTPUT_PATH = "render.mp4"
 NUM_EPISODES = 10
-MODEL_TYPE = "auto"  # auto, cnn_rnn, or rnn
 VIDEO_HEIGHT = 1080
 VIDEO_WIDTH = 1920
 PRNG_KEY = 0
@@ -39,7 +37,7 @@ def make_rollout(
     env: TagEnvironment,
     chaser_network: Any,
     evader_network: Any,
-    rl_config: RLConfig,
+    hidden_size: int,
 ) -> Callable[[Any, Any, jax.Array], RolloutResult]:
     """Create a JIT'd single-episode rollout function (compiles once)."""
 
@@ -48,8 +46,8 @@ def make_rollout(
         chaser_params: Any, evader_params: Any, rng: jax.Array
     ) -> RolloutResult:
         state, chaser_obs, evader_obs = env.reset(rng)
-        chaser_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
-        evader_hstate = ScannedRNN.initialize_carry(1, rl_config.hidden_size)
+        chaser_hstate = ScannedRNN.initialize_carry(1, hidden_size)
+        evader_hstate = ScannedRNN.initialize_carry(1, hidden_size)
         done = jnp.bool_(False)
 
         def _scan_step(
@@ -186,51 +184,23 @@ def render_trajectory(
 
 if __name__ == "__main__":
     chaser_params, evader_params, checkpoint = load_policy_params(CHECKPOINT_PATH)
-    checkpoint_rl_config, checkpoint_env_config = load_checkpoint_configs(checkpoint)
-    rl_config = checkpoint_rl_config or RLConfig()
-    env_config = checkpoint_env_config or EnvironmentConfig()
-    model_type = (
-        checkpoint.get("model_type", rl_config.model_type)
-        if MODEL_TYPE == "auto"
-        else MODEL_TYPE
-    )
+    rl_config, env_config = load_checkpoint_configs(checkpoint)
     chaser_params = jax.device_put(chaser_params)
     evader_params = jax.device_put(evader_params)
     print(f"Loaded checkpoint from {CHECKPOINT_PATH}")
 
     # Create environment (single instance)
-    env = TagEnvironment(env_config, 1)
+    env = TagEnvironment(env_config)
     render_model = mujoco.MjModel.from_xml_string(
         generate_mjcf(env_config, mode="render")
     )
 
-    # Instantiate networks
-    action_dim = (2,)
-    if model_type == "cnn_rnn":
-        chaser_network = ActorCriticCNNRNN(
-            action_dim=action_dim,
-            hidden_size=rl_config.hidden_size,
-            n_rays=env_config.n_rays,
-        )
-        evader_network = ActorCriticCNNRNN(
-            action_dim=action_dim,
-            hidden_size=rl_config.hidden_size,
-            n_rays=env_config.n_rays,
-        )
-    elif model_type == "rnn":
-        chaser_network = ActorCriticRNN(
-            action_dim=action_dim,
-            hidden_size=rl_config.hidden_size,
-        )
-        evader_network = ActorCriticRNN(
-            action_dim=action_dim,
-            hidden_size=rl_config.hidden_size,
-        )
-    else:
-        raise ValueError(f"Unknown MODEL_TYPE: {model_type}")
+    chaser_network, evader_network = build_policies(rl_config.hidden_size, env_config)
 
     # Build JIT'd rollout (compiles on first call)
-    rollout_fn = make_rollout(env, chaser_network, evader_network, rl_config)
+    rollout_fn = make_rollout(
+        env, chaser_network, evader_network, rl_config.hidden_size
+    )
 
     rng = jax.random.PRNGKey(PRNG_KEY)
     all_frames = []
@@ -246,27 +216,38 @@ if __name__ == "__main__":
             all_done,
         ) = rollout_fn(chaser_params, evader_params, ep_rng)
 
+        (
+            all_qpos_host,
+            all_qvel_host,
+            obstacle_positions_xy_host,
+            obstacle_yaws_host,
+            obstacle_active_host,
+            all_done_host,
+        ) = jax.device_get(
+            (
+                all_qpos,
+                all_qvel,
+                obstacle_positions_xy,
+                obstacle_yaws,
+                obstacle_active,
+                all_done,
+            )
+        )
+
         # Trim to first done
-        all_done_np = np.array(all_done)
-        done_indices = np.where(all_done_np)[0]
+        done_indices = np.where(all_done_host)[0]
         n_frames = (
-            int(done_indices[0]) + 1 if len(done_indices) > 0 else len(all_done_np)
+            int(done_indices[0]) + 1 if len(done_indices) > 0 else len(all_done_host)
         )
 
         # Transfer to CPU and trim
-        qpos_np = np.array(all_qpos[:n_frames])
-        qvel_np = np.array(all_qvel[:n_frames])
-        obstacle_positions_xy_np = np.array(obstacle_positions_xy)
-        obstacle_yaws_np = np.array(obstacle_yaws)
-        obstacle_active_np = np.array(obstacle_active)
-
         frames = render_trajectory(
             render_model,
-            qpos_np,
-            qvel_np,
-            obstacle_positions_xy_np,
-            obstacle_yaws_np,
-            obstacle_active_np,
+            all_qpos_host[:n_frames],
+            all_qvel_host[:n_frames],
+            obstacle_positions_xy_host,
+            obstacle_yaws_host,
+            obstacle_active_host,
         )
         all_frames.extend(frames)
         print(f"Episode {ep + 1}/{NUM_EPISODES}: {n_frames} frames")

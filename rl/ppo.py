@@ -5,9 +5,9 @@ import jax.numpy as jnp
 from flax.training.train_state import TrainState
 
 from rl.config import RLConfig
+from rl.policy import PolicyModule
 from rl.rollout import AgentTransition
 
-ActorCriticModule = Any
 LossBreakdown = tuple[jax.Array, jax.Array, jax.Array]
 LossInfo = tuple[jax.Array, LossBreakdown]
 AdvantageCarry = tuple[jax.Array, jax.Array, jax.Array]
@@ -50,14 +50,13 @@ def calculate_gae(
 
 def update_agent(
     rl_config: RLConfig,
-    network: ActorCriticModule,
+    network: PolicyModule,
     train_state: TrainState,
     init_hstate: jax.Array,
     agent_traj: AgentTransition,
     advantages: jax.Array,
     targets: jax.Array,
     rng: jax.Array,
-    axis_name: str | None = None,
 ) -> tuple[TrainState, LossInfo]:
     def _update_epoch(
         update_state: UpdateState, _: None
@@ -120,11 +119,6 @@ def update_agent(
                 advantages,
                 targets,
             )
-            if axis_name is not None:
-                grads = jax.lax.pmean(grads, axis_name=axis_name)
-                total_loss = jax.tree.map(
-                    lambda x: jax.lax.pmean(x, axis_name=axis_name), total_loss
-                )
             train_state = train_state.apply_gradients(grads=grads)
             return train_state, total_loss
 

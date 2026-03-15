@@ -26,9 +26,9 @@ def observation_size(config: EnvironmentConfig) -> int:
 
 
 class TagEnvironment:
-    def __init__(self, config: EnvironmentConfig, n_envs: int) -> None:
+    def __init__(self, config: EnvironmentConfig) -> None:
+        config.validate()
         self.config = config
-        self.n_envs = n_envs
 
         xml = generate_mjcf(config, mode="training")
         self.mj_model = mujoco.MjModel.from_xml_string(xml)
@@ -37,7 +37,10 @@ class TagEnvironment:
         self.joint_qpos_slices = JointQposSlices(self.mj_model)
         self.joint_dof_slices = JointDofSlices(self.mj_model)
 
-        self.ray_angles = jnp.linspace(0, 2 * jnp.pi, config.n_rays, endpoint=False)
+        ray_angles = jnp.linspace(0, 2 * jnp.pi, config.n_rays, endpoint=False)
+        self.ray_directions = jnp.stack(
+            [jnp.cos(ray_angles), jnp.sin(ray_angles)], axis=-1
+        )
         self.substeps_per_action = round(
             1.0 / (config.action_frequency * self.mj_model.opt.timestep)
         )
@@ -74,16 +77,23 @@ class TagEnvironment:
             angular_velocity=angular_velocity,
         )
 
+    def _agent_pair_kinematics(
+        self, mjx_data: mjx.Data
+    ) -> tuple[AgentKinematics, AgentKinematics]:
+        return (
+            self._agent_kinematics(mjx_data, is_chaser=True),
+            self._agent_kinematics(mjx_data, is_chaser=False),
+        )
+
     def _compute_observation(
         self,
         state: TagEnvironmentState,
-        is_chaser: bool,
+        me: AgentKinematics,
+        other: AgentKinematics,
     ) -> jax.Array:
-        me = self._agent_kinematics(state.mjx_data, is_chaser=is_chaser)
-        other = self._agent_kinematics(state.mjx_data, is_chaser=not is_chaser)
         ray_distances, ray_types = raycast_scene(
             me.position_xy,
-            self.ray_angles,
+            self.ray_directions,
             me.yaw,
             other.position_xy,
             self.config.agent_radius,
@@ -103,30 +113,33 @@ class TagEnvironment:
         )
 
     def _collision_flags(
-        self, state: TagEnvironmentState
+        self,
+        chaser_position_xy: jax.Array,
+        evader_position_xy: jax.Array,
+        obstacle_positions_xy: jax.Array,
+        obstacle_yaws: jax.Array,
+        obstacle_active: jax.Array,
     ) -> tuple[jax.Array, jax.Array]:
         obstacle_half_extent = self.config.obstacle_width / 2
-        chaser = self._agent_kinematics(state.mjx_data, is_chaser=True)
-        evader = self._agent_kinematics(state.mjx_data, is_chaser=False)
 
         chaser_collision = point_out_of_bounds(
-            chaser.position_xy, self.config, self.config.agent_radius
+            chaser_position_xy, self.config, self.config.agent_radius
         ) | circle_hits_any_obstacle(
-            chaser.position_xy,
+            chaser_position_xy,
             self.config.agent_radius,
-            state.obstacle_positions_xy,
-            state.obstacle_yaws,
-            state.obstacle_active,
+            obstacle_positions_xy,
+            obstacle_yaws,
+            obstacle_active,
             obstacle_half_extent,
         )
         evader_collision = point_out_of_bounds(
-            evader.position_xy, self.config, self.config.agent_radius
+            evader_position_xy, self.config, self.config.agent_radius
         ) | circle_hits_any_obstacle(
-            evader.position_xy,
+            evader_position_xy,
             self.config.agent_radius,
-            state.obstacle_positions_xy,
-            state.obstacle_yaws,
-            state.obstacle_active,
+            obstacle_positions_xy,
+            obstacle_yaws,
+            obstacle_active,
             obstacle_half_extent,
         )
         return chaser_collision, evader_collision
@@ -156,8 +169,9 @@ class TagEnvironment:
     def compute_observations(
         self, state: TagEnvironmentState
     ) -> tuple[jax.Array, jax.Array]:
-        chaser_obs = self._compute_observation(state, is_chaser=True)
-        evader_obs = self._compute_observation(state, is_chaser=False)
+        chaser, evader = self._agent_pair_kinematics(state.mjx_data)
+        chaser_obs = self._compute_observation(state, chaser, evader)
+        evader_obs = self._compute_observation(state, evader, chaser)
         return chaser_obs, evader_obs
 
     def step_physics(
@@ -187,21 +201,19 @@ class TagEnvironment:
         )
 
         step_count = state.step_count + 1
-        new_state = TagEnvironmentState(
-            mjx_data=mjx_data,
-            obstacle_positions_xy=state.obstacle_positions_xy,
-            obstacle_yaws=state.obstacle_yaws,
-            obstacle_active=state.obstacle_active,
-            step_count=step_count,
-            tagged=state.tagged,
-            prev_distance=state.prev_distance,
-        )
-
-        chaser = self._agent_kinematics(new_state.mjx_data, is_chaser=True)
-        evader = self._agent_kinematics(new_state.mjx_data, is_chaser=False)
+        obstacle_positions_xy = state.obstacle_positions_xy
+        obstacle_yaws = state.obstacle_yaws
+        obstacle_active = state.obstacle_active
+        chaser, evader = self._agent_pair_kinematics(mjx_data)
         distance = jnp.linalg.norm(chaser.position_xy - evader.position_xy)
         tagged = distance < self.tag_distance
-        chaser_collision, evader_collision = self._collision_flags(new_state)
+        chaser_collision, evader_collision = self._collision_flags(
+            chaser.position_xy,
+            evader.position_xy,
+            obstacle_positions_xy,
+            obstacle_yaws,
+            obstacle_active,
+        )
         time_up = step_count >= self.max_steps
         done = tagged | time_up | chaser_collision | evader_collision
 
@@ -226,11 +238,10 @@ class TagEnvironment:
 
         new_state = TagEnvironmentState(
             mjx_data=mjx_data,
-            obstacle_positions_xy=state.obstacle_positions_xy,
-            obstacle_yaws=state.obstacle_yaws,
-            obstacle_active=state.obstacle_active,
+            obstacle_positions_xy=obstacle_positions_xy,
+            obstacle_yaws=obstacle_yaws,
+            obstacle_active=obstacle_active,
             step_count=step_count,
-            tagged=tagged,
             prev_distance=distance,
         )
         info = TagEnvironmentStepInfo(
@@ -238,7 +249,6 @@ class TagEnvironment:
             time_up=time_up,
             distance=distance,
             step_count=step_count,
-            is_frozen=is_frozen,
             chaser_collision=chaser_collision,
             evader_collision=evader_collision,
         )
@@ -261,7 +271,6 @@ class TagEnvironment:
             obstacle_yaws=obstacle_yaws,
             obstacle_active=obstacle_active,
             step_count=jnp.int32(0),
-            tagged=jnp.bool_(False),
             prev_distance=initial_distance,
         )
         chaser_obs, evader_obs = self.compute_observations(state)

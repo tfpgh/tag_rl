@@ -123,10 +123,9 @@ class ActorCriticPolicy(_ActorCriticBase):
     n_rays: int = 256
 
     def _embed(self, obs: jax.Array) -> jax.Array:
-        # Split: [vel, ang_vel, ray_dist(N), ray_type(N), progress]
-        scalars = jnp.concatenate([obs[..., :2], obs[..., -1:]], axis=-1)
-        ray_dist = obs[..., 2 : 2 + self.n_rays]
-        ray_type = obs[..., 2 + self.n_rays : 2 + 2 * self.n_rays]
+        scalars = obs[..., -1:]
+        ray_dist = obs[..., : self.n_rays]
+        ray_type = obs[..., self.n_rays : 2 * self.n_rays]
         rays = jnp.stack([ray_dist, ray_type], axis=-1)
         ray_features = RayEncoder()(rays)
         return jnp.concatenate([scalars, ray_features], axis=-1)

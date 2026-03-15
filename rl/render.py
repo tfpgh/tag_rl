@@ -45,7 +45,10 @@ def make_rollout(
     def rollout(
         chaser_params: Any, evader_params: Any, rng: jax.Array
     ) -> RolloutResult:
-        state, chaser_obs, evader_obs = env.reset(rng)
+        rng, reset_rng = jax.random.split(rng)
+        state, chaser_obs, evader_obs = env.reset(
+            reset_rng, jnp.asarray(1.0, dtype=jnp.float32)
+        )
         chaser_hstate = ScannedRNN.initialize_carry(1, hidden_size)
         evader_hstate = ScannedRNN.initialize_carry(1, hidden_size)
         done = jnp.bool_(False)
@@ -58,13 +61,30 @@ def make_rollout(
                 jax.Array,
                 jax.Array,
                 jax.Array,
+                jax.Array,
             ],
             _: None,
         ) -> tuple[
-            tuple[Any, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array],
+            tuple[
+                Any,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+            ],
             tuple[jax.Array, jax.Array, jax.Array],
         ]:
-            state, chaser_obs, evader_obs, chaser_hstate, evader_hstate, done = carry
+            (
+                state,
+                chaser_obs,
+                evader_obs,
+                chaser_hstate,
+                evader_hstate,
+                done,
+                rng,
+            ) = carry
             qpos = state.mjx_data.qpos
             qvel = state.mjx_data.qvel
 
@@ -90,8 +110,9 @@ def make_rollout(
             chaser_action = jnp.where(done, jnp.zeros(2), chaser_action)
             evader_action = jnp.where(done, jnp.zeros(2), evader_action)
 
+            step_rng, next_rng = jax.random.split(rng)
             state, chaser_obs, evader_obs, _, _, step_done, _ = env.step(
-                state, chaser_action, evader_action
+                state, chaser_action, evader_action, step_rng
             )
             done = done | step_done
 
@@ -102,6 +123,7 @@ def make_rollout(
                 chaser_hstate,
                 evader_hstate,
                 done,
+                next_rng,
             )
             return carry, (qpos, qvel, step_done)
 
@@ -112,6 +134,7 @@ def make_rollout(
             chaser_hstate,
             evader_hstate,
             done,
+            rng,
         )
         _, (all_qpos, all_qvel, all_done) = jax.lax.scan(
             _scan_step, init_carry, None, length=env.max_steps

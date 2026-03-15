@@ -1,8 +1,7 @@
 from typing import NamedTuple
 
-from mujoco import mjx
-
 import jax
+from mujoco import mjx
 
 
 class AgentKinematics(NamedTuple):
@@ -18,11 +17,67 @@ class ObstacleState(NamedTuple):
     active: jax.Array
 
 
+class AgentDynamicsParams(NamedTuple):
+    mass_scale: jax.Array
+    com_offset_xy: jax.Array
+    inertia_scale: jax.Array
+    wheel_friction_scale: jax.Array
+    caster_friction_scale: jax.Array
+    wheel_damping_scale: jax.Array
+    wheel_frictionloss_scale: jax.Array
+    motor_strength_scale: jax.Array
+    motor_balance: jax.Array
+
+
+class DomainParams(NamedTuple):
+    floor_friction_scale: jax.Array
+    chaser: AgentDynamicsParams
+    evader: AgentDynamicsParams
+
+
+class PipelineParams(NamedTuple):
+    action_delay_steps: jax.Array
+    observation_delay_steps: jax.Array
+    action_drop_probability: jax.Array
+    frame_drop_probability: jax.Array
+    stale_observation_probability: jax.Array
+    position_noise_std: jax.Array
+    yaw_noise_std: jax.Array
+    max_stale_steps: jax.Array
+
+
+class AgentModelIndices(NamedTuple):
+    body_id: int
+    left_wheel_geom_id: int
+    right_wheel_geom_id: int
+    caster_geom_id: int
+    left_wheel_dof_id: int
+    right_wheel_dof_id: int
+    left_actuator_id: int
+    right_actuator_id: int
+
+
+class ModelIndices(NamedTuple):
+    floor_geom_id: int
+    chaser: AgentModelIndices
+    evader: AgentModelIndices
+
+
 class TagEnvironmentState(NamedTuple):
     mjx_data: mjx.Data
+    domain_params: DomainParams
+    pipeline_params: PipelineParams
     obstacle_positions_xy: jax.Array
     obstacle_yaws: jax.Array
     obstacle_active: jax.Array
+    observation_buffer: jax.Array
+    action_buffer: jax.Array
+    last_applied_actions: jax.Array
+    last_measured_agent_positions_xy: jax.Array
+    last_measured_agent_yaws: jax.Array
+    last_measured_obstacle_positions_xy: jax.Array
+    last_measured_obstacle_yaws: jax.Array
+    stale_observation_steps_remaining: jax.Array
     step_count: jax.Array
     prev_distance: jax.Array
 
@@ -32,5 +87,20 @@ class TagEnvironmentStepInfo(NamedTuple):
     time_up: jax.Array
     distance: jax.Array
     step_count: jax.Array
+    obstacle_count: jax.Array
     chaser_collision: jax.Array
     evader_collision: jax.Array
+    action_delay_steps: jax.Array
+    observation_delay_steps: jax.Array
+    action_drop_probability: jax.Array
+    frame_drop_probability: jax.Array
+    stale_observation_probability: jax.Array
+    position_noise_std: jax.Array
+    yaw_noise_std: jax.Array
+    floor_friction_scale: jax.Array
+    chaser_mass_scale: jax.Array
+    evader_mass_scale: jax.Array
+    chaser_motor_balance: jax.Array
+    evader_motor_balance: jax.Array
+    chaser_motor_strength_scale: jax.Array
+    evader_motor_strength_scale: jax.Array

@@ -13,16 +13,28 @@ from environment.geometry import (
 )
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import JointDofSlices, JointQposSlices, quaternion_to_yaw
-from environment.reset import sample_reset_state
+from environment.randomization import (
+    randomize_model,
+    sample_domain_params,
+    sample_layout_state,
+    sample_pipeline_params,
+    sample_spawn_state,
+)
 from environment.types import (
     AgentKinematics,
+    AgentModelIndices,
+    ModelIndices,
     TagEnvironmentState,
     TagEnvironmentStepInfo,
 )
 
 
 def observation_size(config: EnvironmentConfig) -> int:
-    return 3 + 2 * config.n_rays
+    return 1 + 2 * config.n_rays
+
+
+def _wrap_angle(angle: jax.Array) -> jax.Array:
+    return jnp.arctan2(jnp.sin(angle), jnp.cos(angle))
 
 
 class TagEnvironment:
@@ -47,11 +59,63 @@ class TagEnvironment:
         self.max_steps = config.episode_max_length * config.action_frequency
         self.freeze_steps = config.chaser_freeze_seconds * config.action_frequency
         self.tag_distance = 2 * config.agent_radius * config.tag_distance_factor
+        self.obs_size = observation_size(config)
+        self.max_action_buffer_len = (
+            config.pipeline_randomization.max_action_delay_steps + 1
+        )
+        self.max_observation_buffer_len = (
+            config.pipeline_randomization.max_observation_delay_steps + 1
+        )
 
         self._template_mjx_data = mjx.make_data(self.mj_model)
+        self.model_indices = self._build_model_indices()
 
-    def forward(self, mjx_data: mjx.Data) -> mjx.Data:
-        return mjx.forward(self.mjx_model, mjx_data)
+    def _build_agent_model_indices(self, prefix: str) -> AgentModelIndices:
+        body_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, prefix)
+        left_wheel_geom_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_left_wheel_geom"
+        )
+        right_wheel_geom_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_right_wheel_geom"
+        )
+        caster_geom_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_caster_ball_geom"
+        )
+        left_joint_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}_left_wheel_joint"
+        )
+        right_joint_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}_right_wheel_joint"
+        )
+        left_actuator_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}_left_motor"
+        )
+        right_actuator_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}_right_motor"
+        )
+        return AgentModelIndices(
+            body_id=body_id,
+            left_wheel_geom_id=left_wheel_geom_id,
+            right_wheel_geom_id=right_wheel_geom_id,
+            caster_geom_id=caster_geom_id,
+            left_wheel_dof_id=int(self.mj_model.jnt_dofadr[left_joint_id]),
+            right_wheel_dof_id=int(self.mj_model.jnt_dofadr[right_joint_id]),
+            left_actuator_id=left_actuator_id,
+            right_actuator_id=right_actuator_id,
+        )
+
+    def _build_model_indices(self) -> ModelIndices:
+        floor_geom_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, "floor"
+        )
+        return ModelIndices(
+            floor_geom_id=floor_geom_id,
+            chaser=self._build_agent_model_indices("chaser"),
+            evader=self._build_agent_model_indices("evader"),
+        )
+
+    def forward(self, mjx_model: mjx.Model, mjx_data: mjx.Data) -> mjx.Data:
+        return mjx.forward(mjx_model, mjx_data)
 
     def _agent_kinematics(self, mjx_data: mjx.Data, is_chaser: bool) -> AgentKinematics:
         qpos = mjx_data.qpos
@@ -85,31 +149,181 @@ class TagEnvironment:
             self._agent_kinematics(mjx_data, is_chaser=False),
         )
 
-    def _compute_observation(
+    def _compute_observation_from_measurement(
         self,
-        state: TagEnvironmentState,
-        me: AgentKinematics,
-        other: AgentKinematics,
+        measured_self_position_xy: jax.Array,
+        measured_self_yaw: jax.Array,
+        measured_other_position_xy: jax.Array,
+        measured_obstacle_positions_xy: jax.Array,
+        measured_obstacle_yaws: jax.Array,
+        obstacle_active: jax.Array,
+        step_count: jax.Array,
     ) -> jax.Array:
         ray_distances, ray_types = raycast_scene(
-            me.position_xy,
+            measured_self_position_xy,
             self.ray_directions,
-            me.yaw,
-            other.position_xy,
+            measured_self_yaw,
+            measured_other_position_xy,
             self.config.agent_radius,
-            state.obstacle_positions_xy,
-            state.obstacle_yaws,
-            state.obstacle_active,
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            obstacle_active,
             self.config,
         )
-        episode_progress = state.step_count.astype(jnp.float32) / self.max_steps
+        episode_progress = step_count.astype(jnp.float32) / self.max_steps
         return jnp.concatenate(
-            [
-                jnp.array([me.forward_velocity, me.angular_velocity]),
-                ray_distances,
-                ray_types,
-                jnp.array([episode_progress]),
-            ]
+            [ray_distances, ray_types, jnp.array([episode_progress])]
+        )
+
+    def _compute_observation_pair_from_measurement(
+        self,
+        measured_agent_positions_xy: jax.Array,
+        measured_agent_yaws: jax.Array,
+        measured_obstacle_positions_xy: jax.Array,
+        measured_obstacle_yaws: jax.Array,
+        obstacle_active: jax.Array,
+        step_count: jax.Array,
+    ) -> jax.Array:
+        chaser_obs = self._compute_observation_from_measurement(
+            measured_agent_positions_xy[0],
+            measured_agent_yaws[0],
+            measured_agent_positions_xy[1],
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            obstacle_active,
+            step_count,
+        )
+        evader_obs = self._compute_observation_from_measurement(
+            measured_agent_positions_xy[1],
+            measured_agent_yaws[1],
+            measured_agent_positions_xy[0],
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            obstacle_active,
+            step_count,
+        )
+        return jnp.stack([chaser_obs, evader_obs], axis=0)
+
+    def _empty_action_buffer(self) -> jax.Array:
+        return jnp.zeros((self.max_action_buffer_len, 2, 2), dtype=jnp.float32)
+
+    def _filled_observation_buffer(self, observations: jax.Array) -> jax.Array:
+        return jnp.repeat(
+            observations[None, :, :], self.max_observation_buffer_len, axis=0
+        )
+
+    def _push_buffer(self, buffer: jax.Array, value: jax.Array) -> jax.Array:
+        return jnp.roll(buffer, shift=-1, axis=0).at[-1].set(value)
+
+    def _select_delayed(self, buffer: jax.Array, delay_steps: jax.Array) -> jax.Array:
+        return buffer[-1 - delay_steps]
+
+    def _apply_action_pipeline(
+        self, state: TagEnvironmentState, proposed_actions: jax.Array, rng: jax.Array
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
+        pipeline = state.pipeline_params
+        buffered_actions = self._push_buffer(state.action_buffer, proposed_actions)
+        delayed_actions = self._select_delayed(
+            buffered_actions, pipeline.action_delay_steps
+        )
+        drop = jax.random.bernoulli(rng, pipeline.action_drop_probability)
+        fallback_actions = jnp.where(
+            self.config.pipeline_randomization.hold_last_action_on_drop,
+            state.last_applied_actions,
+            jnp.zeros_like(delayed_actions),
+        )
+        applied_actions = jnp.where(drop, fallback_actions, delayed_actions)
+        return buffered_actions, applied_actions, delayed_actions
+
+    def _sample_measurement(
+        self,
+        state: TagEnvironmentState,
+        true_agent_positions_xy: jax.Array,
+        true_agent_yaws: jax.Array,
+        rng: jax.Array,
+    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+        pipeline = state.pipeline_params
+        (
+            agent_pos_rng,
+            agent_yaw_rng,
+            obstacle_pos_rng,
+            obstacle_yaw_rng,
+            frame_drop_rng,
+            stale_rng,
+            stale_length_rng,
+        ) = jax.random.split(rng, 7)
+
+        noisy_agent_positions_xy = (
+            true_agent_positions_xy
+            + jax.random.normal(agent_pos_rng, true_agent_positions_xy.shape)
+            * pipeline.position_noise_std
+        )
+        noisy_agent_yaws = _wrap_angle(
+            true_agent_yaws
+            + jax.random.normal(agent_yaw_rng, true_agent_yaws.shape)
+            * pipeline.yaw_noise_std
+        )
+        noisy_obstacle_positions_xy = (
+            state.obstacle_positions_xy
+            + jax.random.normal(obstacle_pos_rng, state.obstacle_positions_xy.shape)
+            * pipeline.position_noise_std
+        )
+        noisy_obstacle_yaws = _wrap_angle(
+            state.obstacle_yaws
+            + jax.random.normal(obstacle_yaw_rng, state.obstacle_yaws.shape)
+            * pipeline.yaw_noise_std
+        )
+
+        frame_drop = jax.random.bernoulli(
+            frame_drop_rng, pipeline.frame_drop_probability
+        )
+        start_stale = jax.random.bernoulli(
+            stale_rng, pipeline.stale_observation_probability
+        )
+        sampled_stale_steps = jax.lax.cond(
+            pipeline.max_stale_steps > 0,
+            lambda _: jax.random.randint(
+                stale_length_rng, (), 1, pipeline.max_stale_steps + 1
+            ),
+            lambda _: jnp.int32(0),
+            operand=None,
+        )
+        currently_stale = state.stale_observation_steps_remaining > 0
+        hold_measurement = currently_stale | frame_drop | start_stale
+
+        measured_agent_positions_xy = jnp.where(
+            hold_measurement,
+            state.last_measured_agent_positions_xy,
+            noisy_agent_positions_xy,
+        )
+        measured_agent_yaws = jnp.where(
+            hold_measurement,
+            state.last_measured_agent_yaws,
+            noisy_agent_yaws,
+        )
+        measured_obstacle_positions_xy = jnp.where(
+            hold_measurement,
+            state.last_measured_obstacle_positions_xy,
+            noisy_obstacle_positions_xy,
+        )
+        measured_obstacle_yaws = jnp.where(
+            hold_measurement,
+            state.last_measured_obstacle_yaws,
+            noisy_obstacle_yaws,
+        )
+
+        next_stale_steps_remaining = jnp.where(
+            currently_stale,
+            state.stale_observation_steps_remaining - 1,
+            jnp.where(start_stale, sampled_stale_steps - 1, jnp.int32(0)),
+        )
+
+        return (
+            measured_agent_positions_xy,
+            measured_agent_yaws,
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            jnp.int32(next_stale_steps_remaining),
         )
 
     def _collision_flags(
@@ -144,12 +358,33 @@ class TagEnvironment:
         )
         return chaser_collision, evader_collision
 
-    def reset_state(
-        self, rng: jax.Array
-    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
-        qpos, qvel, initial_distance, obstacle_state = sample_reset_state(
-            rng,
+    def compute_observations(
+        self, state: TagEnvironmentState
+    ) -> tuple[jax.Array, jax.Array]:
+        delayed_observations = self._select_delayed(
+            state.observation_buffer, state.pipeline_params.observation_delay_steps
+        )
+        return delayed_observations[0], delayed_observations[1]
+
+    def _make_reset_state(
+        self, rng: jax.Array, curriculum_progress: jax.Array
+    ) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
+        layout_rng, domain_rng, pipeline_rng, spawn_rng, measurement_rng = (
+            jax.random.split(rng, 5)
+        )
+        obstacle_state = sample_layout_state(
+            layout_rng, self.config, curriculum_progress
+        )
+        domain_params = sample_domain_params(
+            domain_rng, self.config, curriculum_progress
+        )
+        pipeline_params = sample_pipeline_params(
+            pipeline_rng, self.config, curriculum_progress
+        )
+        qpos, qvel, initial_distance = sample_spawn_state(
+            spawn_rng,
             self.config,
+            obstacle_state,
             self.mj_model.nq,
             self.mj_model.nv,
             self.joint_qpos_slices.chaser_root.start,
@@ -157,44 +392,103 @@ class TagEnvironment:
             self.joint_qpos_slices.chaser_caster_ball_joint,
             self.joint_qpos_slices.evader_caster_ball_joint,
         )
-        return (
-            qpos,
-            qvel,
-            initial_distance,
-            obstacle_state.positions_xy,
-            obstacle_state.yaws,
-            obstacle_state.active,
+        randomized_model = randomize_model(
+            self.mjx_model, domain_params, self.model_indices
         )
+        mjx_data = self.forward(
+            randomized_model, self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
+        )
+        chaser, evader = self._agent_pair_kinematics(mjx_data)
+        true_agent_positions_xy = jnp.stack(
+            [chaser.position_xy, evader.position_xy], axis=0
+        )
+        true_agent_yaws = jnp.stack([chaser.yaw, evader.yaw], axis=0)
 
-    def compute_observations(
-        self, state: TagEnvironmentState
-    ) -> tuple[jax.Array, jax.Array]:
-        chaser, evader = self._agent_pair_kinematics(state.mjx_data)
-        chaser_obs = self._compute_observation(state, chaser, evader)
-        evader_obs = self._compute_observation(state, evader, chaser)
-        return chaser_obs, evader_obs
+        zero_state = TagEnvironmentState(
+            mjx_data=mjx_data,
+            domain_params=domain_params,
+            pipeline_params=pipeline_params,
+            obstacle_positions_xy=obstacle_state.positions_xy,
+            obstacle_yaws=obstacle_state.yaws,
+            obstacle_active=obstacle_state.active,
+            observation_buffer=jnp.zeros(
+                (self.max_observation_buffer_len, 2, self.obs_size), dtype=jnp.float32
+            ),
+            action_buffer=self._empty_action_buffer(),
+            last_applied_actions=jnp.zeros((2, 2), dtype=jnp.float32),
+            last_measured_agent_positions_xy=true_agent_positions_xy,
+            last_measured_agent_yaws=true_agent_yaws,
+            last_measured_obstacle_positions_xy=obstacle_state.positions_xy,
+            last_measured_obstacle_yaws=obstacle_state.yaws,
+            stale_observation_steps_remaining=jnp.int32(0),
+            step_count=jnp.int32(0),
+            prev_distance=initial_distance,
+        )
+        (
+            measured_agent_positions_xy,
+            measured_agent_yaws,
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            stale_steps_remaining,
+        ) = self._sample_measurement(
+            zero_state, true_agent_positions_xy, true_agent_yaws, measurement_rng
+        )
+        observations = self._compute_observation_pair_from_measurement(
+            measured_agent_positions_xy,
+            measured_agent_yaws,
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            obstacle_state.active,
+            jnp.int32(0),
+        )
+        state = zero_state._replace(
+            observation_buffer=self._filled_observation_buffer(observations),
+            last_measured_agent_positions_xy=measured_agent_positions_xy,
+            last_measured_agent_yaws=measured_agent_yaws,
+            last_measured_obstacle_positions_xy=measured_obstacle_positions_xy,
+            last_measured_obstacle_yaws=measured_obstacle_yaws,
+            stale_observation_steps_remaining=stale_steps_remaining,
+        )
+        return state, observations[0], observations[1]
 
     def step_physics(
         self,
         state: TagEnvironmentState,
         chaser_action: jax.Array,
         evader_action: jax.Array,
+        rng: jax.Array,
     ) -> tuple[
-        TagEnvironmentState, jax.Array, jax.Array, jax.Array, TagEnvironmentStepInfo
+        TagEnvironmentState,
+        jax.Array,
+        jax.Array,
+        jax.Array,
+        jax.Array,
+        jax.Array,
+        TagEnvironmentStepInfo,
     ]:
         config = self.config
 
         chaser_action = jnp.clip(chaser_action, -1.0, 1.0)
         evader_action = jnp.clip(evader_action, -1.0, 1.0)
+        proposed_actions = jnp.stack([chaser_action, evader_action], axis=0)
 
         is_frozen = state.step_count < self.freeze_steps
-        chaser_action = jnp.where(is_frozen, jnp.zeros(2), chaser_action)
+        proposed_actions = proposed_actions.at[0].set(
+            jnp.where(is_frozen, jnp.zeros(2), proposed_actions[0])
+        )
+        action_rng, measurement_rng = jax.random.split(rng)
+        action_buffer, applied_actions, _ = self._apply_action_pipeline(
+            state, proposed_actions, action_rng
+        )
 
-        control_actions = jnp.concatenate([chaser_action, evader_action])
+        randomized_model = randomize_model(
+            self.mjx_model, state.domain_params, self.model_indices
+        )
+        control_actions = jnp.concatenate([applied_actions[0], applied_actions[1]])
         mjx_data = state.mjx_data.replace(ctrl=control_actions)
 
         def substep(data: mjx.Data, _: None) -> tuple[mjx.Data, None]:
-            return mjx.step(self.mjx_model, data), None
+            return mjx.step(randomized_model, data), None
 
         mjx_data, _ = jax.lax.scan(
             substep, mjx_data, None, length=self.substeps_per_action
@@ -236,45 +530,87 @@ class TagEnvironment:
             - config.collision_penalty * evader_collision
         )
 
-        new_state = TagEnvironmentState(
+        true_agent_positions_xy = jnp.stack(
+            [chaser.position_xy, evader.position_xy], axis=0
+        )
+        true_agent_yaws = jnp.stack([chaser.yaw, evader.yaw], axis=0)
+        interim_state = state._replace(
             mjx_data=mjx_data,
-            obstacle_positions_xy=obstacle_positions_xy,
-            obstacle_yaws=obstacle_yaws,
-            obstacle_active=obstacle_active,
+            action_buffer=action_buffer,
+            last_applied_actions=applied_actions,
             step_count=step_count,
             prev_distance=distance,
+        )
+        (
+            measured_agent_positions_xy,
+            measured_agent_yaws,
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            stale_steps_remaining,
+        ) = self._sample_measurement(
+            interim_state, true_agent_positions_xy, true_agent_yaws, measurement_rng
+        )
+        current_observations = self._compute_observation_pair_from_measurement(
+            measured_agent_positions_xy,
+            measured_agent_yaws,
+            measured_obstacle_positions_xy,
+            measured_obstacle_yaws,
+            obstacle_active,
+            step_count,
+        )
+        observation_buffer = self._push_buffer(
+            state.observation_buffer, current_observations
+        )
+        delayed_observations = self._select_delayed(
+            observation_buffer, state.pipeline_params.observation_delay_steps
+        )
+
+        new_state = interim_state._replace(
+            observation_buffer=observation_buffer,
+            last_measured_agent_positions_xy=measured_agent_positions_xy,
+            last_measured_agent_yaws=measured_agent_yaws,
+            last_measured_obstacle_positions_xy=measured_obstacle_positions_xy,
+            last_measured_obstacle_yaws=measured_obstacle_yaws,
+            stale_observation_steps_remaining=stale_steps_remaining,
         )
         info = TagEnvironmentStepInfo(
             tagged=tagged,
             time_up=time_up,
             distance=distance,
             step_count=step_count,
+            obstacle_count=obstacle_active.astype(jnp.int32).sum(),
             chaser_collision=chaser_collision,
             evader_collision=evader_collision,
+            action_delay_steps=state.pipeline_params.action_delay_steps,
+            observation_delay_steps=state.pipeline_params.observation_delay_steps,
+            action_drop_probability=state.pipeline_params.action_drop_probability,
+            frame_drop_probability=state.pipeline_params.frame_drop_probability,
+            stale_observation_probability=state.pipeline_params.stale_observation_probability,
+            position_noise_std=state.pipeline_params.position_noise_std,
+            yaw_noise_std=state.pipeline_params.yaw_noise_std,
+            floor_friction_scale=state.domain_params.floor_friction_scale,
+            chaser_mass_scale=state.domain_params.chaser.mass_scale,
+            evader_mass_scale=state.domain_params.evader.mass_scale,
+            chaser_motor_balance=state.domain_params.chaser.motor_balance,
+            evader_motor_balance=state.domain_params.evader.motor_balance,
+            chaser_motor_strength_scale=state.domain_params.chaser.motor_strength_scale,
+            evader_motor_strength_scale=state.domain_params.evader.motor_strength_scale,
         )
-        return new_state, chaser_reward, evader_reward, done, info
+        return (
+            new_state,
+            delayed_observations[0],
+            delayed_observations[1],
+            chaser_reward,
+            evader_reward,
+            done,
+            info,
+        )
 
     @partial(jax.jit, static_argnums=(0,))
-    def reset(self, rng: jax.Array) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        (
-            qpos,
-            qvel,
-            initial_distance,
-            obstacle_positions_xy,
-            obstacle_yaws,
-            obstacle_active,
-        ) = self.reset_state(rng)
-        mjx_data = self.forward(self._template_mjx_data.replace(qpos=qpos, qvel=qvel))
-        state = TagEnvironmentState(
-            mjx_data=mjx_data,
-            obstacle_positions_xy=obstacle_positions_xy,
-            obstacle_yaws=obstacle_yaws,
-            obstacle_active=obstacle_active,
-            step_count=jnp.int32(0),
-            prev_distance=initial_distance,
-        )
-        chaser_obs, evader_obs = self.compute_observations(state)
-        return state, chaser_obs, evader_obs
+    def reset(
+        self, rng: jax.Array, curriculum_progress: jax.Array
+    ) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
+        return self._make_reset_state(rng, curriculum_progress)
 
     @partial(jax.jit, static_argnums=(0,))
     def step(
@@ -282,6 +618,7 @@ class TagEnvironment:
         state: TagEnvironmentState,
         chaser_action: jax.Array,
         evader_action: jax.Array,
+        rng: jax.Array,
     ) -> tuple[
         TagEnvironmentState,
         jax.Array,
@@ -291,16 +628,4 @@ class TagEnvironment:
         jax.Array,
         TagEnvironmentStepInfo,
     ]:
-        new_state, chaser_reward, evader_reward, done, info = self.step_physics(
-            state, chaser_action, evader_action
-        )
-        chaser_obs, evader_obs = self.compute_observations(new_state)
-        return (
-            new_state,
-            chaser_obs,
-            evader_obs,
-            chaser_reward,
-            evader_reward,
-            done,
-            info,
-        )
+        return self.step_physics(state, chaser_action, evader_action, rng)

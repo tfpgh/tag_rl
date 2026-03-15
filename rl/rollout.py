@@ -69,6 +69,7 @@ def auto_reset_step(
     chaser_action: jax.Array,
     evader_action: jax.Array,
     rng: jax.Array,
+    curriculum_progress: jax.Array,
 ) -> tuple[
     TagEnvironmentState,
     jax.Array,
@@ -78,15 +79,21 @@ def auto_reset_step(
     jax.Array,
     TagEnvironmentStepInfo,
 ]:
-    stepped, chaser_reward, evader_reward, done, info = env.step_physics(
-        state, chaser_action, evader_action
-    )
+    step_rng, reset_rng = jax.random.split(rng)
+    (
+        stepped,
+        chaser_obs,
+        evader_obs,
+        chaser_reward,
+        evader_reward,
+        done,
+        info,
+    ) = env.step(state, chaser_action, evader_action, step_rng)
 
     def reset_branch(_: None) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        return env.reset(rng)
+        return env.reset(reset_rng, curriculum_progress)
 
     def continue_branch(_: None) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        chaser_obs, evader_obs = env.compute_observations(stepped)
         return stepped, chaser_obs, evader_obs
 
     state, chaser_obs, evader_obs = jax.lax.cond(
@@ -101,6 +108,7 @@ def collect_trajectories(
     rl_config: RLConfig,
     chaser_network: PolicyModule,
     evader_network: PolicyModule,
+    curriculum_progress: jax.Array,
 ) -> tuple[RunnerState, Transition]:
     def _env_step(carry: RolloutCarry, _: None) -> tuple[RolloutCarry, Transition]:
         (
@@ -155,12 +163,13 @@ def collect_trajectories(
             evader_reward,
             next_prev_done,
             info,
-        ) = jax.vmap(auto_reset_step, in_axes=(None, 0, 0, 0, 0))(
+        ) = jax.vmap(auto_reset_step, in_axes=(None, 0, 0, 0, 0, None))(
             env,
             env_state,
             chaser_action,
             evader_action,
             step_rngs,
+            curriculum_progress,
         )
 
         transition = Transition(

@@ -11,6 +11,7 @@ from tensorboardX import SummaryWriter
 from tqdm import tqdm
 
 from environment.config import EnvironmentConfig
+from environment.curriculum import curriculum_progress as compute_curriculum_progress
 from environment.environment import TagEnvironment, observation_size
 from rl.checkpoints import (
     load_checkpoint,
@@ -33,7 +34,7 @@ from rl.rollout import (
 AXIS_NAME = "devices"
 TrainMetrics = dict[str, jax.Array]
 TrainInitFn = Callable[[jax.Array], RunnerState]
-TrainStepFn = Callable[[RunnerState], tuple[RunnerState, TrainMetrics]]
+TrainStepFn = Callable[[RunnerState, jax.Array], tuple[RunnerState, TrainMetrics]]
 
 
 def make_train(
@@ -88,7 +89,9 @@ def make_train(
 
         device_env_rng = jax.random.fold_in(env_rng, axis_index)
         reset_rngs = jax.random.split(device_env_rng, local_num_envs)
-        env_states, chaser_obs, evader_obs = jax.vmap(env.reset)(reset_rngs)
+        env_states, chaser_obs, evader_obs = jax.vmap(env.reset, in_axes=(0, None))(
+            reset_rngs, jnp.asarray(0.0, dtype=jnp.float32)
+        )
 
         chaser_hstate = ScannedRNN.initialize_carry(
             local_num_envs, rl_config.hidden_size
@@ -109,7 +112,9 @@ def make_train(
             rng=jax.random.fold_in(runner_rng, axis_index),
         )
 
-    def step(runner_state: RunnerState) -> tuple[RunnerState, TrainMetrics]:
+    def step(
+        runner_state: RunnerState, curriculum_progress: jax.Array
+    ) -> tuple[RunnerState, TrainMetrics]:
         initial_chaser_hstate = runner_state.chaser_hstate
         initial_evader_hstate = runner_state.evader_hstate
 
@@ -119,6 +124,7 @@ def make_train(
             rl_config,
             chaser_network,
             evader_network,
+            curriculum_progress,
         )
 
         chaser_last_val, evader_last_val, last_done = bootstrap_values(
@@ -176,6 +182,7 @@ def make_train(
         metrics = compute_training_metrics(
             traj_batch, chaser_loss, evader_loss, axis_name=AXIS_NAME
         )
+        metrics["curriculum/progress"] = curriculum_progress
 
         return (
             RunnerState(
@@ -298,7 +305,11 @@ def main() -> None:
         total=num_updates,
         desc="Training",
     ):
-        runner_state, metrics = step_pmap(runner_state)
+        progress = compute_curriculum_progress(
+            update, num_updates, env_config.curriculum
+        )
+        progress_array = jnp.full((len(devices),), progress, dtype=jnp.float32)
+        runner_state, metrics = step_pmap(runner_state, progress_array)
         global_step = (update + 1) * rl_config.timesteps_per_update
 
         for key, value in unreplicate_metrics(metrics).items():

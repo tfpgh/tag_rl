@@ -174,4 +174,4 @@ def load_checkpoint_configs(
         raise ValueError(
             "Checkpoint does not contain serialized RL/environment configs"
         )
-    return RLConfig(**rl_config_data), EnvironmentConfig(**env_config_data)
+    return RLConfig(**rl_config_data), EnvironmentConfig.from_dict(env_config_data)

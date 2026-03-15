@@ -109,6 +109,25 @@ def compute_training_metrics(
         ),
         "chaser_collision_term_sum": chaser_collision.sum(),
         "evader_collision_term_sum": evader_collision.sum(),
+        "action_delay_steps_sum": traj_batch.info.action_delay_steps.astype(
+            jnp.float32
+        ).sum(),
+        "observation_delay_steps_sum": traj_batch.info.observation_delay_steps.astype(
+            jnp.float32
+        ).sum(),
+        "obstacle_count_sum": traj_batch.info.obstacle_count.astype(jnp.float32).sum(),
+        "action_drop_probability_sum": traj_batch.info.action_drop_probability.sum(),
+        "frame_drop_probability_sum": traj_batch.info.frame_drop_probability.sum(),
+        "stale_observation_probability_sum": traj_batch.info.stale_observation_probability.sum(),
+        "position_noise_std_sum": traj_batch.info.position_noise_std.sum(),
+        "yaw_noise_std_sum": traj_batch.info.yaw_noise_std.sum(),
+        "floor_friction_scale_sum": traj_batch.info.floor_friction_scale.sum(),
+        "chaser_mass_scale_sum": traj_batch.info.chaser_mass_scale.sum(),
+        "evader_mass_scale_sum": traj_batch.info.evader_mass_scale.sum(),
+        "chaser_motor_balance_sum": traj_batch.info.chaser_motor_balance.sum(),
+        "evader_motor_balance_sum": traj_batch.info.evader_motor_balance.sum(),
+        "chaser_motor_strength_scale_sum": traj_batch.info.chaser_motor_strength_scale.sum(),
+        "evader_motor_strength_scale_sum": traj_batch.info.evader_motor_strength_scale.sum(),
     }
 
     if axis_name is not None:
@@ -194,4 +213,52 @@ def compute_training_metrics(
         ),
         "env/termination_by_chaser_collision_rate": chaser_collision_termination_rate,
         "env/termination_by_evader_collision_rate": evader_collision_termination_rate,
+        "randomization/action_delay_steps": safe_rate(
+            metric_sums["action_delay_steps_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/observation_delay_steps": safe_rate(
+            metric_sums["observation_delay_steps_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/obstacle_count": safe_rate(
+            metric_sums["obstacle_count_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/action_drop_probability": safe_rate(
+            metric_sums["action_drop_probability_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/frame_drop_probability": safe_rate(
+            metric_sums["frame_drop_probability_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/stale_observation_probability": safe_rate(
+            metric_sums["stale_observation_probability_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/position_noise_std": safe_rate(
+            metric_sums["position_noise_std_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/yaw_noise_std": safe_rate(
+            metric_sums["yaw_noise_std_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/floor_friction_scale": safe_rate(
+            metric_sums["floor_friction_scale_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/chaser_mass_scale": safe_rate(
+            metric_sums["chaser_mass_scale_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/evader_mass_scale": safe_rate(
+            metric_sums["evader_mass_scale_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/chaser_motor_balance": safe_rate(
+            metric_sums["chaser_motor_balance_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/evader_motor_balance": safe_rate(
+            metric_sums["evader_motor_balance_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/chaser_motor_strength_scale": safe_rate(
+            metric_sums["chaser_motor_strength_scale_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/evader_motor_strength_scale": safe_rate(
+            metric_sums["evader_motor_strength_scale_sum"],
+            metric_sums["distance_count"],
+        ),
     }

@@ -14,7 +14,7 @@ class EnvironmentConfig:
     tag_distance_factor: float = 1.03
 
     # Perception rays
-    n_rays: int = 256
+    n_rays: int = 128
 
     # Action frequency, hz
     action_frequency: int = 20
@@ -40,8 +40,8 @@ class EnvironmentConfig:
     wall_margin_factor: float = 1.5  # Minimum distance from wall (* agent_radius)
 
     # Obstacles
-    max_obstacles: int = 8  # always allocated in MJCF
-    obstacle_width: float = 0.10  # square box side length (meters)
+    max_obstacles: int = 4  # always allocated in MJCF
+    obstacle_width: float = 0.20  # square box side length (meters)
 
     def validate(self) -> None:
         if self.arena_width <= 0 or self.arena_height <= 0:

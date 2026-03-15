@@ -19,7 +19,7 @@ from environment.mjcf import generate_mjcf
 from environment.mujoco_data import yaw_to_quaternion
 from rl.checkpoints import load_checkpoint_configs, load_policy_params
 from rl.models import ScannedRNN
-from rl.policy import build_policies
+from rl.policy import PolicyModule, build_policies
 
 RolloutResult = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]
 RenderFrames = list[npt.NDArray[np.uint8]]
@@ -35,8 +35,8 @@ PRNG_KEY = 0
 
 def make_rollout(
     env: TagEnvironment,
-    chaser_network: Any,
-    evader_network: Any,
+    chaser_network: PolicyModule,
+    evader_network: PolicyModule,
     hidden_size: int,
 ) -> Callable[[Any, Any, jax.Array], RolloutResult]:
     """Create a JIT'd single-episode rollout function (compiles once)."""

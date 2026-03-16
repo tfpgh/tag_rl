@@ -37,6 +37,32 @@ TrainInitFn = Callable[[jax.Array], RunnerState]
 TrainStepFn = Callable[[RunnerState, jax.Array], tuple[RunnerState, TrainMetrics]]
 
 
+def learning_rate_for_update(
+    rl_config: RLConfig, updates_completed: int | float | jax.Array
+) -> int | float | jax.Array:
+    if not rl_config.anneal_lr:
+        return rl_config.lr
+
+    start_fraction = rl_config.lr_decay_start_fraction
+    total_updates = max(rl_config.num_updates, 1)
+    start_update = start_fraction * total_updates
+    updates_completed = jnp.asarray(updates_completed, dtype=jnp.float32)
+
+    if start_fraction >= 1.0:
+        scale = jnp.asarray(1.0, dtype=jnp.float32)
+    else:
+        decay_progress = jnp.clip(
+            (updates_completed - start_update)
+            / jnp.maximum(total_updates - start_update, 1.0),
+            0.0,
+            1.0,
+        )
+        start_scale = jnp.asarray(1.0, dtype=jnp.float32)
+        end_scale = jnp.asarray(rl_config.final_lr_scale, dtype=jnp.float32)
+        scale = start_scale + (end_scale - start_scale) * decay_progress
+    return rl_config.lr * scale
+
+
 def make_train(
     rl_config: RLConfig, env_config: EnvironmentConfig, num_devices: int
 ) -> tuple[TrainInitFn, TrainStepFn, int]:
@@ -52,8 +78,7 @@ def make_train(
         updates_completed = count // (
             rl_config.num_minibatches * rl_config.update_epochs
         )
-        frac = 1.0 - updates_completed / max(num_updates, 1)
-        return rl_config.lr * frac
+        return learning_rate_for_update(rl_config, updates_completed)
 
     if rl_config.anneal_lr:
         tx = optax.chain(
@@ -311,9 +336,11 @@ def main() -> None:
         progress_array = jnp.full((len(devices),), progress, dtype=jnp.float32)
         runner_state, metrics = step_pmap(runner_state, progress_array)
         global_step = (update + 1) * rl_config.timesteps_per_update
+        current_lr = float(learning_rate_for_update(rl_config, update))
 
         for key, value in unreplicate_metrics(metrics).items():
             writer.add_scalar(key, value, global_step)
+        writer.add_scalar("optimizer/learning_rate", current_lr, global_step)
         if (update + 1) % flush_interval == 0:
             writer.flush()
 

@@ -11,6 +11,13 @@ def safe_rate(numerator: jax.Array, denominator: jax.Array) -> jax.Array:
     )
 
 
+def safe_std(sum_: jax.Array, sum_squares: jax.Array, count: jax.Array) -> jax.Array:
+    mean = safe_rate(sum_, count)
+    second_moment = safe_rate(sum_squares, count)
+    variance = jnp.maximum(second_moment - jnp.square(mean), jnp.float32(0))
+    return jnp.sqrt(variance)
+
+
 def compute_training_metrics(
     traj_batch: Transition,
     chaser_loss: LossInfo,
@@ -41,6 +48,32 @@ def compute_training_metrics(
     evader_action_any_clipped = jnp.any(evader_action_clipped > 0, axis=-1).astype(
         jnp.float32
     )
+    action_delay_steps = traj_batch.info.action_delay_steps.astype(jnp.float32)
+    observation_delay_steps = traj_batch.info.observation_delay_steps.astype(
+        jnp.float32
+    )
+    obstacle_count = traj_batch.info.obstacle_count.astype(jnp.float32)
+    action_drop_probability = traj_batch.info.action_drop_probability.astype(
+        jnp.float32
+    )
+    frame_drop_probability = traj_batch.info.frame_drop_probability.astype(jnp.float32)
+    stale_observation_probability = (
+        traj_batch.info.stale_observation_probability.astype(jnp.float32)
+    )
+    position_noise_std = traj_batch.info.position_noise_std.astype(jnp.float32)
+    yaw_noise_std = traj_batch.info.yaw_noise_std.astype(jnp.float32)
+    floor_friction_scale = traj_batch.info.floor_friction_scale.astype(jnp.float32)
+    chaser_mass_scale = traj_batch.info.chaser_mass_scale.astype(jnp.float32)
+    evader_mass_scale = traj_batch.info.evader_mass_scale.astype(jnp.float32)
+    chaser_motor_balance = traj_batch.info.chaser_motor_balance.astype(jnp.float32)
+    evader_motor_balance = traj_batch.info.evader_motor_balance.astype(jnp.float32)
+    chaser_motor_strength_scale = traj_batch.info.chaser_motor_strength_scale.astype(
+        jnp.float32
+    )
+    evader_motor_strength_scale = traj_batch.info.evader_motor_strength_scale.astype(
+        jnp.float32
+    )
+    randomization_count = jnp.asarray(traj_batch.info.distance.size, dtype=jnp.float32)
 
     metric_sums = {
         "chaser_total_loss": chaser_loss[0].sum(),
@@ -74,7 +107,7 @@ def compute_training_metrics(
         "n_finished": n_finished,
         "episode_length_sum": (traj_batch.info.step_count * finished_f32).sum(),
         "distance_sum": traj_batch.info.distance.sum(),
-        "distance_count": jnp.asarray(traj_batch.info.distance.size, dtype=jnp.float32),
+        "distance_count": randomization_count,
         "chaser_reward_sum": traj_batch.chaser_reward.sum(),
         "chaser_reward_count": jnp.asarray(
             traj_batch.chaser_reward.size, dtype=jnp.float32
@@ -109,25 +142,53 @@ def compute_training_metrics(
         ),
         "chaser_collision_term_sum": chaser_collision.sum(),
         "evader_collision_term_sum": evader_collision.sum(),
-        "action_delay_steps_sum": traj_batch.info.action_delay_steps.astype(
-            jnp.float32
+        "action_delay_steps_sum": action_delay_steps.sum(),
+        "action_delay_steps_sq_sum": jnp.square(action_delay_steps).sum(),
+        "observation_delay_steps_sum": observation_delay_steps.sum(),
+        "observation_delay_steps_sq_sum": jnp.square(observation_delay_steps).sum(),
+        "obstacle_count_sum": obstacle_count.sum(),
+        "obstacle_count_sq_sum": jnp.square(obstacle_count).sum(),
+        "action_drop_probability_sum": action_drop_probability.sum(),
+        "action_drop_probability_sq_sum": jnp.square(action_drop_probability).sum(),
+        "frame_drop_probability_sum": frame_drop_probability.sum(),
+        "frame_drop_probability_sq_sum": jnp.square(frame_drop_probability).sum(),
+        "stale_observation_probability_sum": stale_observation_probability.sum(),
+        "stale_observation_probability_sq_sum": jnp.square(
+            stale_observation_probability
         ).sum(),
-        "observation_delay_steps_sum": traj_batch.info.observation_delay_steps.astype(
-            jnp.float32
+        "position_noise_std_sum": position_noise_std.sum(),
+        "position_noise_std_sq_sum": jnp.square(position_noise_std).sum(),
+        "yaw_noise_std_sum": yaw_noise_std.sum(),
+        "yaw_noise_std_sq_sum": jnp.square(yaw_noise_std).sum(),
+        "floor_friction_scale_sum": floor_friction_scale.sum(),
+        "floor_friction_scale_sq_sum": jnp.square(floor_friction_scale).sum(),
+        "floor_friction_scale_abs_dev_sum": jnp.abs(floor_friction_scale - 1.0).sum(),
+        "chaser_mass_scale_sum": chaser_mass_scale.sum(),
+        "chaser_mass_scale_sq_sum": jnp.square(chaser_mass_scale).sum(),
+        "chaser_mass_scale_abs_dev_sum": jnp.abs(chaser_mass_scale - 1.0).sum(),
+        "evader_mass_scale_sum": evader_mass_scale.sum(),
+        "evader_mass_scale_sq_sum": jnp.square(evader_mass_scale).sum(),
+        "evader_mass_scale_abs_dev_sum": jnp.abs(evader_mass_scale - 1.0).sum(),
+        "chaser_motor_balance_sum": chaser_motor_balance.sum(),
+        "chaser_motor_balance_sq_sum": jnp.square(chaser_motor_balance).sum(),
+        "chaser_motor_balance_abs_sum": jnp.abs(chaser_motor_balance).sum(),
+        "evader_motor_balance_sum": evader_motor_balance.sum(),
+        "evader_motor_balance_sq_sum": jnp.square(evader_motor_balance).sum(),
+        "evader_motor_balance_abs_sum": jnp.abs(evader_motor_balance).sum(),
+        "chaser_motor_strength_scale_sum": chaser_motor_strength_scale.sum(),
+        "chaser_motor_strength_scale_sq_sum": jnp.square(
+            chaser_motor_strength_scale
         ).sum(),
-        "obstacle_count_sum": traj_batch.info.obstacle_count.astype(jnp.float32).sum(),
-        "action_drop_probability_sum": traj_batch.info.action_drop_probability.sum(),
-        "frame_drop_probability_sum": traj_batch.info.frame_drop_probability.sum(),
-        "stale_observation_probability_sum": traj_batch.info.stale_observation_probability.sum(),
-        "position_noise_std_sum": traj_batch.info.position_noise_std.sum(),
-        "yaw_noise_std_sum": traj_batch.info.yaw_noise_std.sum(),
-        "floor_friction_scale_sum": traj_batch.info.floor_friction_scale.sum(),
-        "chaser_mass_scale_sum": traj_batch.info.chaser_mass_scale.sum(),
-        "evader_mass_scale_sum": traj_batch.info.evader_mass_scale.sum(),
-        "chaser_motor_balance_sum": traj_batch.info.chaser_motor_balance.sum(),
-        "evader_motor_balance_sum": traj_batch.info.evader_motor_balance.sum(),
-        "chaser_motor_strength_scale_sum": traj_batch.info.chaser_motor_strength_scale.sum(),
-        "evader_motor_strength_scale_sum": traj_batch.info.evader_motor_strength_scale.sum(),
+        "chaser_motor_strength_scale_abs_dev_sum": jnp.abs(
+            chaser_motor_strength_scale - 1.0
+        ).sum(),
+        "evader_motor_strength_scale_sum": evader_motor_strength_scale.sum(),
+        "evader_motor_strength_scale_sq_sum": jnp.square(
+            evader_motor_strength_scale
+        ).sum(),
+        "evader_motor_strength_scale_abs_dev_sum": jnp.abs(
+            evader_motor_strength_scale - 1.0
+        ).sum(),
     }
 
     if axis_name is not None:
@@ -216,49 +277,152 @@ def compute_training_metrics(
         "randomization/action_delay_steps": safe_rate(
             metric_sums["action_delay_steps_sum"], metric_sums["distance_count"]
         ),
+        "randomization/action_delay_steps_std": safe_std(
+            metric_sums["action_delay_steps_sum"],
+            metric_sums["action_delay_steps_sq_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/observation_delay_steps": safe_rate(
             metric_sums["observation_delay_steps_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/observation_delay_steps_std": safe_std(
+            metric_sums["observation_delay_steps_sum"],
+            metric_sums["observation_delay_steps_sq_sum"],
+            metric_sums["distance_count"],
         ),
         "randomization/obstacle_count": safe_rate(
             metric_sums["obstacle_count_sum"], metric_sums["distance_count"]
         ),
+        "randomization/obstacle_count_std": safe_std(
+            metric_sums["obstacle_count_sum"],
+            metric_sums["obstacle_count_sq_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/action_drop_probability": safe_rate(
             metric_sums["action_drop_probability_sum"], metric_sums["distance_count"]
         ),
+        "randomization/action_drop_probability_std": safe_std(
+            metric_sums["action_drop_probability_sum"],
+            metric_sums["action_drop_probability_sq_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/frame_drop_probability": safe_rate(
             metric_sums["frame_drop_probability_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/frame_drop_probability_std": safe_std(
+            metric_sums["frame_drop_probability_sum"],
+            metric_sums["frame_drop_probability_sq_sum"],
+            metric_sums["distance_count"],
         ),
         "randomization/stale_observation_probability": safe_rate(
             metric_sums["stale_observation_probability_sum"],
             metric_sums["distance_count"],
         ),
+        "randomization/stale_observation_probability_std": safe_std(
+            metric_sums["stale_observation_probability_sum"],
+            metric_sums["stale_observation_probability_sq_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/position_noise_std": safe_rate(
             metric_sums["position_noise_std_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/position_noise_std_std": safe_std(
+            metric_sums["position_noise_std_sum"],
+            metric_sums["position_noise_std_sq_sum"],
+            metric_sums["distance_count"],
         ),
         "randomization/yaw_noise_std": safe_rate(
             metric_sums["yaw_noise_std_sum"], metric_sums["distance_count"]
         ),
+        "randomization/yaw_noise_std_std": safe_std(
+            metric_sums["yaw_noise_std_sum"],
+            metric_sums["yaw_noise_std_sq_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/floor_friction_scale": safe_rate(
             metric_sums["floor_friction_scale_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/floor_friction_scale_std": safe_std(
+            metric_sums["floor_friction_scale_sum"],
+            metric_sums["floor_friction_scale_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/floor_friction_scale_abs_deviation": safe_rate(
+            metric_sums["floor_friction_scale_abs_dev_sum"],
+            metric_sums["distance_count"],
         ),
         "randomization/chaser_mass_scale": safe_rate(
             metric_sums["chaser_mass_scale_sum"], metric_sums["distance_count"]
         ),
+        "randomization/chaser_mass_scale_std": safe_std(
+            metric_sums["chaser_mass_scale_sum"],
+            metric_sums["chaser_mass_scale_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/chaser_mass_scale_abs_deviation": safe_rate(
+            metric_sums["chaser_mass_scale_abs_dev_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/evader_mass_scale": safe_rate(
             metric_sums["evader_mass_scale_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/evader_mass_scale_std": safe_std(
+            metric_sums["evader_mass_scale_sum"],
+            metric_sums["evader_mass_scale_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/evader_mass_scale_abs_deviation": safe_rate(
+            metric_sums["evader_mass_scale_abs_dev_sum"],
+            metric_sums["distance_count"],
         ),
         "randomization/chaser_motor_balance": safe_rate(
             metric_sums["chaser_motor_balance_sum"], metric_sums["distance_count"]
         ),
+        "randomization/chaser_motor_balance_std": safe_std(
+            metric_sums["chaser_motor_balance_sum"],
+            metric_sums["chaser_motor_balance_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/chaser_motor_balance_abs": safe_rate(
+            metric_sums["chaser_motor_balance_abs_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/evader_motor_balance": safe_rate(
             metric_sums["evader_motor_balance_sum"], metric_sums["distance_count"]
+        ),
+        "randomization/evader_motor_balance_std": safe_std(
+            metric_sums["evader_motor_balance_sum"],
+            metric_sums["evader_motor_balance_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/evader_motor_balance_abs": safe_rate(
+            metric_sums["evader_motor_balance_abs_sum"],
+            metric_sums["distance_count"],
         ),
         "randomization/chaser_motor_strength_scale": safe_rate(
             metric_sums["chaser_motor_strength_scale_sum"],
             metric_sums["distance_count"],
         ),
+        "randomization/chaser_motor_strength_scale_std": safe_std(
+            metric_sums["chaser_motor_strength_scale_sum"],
+            metric_sums["chaser_motor_strength_scale_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/chaser_motor_strength_scale_abs_deviation": safe_rate(
+            metric_sums["chaser_motor_strength_scale_abs_dev_sum"],
+            metric_sums["distance_count"],
+        ),
         "randomization/evader_motor_strength_scale": safe_rate(
             metric_sums["evader_motor_strength_scale_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/evader_motor_strength_scale_std": safe_std(
+            metric_sums["evader_motor_strength_scale_sum"],
+            metric_sums["evader_motor_strength_scale_sq_sum"],
+            metric_sums["distance_count"],
+        ),
+        "randomization/evader_motor_strength_scale_abs_deviation": safe_rate(
+            metric_sums["evader_motor_strength_scale_abs_dev_sum"],
             metric_sums["distance_count"],
         ),
     }

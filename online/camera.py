@@ -5,6 +5,7 @@ import threading
 import time
 
 import cv2
+import numpy as np
 
 from online.config import CameraConfig
 from online.runtime_state import RuntimeState
@@ -58,7 +59,7 @@ class CameraWorker(threading.Thread):
                 self.state.mutate_snapshot(
                     lambda snapshot: setattr(
                         snapshot.stats,
-                        "last_error",
+                        "camera_error",
                         f"camera backend {api_preference if api_preference is not None else 'default'}",
                     )
                 )
@@ -89,18 +90,20 @@ class CameraWorker(threading.Thread):
                 )
                 self._last_ts = now
                 self.state.set_raw_frame(frame, timestamp=now, frame_id=self._frame_id)
+                ok_jpeg, encoded = cv2.imencode(".jpg", frame)
+                if ok_jpeg:
+                    self.state.set_annotated_frame(frame, jpeg=encoded.tobytes())
 
                 def update(snapshot) -> None:  # type: ignore[no-untyped-def]
                     snapshot.stats.capture_fps = fps
-                    snapshot.stats.last_error = ""
+                    snapshot.stats.camera_error = ""
 
                 self.state.mutate_snapshot(update)
         except Exception as exc:
             self.state.mutate_snapshot(
                 lambda snapshot: setattr(
-                    snapshot.stats, "last_error", f"camera error: {exc}"
+                    snapshot.stats, "camera_error", f"camera error: {exc}"
                 )
             )
-            self.state.request_stop()
         finally:
             self._capture.release()

@@ -24,6 +24,17 @@ class RuntimeState:
     def request_stop(self) -> None:
         self._stop_event.set()
 
+    def _refresh_errors(self) -> None:
+        self._snapshot.stats.last_error = " | ".join(
+            error
+            for error in (
+                self._snapshot.stats.camera_error,
+                self._snapshot.stats.detection_error,
+                self._snapshot.stats.control_error,
+            )
+            if error
+        )
+
     def set_raw_frame(
         self, frame: np.ndarray, *, timestamp: float, frame_id: int
     ) -> None:
@@ -51,6 +62,7 @@ class RuntimeState:
     def mutate_snapshot(self, mutator) -> None:  # type: ignore[no-untyped-def]
         with self._lock:
             mutator(self._snapshot)
+            self._refresh_errors()
             now = time.time()
             self._snapshot.frame.age_s = (
                 0.0

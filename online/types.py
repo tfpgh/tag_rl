@@ -121,6 +121,9 @@ class RuntimeStats:
     world_age_s: float = 0.0
     detections: int = 0
     last_error: str = ""
+    camera_error: str = ""
+    detection_error: str = ""
+    control_error: str = ""
 
 
 @dataclass(slots=True)

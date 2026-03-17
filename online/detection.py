@@ -171,14 +171,13 @@ class DetectionWorker(threading.Thread):
                     snapshot.stats.detection_ms = (time.time() - loop_start) * 1000.0
                     snapshot.stats.detection_fps = fps
                     snapshot.stats.detections = len(detections)
-                    snapshot.stats.last_error = ""
+                    snapshot.stats.detection_error = ""
 
                 self.state.mutate_snapshot(update)
                 time.sleep(self.config.detection.latest_only_sleep_s)
         except Exception as exc:
             self.state.mutate_snapshot(
                 lambda snapshot: setattr(
-                    snapshot.stats, "last_error", f"detection error: {exc}"
+                    snapshot.stats, "detection_error", f"detection error: {exc}"
                 )
             )
-            self.state.request_stop()

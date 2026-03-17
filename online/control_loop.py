@@ -53,7 +53,7 @@ class ControlWorker(threading.Thread):
             snapshot.chaser_command = chaser_state
             snapshot.evader_command = evader_state
             if chaser_state.last_error or evader_state.last_error:
-                snapshot.stats.last_error = " | ".join(
+                snapshot.stats.control_error = " | ".join(
                     error
                     for error in [chaser_state.last_error, evader_state.last_error]
                     if error
@@ -133,7 +133,7 @@ class ControlWorker(threading.Thread):
                         snapshot.policy.last_reason = "running"
                         snapshot.chaser_command = chaser_state
                         snapshot.evader_command = evader_state
-                        snapshot.stats.last_error = " | ".join(
+                        snapshot.stats.control_error = " | ".join(
                             error
                             for error in [
                                 chaser_state.last_error,
@@ -148,7 +148,7 @@ class ControlWorker(threading.Thread):
                 self.reset_episode("control-exception")
 
                 def update_error(snapshot) -> None:  # type: ignore[no-untyped-def]
-                    snapshot.stats.last_error = str(exc)
+                    snapshot.stats.control_error = str(exc)
 
                 self.state.mutate_snapshot(update_error)
 

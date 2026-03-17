@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from online.config import DemoConfig
@@ -97,8 +97,8 @@ def create_app(config: DemoConfig, state: RuntimeState) -> FastAPI:
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str) -> HTMLResponse | FileResponse:
+    @app.get("/{full_path:path}", response_model=None)
+    async def serve_frontend(full_path: str) -> Response:
         if not dist_dir.exists():
             return HTMLResponse(
                 "<html><body><h1>Frontend not built</h1><p>Run npm install && npm run build in online/gui.</p></body></html>",

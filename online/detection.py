@@ -123,18 +123,16 @@ class DetectionWorker(threading.Thread):
                 loop_start = time.time()
                 snap = self.state.snapshot()
                 need_full_frame = (
-                    snap.calibration.status not in {"ready", "degraded"}
+                    not self.config.detection.use_dynamic_roi
+                    or snap.calibration.status not in {"ready", "degraded"}
                     or self._roi is None
                     or self._full_frame_counter <= 0
                 )
                 detections = self._detect(frame, use_roi=not need_full_frame)
                 calibration = self.calibrator.update(detections)
-                self._full_frame_counter = (
-                    self.config.detection.full_frame_interval
-                    if calibration.state.status in {"ready", "degraded"}
-                    else 0
-                )
-                if not need_full_frame and self._full_frame_counter > 0:
+                if need_full_frame:
+                    self._full_frame_counter = self.config.detection.full_frame_interval
+                elif self._full_frame_counter > 0:
                     self._full_frame_counter -= 1
                 now = time.time()
                 fps = (

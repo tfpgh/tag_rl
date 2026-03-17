@@ -8,6 +8,14 @@ from pathlib import Path
 from environment.config import EnvironmentConfig
 
 
+def _default_camera_api_preference() -> int | None:
+    if sys.platform == "darwin":
+        return 1200  # cv2.CAP_AVFOUNDATION
+    if sys.platform.startswith("linux"):
+        return 200  # cv2.CAP_V4L2
+    return None
+
+
 def _default_env_config() -> EnvironmentConfig:
     config = EnvironmentConfig()
     config.pipeline_randomization.enabled = False
@@ -19,7 +27,7 @@ def _default_env_config() -> EnvironmentConfig:
 @dataclass(slots=True)
 class CameraConfig:
     device_index: int = 0
-    api_preference: int | None = 1200 if sys.platform == "darwin" else None
+    api_preference: int | None = field(default_factory=_default_camera_api_preference)
     width: int = 1920
     height: int = 1080
     fps: int = 30

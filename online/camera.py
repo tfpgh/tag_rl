@@ -23,6 +23,10 @@ class CameraWorker(threading.Thread):
         candidates: list[int | None] = []
         if self.config.api_preference is not None:
             candidates.append(self.config.api_preference)
+        if sys.platform.startswith("linux"):
+            v4l2 = getattr(cv2, "CAP_V4L2", None)
+            if v4l2 is not None and v4l2 not in candidates:
+                candidates.append(v4l2)
         if sys.platform == "darwin":
             avfoundation = getattr(cv2, "CAP_AVFOUNDATION", None)
             if avfoundation is not None and avfoundation not in candidates:
@@ -51,6 +55,13 @@ class CameraWorker(threading.Thread):
             )
             if capture.isOpened():
                 self._configure_capture(capture)
+                self.state.mutate_snapshot(
+                    lambda snapshot: setattr(
+                        snapshot.stats,
+                        "last_error",
+                        f"camera backend {api_preference if api_preference is not None else 'default'}",
+                    )
+                )
                 return capture
             capture.release()
         raise RuntimeError(f"Unable to open camera device {self.config.device_index}")

@@ -18,7 +18,7 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pupil-apriltags>=1.0.4.post11",
     "jax>=0.9.1",
-    "uvicorn>=0.35.0",
+    "uvicorn[standard]>=0.35.0",
 ]
 
 [project.optional-dependencies]

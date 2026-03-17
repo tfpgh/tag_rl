@@ -56,6 +56,7 @@ class DetectionWorker(threading.Thread):
         self.tracker = WorldTracker(config.tracking)
         self._last_detection_ts = 0.0
         self._roi: tuple[int, int, int, int] | None = None
+        self._last_frame_id = -1
 
     def _detect(self, frame: np.ndarray) -> list[TagDetection]:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -114,6 +115,10 @@ class DetectionWorker(threading.Thread):
                 if frame is None or frame_id == 0:
                     time.sleep(0.01)
                     continue
+                if frame_id == self._last_frame_id:
+                    time.sleep(self.config.detection.latest_only_sleep_s)
+                    continue
+                self._last_frame_id = frame_id
                 loop_start = time.time()
                 detections = self._detect(frame)
                 calibration = self.calibrator.update(detections)

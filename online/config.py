@@ -41,7 +41,7 @@ class CameraConfig:
 class DetectionConfig:
     families: str = "tagStandard41h12"
     nthreads: int = 7
-    quad_decimate: float = 1.5
+    quad_decimate: float = 2.0
     quad_sigma: float = 0.0
     refine_edges: int = 1
     decode_sharpening: float = 0.25

@@ -130,7 +130,6 @@ class ArenaCalibrator:
             else:
                 self._stable_count = 0
                 self._homography = None
-                self._display_homography = None
 
         _, display_size, game_border_points = self._display_geometry()
 

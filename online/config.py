@@ -70,7 +70,7 @@ class TrackingConfig:
     obstacle_size_m: float = 0.20
     obstacle_hold_timeout_s: float = 0.35
     robot_pose_timeout_s: float = 0.20
-    robot_heading_offset_rad: float = pi / 2
+    robot_heading_offset_rad: float = -pi / 2
     obstacle_heading_offset_rad: float = 0.0
     position_alpha: float = 0.7
     yaw_alpha: float = 0.7

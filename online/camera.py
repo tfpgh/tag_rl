@@ -16,7 +16,7 @@ class CameraWorker(threading.Thread):
         super().__init__(name="camera-worker", daemon=True)
         self.config = config
         self.state = state
-        self._capture = self._open_capture()
+        self._capture: cv2.VideoCapture | None = None
         self._frame_id = 0
         self._last_ts = 0.0
 
@@ -69,7 +69,10 @@ class CameraWorker(threading.Thread):
 
     def run(self) -> None:
         try:
+            self._capture = self._open_capture()
             while not self.state.stop_event().is_set():
+                if self._capture is None:
+                    break
                 ok, frame = self._capture.read()
                 if not ok:
                     self.state.mutate_snapshot(
@@ -106,4 +109,5 @@ class CameraWorker(threading.Thread):
                 )
             )
         finally:
-            self._capture.release()
+            if self._capture is not None:
+                self._capture.release()

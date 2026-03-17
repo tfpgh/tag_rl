@@ -107,6 +107,7 @@ class RobotCommandState:
     right: float = 0.0
     packets_sent: int = 0
     watchdog_stop: bool = False
+    last_error: str = ""
 
 
 @dataclass(slots=True)

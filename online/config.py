@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+from math import pi
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -17,7 +19,7 @@ def _default_env_config() -> EnvironmentConfig:
 @dataclass(slots=True)
 class CameraConfig:
     device_index: int = 0
-    api_preference: int = 200  # cv2.CAP_V4L2 without importing cv2 here
+    api_preference: int | None = 1200 if sys.platform == "darwin" else None
     width: int = 1920
     height: int = 1080
     fps: int = 30
@@ -47,6 +49,8 @@ class ArenaCalibrationConfig:
     stable_frames_required: int = 15
     drop_tolerance_s: float = 0.5
     tag_size_m: float = 0.1
+    mat_width_m: float = 2.4384
+    mat_height_m: float = 1.2192
 
 
 @dataclass(slots=True)
@@ -57,7 +61,7 @@ class TrackingConfig:
     obstacle_size_m: float = 0.20
     obstacle_hold_timeout_s: float = 0.35
     robot_pose_timeout_s: float = 0.20
-    robot_heading_offset_rad: float = 0.0
+    robot_heading_offset_rad: float = pi / 2
     obstacle_heading_offset_rad: float = 0.0
     position_alpha: float = 0.45
     yaw_alpha: float = 0.35

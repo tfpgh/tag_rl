@@ -26,12 +26,16 @@ class RobotClient:
         left = _clamp(left)
         right = _clamp(right)
         payload = struct.pack("<hh", int(left * MAX_INT16), int(right * MAX_INT16))
-        self.sock.sendto(payload, (self.endpoint.ip, self.endpoint.port))
         self.command.timestamp = time.time()
         self.command.left = left
         self.command.right = right
-        self.command.packets_sent += 1
         self.command.watchdog_stop = watchdog_stop
+        try:
+            self.sock.sendto(payload, (self.endpoint.ip, self.endpoint.port))
+            self.command.packets_sent += 1
+            self.command.last_error = ""
+        except OSError as exc:
+            self.command.last_error = str(exc)
         return self.command
 
     def stop(self) -> RobotCommandState:

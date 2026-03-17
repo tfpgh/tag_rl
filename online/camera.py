@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import threading
 import time
 
@@ -14,25 +15,58 @@ class CameraWorker(threading.Thread):
         super().__init__(name="camera-worker", daemon=True)
         self.config = config
         self.state = state
-        self._capture = cv2.VideoCapture(config.device_index, config.api_preference)
-        self._capture.set(
-            cv2.CAP_PROP_FOURCC,
-            cv2.VideoWriter_fourcc(*config.mjpg_fourcc),
-        )
-        self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, config.width)
-        self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, config.height)
-        self._capture.set(cv2.CAP_PROP_FPS, config.fps)
-        self._capture.set(cv2.CAP_PROP_BUFFERSIZE, config.buffersize)
-        self._capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, config.auto_exposure)
-        self._capture.set(cv2.CAP_PROP_EXPOSURE, config.exposure)
+        self._capture = self._open_capture()
         self._frame_id = 0
         self._last_ts = 0.0
+
+    def _api_candidates(self) -> list[int | None]:
+        candidates: list[int | None] = []
+        if self.config.api_preference is not None:
+            candidates.append(self.config.api_preference)
+        if sys.platform == "darwin":
+            avfoundation = getattr(cv2, "CAP_AVFOUNDATION", None)
+            if avfoundation is not None and avfoundation not in candidates:
+                candidates.append(avfoundation)
+        candidates.append(None)
+        return candidates
+
+    def _configure_capture(self, capture: cv2.VideoCapture) -> None:
+        capture.set(
+            cv2.CAP_PROP_FOURCC,
+            cv2.VideoWriter_fourcc(*self.config.mjpg_fourcc),
+        )
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.height)
+        capture.set(cv2.CAP_PROP_FPS, self.config.fps)
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, self.config.buffersize)
+        capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, self.config.auto_exposure)
+        capture.set(cv2.CAP_PROP_EXPOSURE, self.config.exposure)
+
+    def _open_capture(self) -> cv2.VideoCapture:
+        for api_preference in self._api_candidates():
+            capture = (
+                cv2.VideoCapture(self.config.device_index)
+                if api_preference is None
+                else cv2.VideoCapture(self.config.device_index, api_preference)
+            )
+            if capture.isOpened():
+                self._configure_capture(capture)
+                return capture
+            capture.release()
+        raise RuntimeError(f"Unable to open camera device {self.config.device_index}")
 
     def run(self) -> None:
         try:
             while not self.state.stop_event().is_set():
                 ok, frame = self._capture.read()
                 if not ok:
+                    self.state.mutate_snapshot(
+                        lambda snapshot: setattr(
+                            snapshot.stats,
+                            "last_error",
+                            "camera read failed",
+                        )
+                    )
                     time.sleep(0.01)
                     continue
                 now = time.time()
@@ -47,7 +81,15 @@ class CameraWorker(threading.Thread):
 
                 def update(snapshot) -> None:  # type: ignore[no-untyped-def]
                     snapshot.stats.capture_fps = fps
+                    snapshot.stats.last_error = ""
 
                 self.state.mutate_snapshot(update)
+        except Exception as exc:
+            self.state.mutate_snapshot(
+                lambda snapshot: setattr(
+                    snapshot.stats, "last_error", f"camera error: {exc}"
+                )
+            )
+            self.state.request_stop()
         finally:
             self._capture.release()

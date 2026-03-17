@@ -56,7 +56,7 @@ export default function ArenaMap({ snapshot }: Props) {
     const scale = Math.min(scaleX, scaleY)
     const toCanvas = (x: number, y: number): [number, number] => [
       padding + (x - minX) * scale,
-      height - (padding + (y - minY) * scale),
+      padding + (y - minY) * scale,
     ]
 
     const [x0, y0] = toCanvas(minX, minY)
@@ -82,13 +82,13 @@ export default function ArenaMap({ snapshot }: Props) {
     const chaser = snapshot.world.chaser?.filtered_pose
     if (chaser) {
       const [x, y] = toCanvas(chaser.x, chaser.y)
-      drawRobot(ctx, x, y, -chaser.yaw, '#fb7185', 'chaser')
+      drawRobot(ctx, x, y, chaser.yaw, '#fb7185', 'chaser')
     }
 
     const evader = snapshot.world.evader?.filtered_pose
     if (evader) {
       const [x, y] = toCanvas(evader.x, evader.y)
-      drawRobot(ctx, x, y, -evader.yaw, '#fbbf24', 'evader')
+      drawRobot(ctx, x, y, evader.yaw, '#fbbf24', 'evader')
     }
   }, [snapshot])
 

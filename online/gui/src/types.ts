@@ -71,6 +71,7 @@ export type Snapshot = {
     right: number
     packets_sent: number
     watchdog_stop: boolean
+    last_error: string
   }
   evader_command: {
     name: string
@@ -79,6 +80,7 @@ export type Snapshot = {
     right: number
     packets_sent: number
     watchdog_stop: boolean
+    last_error: string
   }
   stats: {
     capture_fps: number

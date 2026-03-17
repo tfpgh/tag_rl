@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import threading
 import time
-from dataclasses import replace
 
 import numpy as np
 
@@ -53,17 +52,27 @@ class RuntimeState:
         with self._lock:
             mutator(self._snapshot)
             now = time.time()
-            self._snapshot.frame.age_s = max(0.0, now - self._snapshot.frame.timestamp)
+            self._snapshot.frame.age_s = (
+                0.0
+                if self._snapshot.frame.timestamp <= 0.0
+                else max(0.0, now - self._snapshot.frame.timestamp)
+            )
             self._snapshot.stats.frame_age_s = self._snapshot.frame.age_s
-            self._snapshot.stats.world_age_s = max(
-                0.0, now - self._snapshot.world.timestamp
+            self._snapshot.stats.world_age_s = (
+                0.0
+                if self._snapshot.world.timestamp <= 0.0
+                else max(0.0, now - self._snapshot.world.timestamp)
             )
 
     def snapshot(self) -> Snapshot:
         with self._lock:
             snap = copy.deepcopy(self._snapshot)
         now = time.time()
-        snap.frame.age_s = max(0.0, now - snap.frame.timestamp)
+        snap.frame.age_s = (
+            0.0 if snap.frame.timestamp <= 0.0 else max(0.0, now - snap.frame.timestamp)
+        )
         snap.stats.frame_age_s = snap.frame.age_s
-        snap.stats.world_age_s = max(0.0, now - snap.world.timestamp)
+        snap.stats.world_age_s = (
+            0.0 if snap.world.timestamp <= 0.0 else max(0.0, now - snap.world.timestamp)
+        )
         return snap

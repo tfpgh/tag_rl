@@ -52,6 +52,12 @@ class ControlWorker(threading.Thread):
             snapshot.policy.last_reason = reason
             snapshot.chaser_command = chaser_state
             snapshot.evader_command = evader_state
+            if chaser_state.last_error or evader_state.last_error:
+                snapshot.stats.last_error = " | ".join(
+                    error
+                    for error in [chaser_state.last_error, evader_state.last_error]
+                    if error
+                )
 
         self.state.mutate_snapshot(update)
 
@@ -127,6 +133,14 @@ class ControlWorker(threading.Thread):
                         snapshot.policy.last_reason = "running"
                         snapshot.chaser_command = chaser_state
                         snapshot.evader_command = evader_state
+                        snapshot.stats.last_error = " | ".join(
+                            error
+                            for error in [
+                                chaser_state.last_error,
+                                evader_state.last_error,
+                            ]
+                            if error
+                        )
 
                     self.state.mutate_snapshot(update)
             except Exception as exc:

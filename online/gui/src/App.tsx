@@ -8,8 +8,8 @@ const initialSnapshot: Snapshot = {
   calibration: { status: 'uncalibrated', stable_count: 0, last_update_s: 0, source_tag_ids: [], arena_corners_world: [[-1.12, -0.51], [1.12, -0.51], [1.12, 0.51], [-1.12, 0.51]] },
   world: { timestamp: 0, ready: false, frame_id: 0, chaser: null, evader: null, obstacles: [] },
   policy: { timestamp: 0, enabled: false, episode_progress: 0, chaser_action: [0, 0], evader_action: [0, 0], observation_size: 0, reset_count: 0, last_reason: 'idle' },
-  chaser_command: { name: 'chaser', timestamp: 0, left: 0, right: 0, packets_sent: 0, watchdog_stop: false },
-  evader_command: { name: 'evader', timestamp: 0, left: 0, right: 0, packets_sent: 0, watchdog_stop: false },
+  chaser_command: { name: 'chaser', timestamp: 0, left: 0, right: 0, packets_sent: 0, watchdog_stop: false, last_error: '' },
+  evader_command: { name: 'evader', timestamp: 0, left: 0, right: 0, packets_sent: 0, watchdog_stop: false, last_error: '' },
   stats: { capture_fps: 0, detection_fps: 0, detection_ms: 0, control_hz: 0, control_ms: 0, frame_age_s: 0, world_age_s: 0, detections: 0, last_error: '' },
   operator: { control_enabled: false, emergency_stop: false, pause_detection: false, show_debug: true },
 }
@@ -109,6 +109,11 @@ export default function App() {
             <Metric label="Evader L/R" value={`${snapshot.evader_command.left.toFixed(2)} / ${snapshot.evader_command.right.toFixed(2)}`} />
             <Metric label="Packets" value={`${snapshot.chaser_command.packets_sent} / ${snapshot.evader_command.packets_sent}`} />
           </div>
+          {snapshot.chaser_command.last_error || snapshot.evader_command.last_error ? (
+            <p className="error-banner">
+              {[snapshot.chaser_command.last_error, snapshot.evader_command.last_error].filter(Boolean).join(' | ')}
+            </p>
+          ) : null}
         </section>
 
         <section className="panel">

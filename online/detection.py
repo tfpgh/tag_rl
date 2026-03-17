@@ -17,8 +17,6 @@ from online.types import TagDetection
 def _annotate_frame(
     frame: np.ndarray,
     detections: list[TagDetection],
-    calibration_status: str,
-    world_ready: bool,
 ) -> np.ndarray:
     annotated = frame.copy()
     for detection in detections:
@@ -28,25 +26,13 @@ def _annotate_frame(
         )
         center = tuple(int(v) for v in detection.center_px)
         cv2.circle(annotated, center, 4, (0, 0, 255), -1)
-        cv2.putText(
-            annotated,
-            f"id={detection.tag_id}",
-            (center[0] + 10, center[1] - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            2,
-        )
-    cv2.putText(
-        annotated,
-        f"calibration={calibration_status} world_ready={world_ready}",
-        (20, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (255, 255, 255),
-        2,
-    )
     return annotated
+
+
+def _draw_game_border(frame: np.ndarray, border_points: np.ndarray) -> np.ndarray:
+    outline = border_points.astype(np.int32).reshape((-1, 1, 2))
+    cv2.polylines(frame, [outline], isClosed=True, color=(0, 0, 255), thickness=3)
+    return frame
 
 
 class DetectionWorker(threading.Thread):
@@ -118,63 +104,81 @@ class DetectionWorker(threading.Thread):
         return result
 
     def run(self) -> None:
-        while not self.state.stop_event().is_set():
-            snap = self.state.snapshot()
-            if snap.operator.pause_detection:
-                time.sleep(0.05)
-                continue
-            frame, frame_id, timestamp = self.state.get_raw_frame()
-            if frame is None or frame_id == 0:
-                time.sleep(0.01)
-                continue
-            loop_start = time.time()
-            detections = self._detect(frame)
-            calibration = self.calibrator.update(detections)
-            homography = calibration.homography
-            if homography is not None:
-                transform = lambda points: self.calibrator.image_to_world(
-                    homography, points
+        try:
+            while not self.state.stop_event().is_set():
+                snap = self.state.snapshot()
+                if snap.operator.pause_detection:
+                    time.sleep(0.05)
+                    continue
+                frame, frame_id, timestamp = self.state.get_raw_frame()
+                if frame is None or frame_id == 0:
+                    time.sleep(0.01)
+                    continue
+                loop_start = time.time()
+                detections = self._detect(frame)
+                calibration = self.calibrator.update(detections)
+                now = time.time()
+                fps = (
+                    0.0
+                    if self._last_detection_ts == 0.0
+                    else 1.0 / max(1e-6, now - self._last_detection_ts)
                 )
-                world = self.tracker.update(
+                self._last_detection_ts = now
+                homography = calibration.homography
+                if homography is not None:
+                    transform = lambda points: self.calibrator.image_to_world(
+                        homography, points
+                    )
+                    world = self.tracker.update(
+                        detections,
+                        transform=transform,
+                        timestamp=timestamp,
+                        frame_id=frame_id,
+                        calibration_ready=calibration.state.status
+                        in {"ready", "degraded"},
+                    )
+                else:
+                    world = snap.world
+                    world.ready = False
+                    world.frame_id = frame_id
+                    world.timestamp = timestamp
+                annotated = _annotate_frame(
+                    frame,
                     detections,
-                    transform=transform,
-                    timestamp=timestamp,
-                    frame_id=frame_id,
-                    calibration_ready=calibration.state.status in {"ready", "degraded"},
                 )
-            else:
-                world = snap.world
-                world.ready = False
-                world.frame_id = frame_id
-                world.timestamp = timestamp
-            annotated = _annotate_frame(
-                frame,
-                detections,
-                calibration.state.status,
-                world.ready,
-            )
-            ok, encoded = cv2.imencode(
-                ".jpg",
-                annotated,
-                [int(cv2.IMWRITE_JPEG_QUALITY), self.config.gui.jpeg_quality],
-            )
-            jpeg_bytes = encoded.tobytes() if ok else None
-            self.state.set_annotated_frame(annotated, jpeg=jpeg_bytes)
-            now = time.time()
-            fps = (
-                0.0
-                if self._last_detection_ts == 0.0
-                else 1.0 / max(1e-6, now - self._last_detection_ts)
-            )
-            self._last_detection_ts = now
+                if calibration.display_homography is not None:
+                    annotated = self.calibrator.warp_to_board(
+                        annotated,
+                        calibration.display_homography,
+                        calibration.display_size,
+                    )
+                    annotated = _draw_game_border(
+                        annotated,
+                        calibration.game_border_points,
+                    )
+                ok, encoded = cv2.imencode(
+                    ".jpg",
+                    annotated,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), self.config.gui.jpeg_quality],
+                )
+                jpeg_bytes = encoded.tobytes() if ok else None
+                self.state.set_annotated_frame(annotated, jpeg=jpeg_bytes)
 
-            def update(snapshot) -> None:  # type: ignore[no-untyped-def]
-                snapshot.detections = detections
-                snapshot.calibration = calibration.state
-                snapshot.world = world
-                snapshot.stats.detection_ms = (time.time() - loop_start) * 1000.0
-                snapshot.stats.detection_fps = fps
-                snapshot.stats.detections = len(detections)
+                def update(snapshot) -> None:  # type: ignore[no-untyped-def]
+                    snapshot.detections = detections
+                    snapshot.calibration = calibration.state
+                    snapshot.world = world
+                    snapshot.stats.detection_ms = (time.time() - loop_start) * 1000.0
+                    snapshot.stats.detection_fps = fps
+                    snapshot.stats.detections = len(detections)
+                    snapshot.stats.last_error = ""
 
-            self.state.mutate_snapshot(update)
-            time.sleep(self.config.detection.latest_only_sleep_s)
+                self.state.mutate_snapshot(update)
+                time.sleep(self.config.detection.latest_only_sleep_s)
+        except Exception as exc:
+            self.state.mutate_snapshot(
+                lambda snapshot: setattr(
+                    snapshot.stats, "last_error", f"detection error: {exc}"
+                )
+            )
+            self.state.request_stop()

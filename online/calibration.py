@@ -16,6 +16,9 @@ CORNER_TAG_TO_WORLD_INDEX = {0: 0, 1: 1, 2: 2, 3: 3}
 class CalibrationResult:
     state: CalibrationState
     homography: np.ndarray | None
+    display_homography: np.ndarray | None
+    display_size: tuple[int, int]
+    game_border_points: np.ndarray
 
 
 class ArenaCalibrator:
@@ -26,6 +29,7 @@ class ArenaCalibrator:
         self._arena_width = arena_width
         self._arena_height = arena_height
         self._homography: np.ndarray | None = None
+        self._display_homography: np.ndarray | None = None
         self._stable_count = 0
         self._last_seen = 0.0
 
@@ -41,6 +45,30 @@ class ArenaCalibrator:
             ],
             dtype=np.float32,
         )
+
+    def _display_geometry(self) -> tuple[np.ndarray, tuple[int, int], np.ndarray]:
+        frame_w = 1920
+        stats_h = 35
+        buffer_px = int(0.01 * frame_w)
+        mat_w_px = frame_w - 2 * buffer_px
+        px_per_meter = mat_w_px / self.config.mat_width_m
+        mat_h_px = int(round(self.config.mat_height_m * px_per_meter))
+        frame_h = stats_h + buffer_px * 2 + mat_h_px
+        x0 = buffer_px
+        y0 = stats_h + buffer_px
+        x1 = buffer_px + mat_w_px
+        y1 = stats_h + buffer_px + mat_h_px
+        inset_px = int(round((self.config.tag_size_m / 2) * px_per_meter))
+        border_points = np.array(
+            [
+                [x0 + inset_px, y0 + inset_px],
+                [x1 - inset_px, y0 + inset_px],
+                [x1 - inset_px, y1 - inset_px],
+                [x0 + inset_px, y1 - inset_px],
+            ],
+            dtype=np.float32,
+        )
+        return border_points, (frame_w, frame_h), border_points
 
     def _choose_inward_corner(
         self, detection: TagDetection, detections_by_id: dict[int, TagDetection]
@@ -82,7 +110,10 @@ class ArenaCalibrator:
                 dtype=np.float32,
             )
             homography = cv2.getPerspectiveTransform(src_points, self._world_corners())
+            display_points, display_size, game_border_points = self._display_geometry()
+            display_homography = cv2.getPerspectiveTransform(src_points, display_points)
             self._homography = homography
+            self._display_homography = display_homography
             self._last_seen = now
             self._stable_count += 1
             status = (
@@ -99,6 +130,9 @@ class ArenaCalibrator:
             else:
                 self._stable_count = 0
                 self._homography = None
+                self._display_homography = None
+
+        _, display_size, game_border_points = self._display_geometry()
 
         state = CalibrationState(
             status=status,
@@ -110,10 +144,24 @@ class ArenaCalibrator:
             homography=None if self._homography is None else self._homography.tolist(),
             arena_corners_world=[tuple(pt) for pt in self._world_corners().tolist()],
         )
-        return CalibrationResult(state=state, homography=self._homography)
+        return CalibrationResult(
+            state=state,
+            homography=self._homography,
+            display_homography=self._display_homography,
+            display_size=display_size,
+            game_border_points=game_border_points,
+        )
 
     def image_to_world(
         self, homography: np.ndarray, image_points: np.ndarray
     ) -> np.ndarray:
         transformed = cv2.perspectiveTransform(image_points[None, :, :], homography)
         return transformed[0]
+
+    def warp_to_board(
+        self,
+        frame: np.ndarray,
+        display_homography: np.ndarray,
+        display_size: tuple[int, int],
+    ) -> np.ndarray:
+        return cv2.warpPerspective(frame, display_homography, display_size)

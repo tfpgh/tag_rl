@@ -57,13 +57,14 @@ class DetectionWorker(threading.Thread):
         self._last_detection_ts = 0.0
         self._roi: tuple[int, int, int, int] | None = None
         self._last_frame_id = -1
+        self._full_frame_counter = 0
 
-    def _detect(self, frame: np.ndarray) -> list[TagDetection]:
+    def _detect(self, frame: np.ndarray, *, use_roi: bool) -> list[TagDetection]:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         x0 = 0
         y0 = 0
         gray_roi = gray
-        if self.config.detection.use_dynamic_roi and self._roi is not None:
+        if use_roi and self.config.detection.use_dynamic_roi and self._roi is not None:
             x0, y0, x1, y1 = self._roi
             gray_roi = gray[y0:y1, x0:x1]
         detections = self.detector.detect(gray_roi)
@@ -92,7 +93,7 @@ class DetectionWorker(threading.Thread):
                     hamming=int(detection.hamming),
                 )
             )
-        if result and self.config.detection.use_dynamic_roi:
+        if use_roi and result and self.config.detection.use_dynamic_roi:
             pad = self.config.detection.roi_padding_px
             self._roi = (
                 max(0, min_x - pad),
@@ -120,8 +121,21 @@ class DetectionWorker(threading.Thread):
                     continue
                 self._last_frame_id = frame_id
                 loop_start = time.time()
-                detections = self._detect(frame)
+                snap = self.state.snapshot()
+                need_full_frame = (
+                    snap.calibration.status not in {"ready", "degraded"}
+                    or self._roi is None
+                    or self._full_frame_counter <= 0
+                )
+                detections = self._detect(frame, use_roi=not need_full_frame)
                 calibration = self.calibrator.update(detections)
+                self._full_frame_counter = (
+                    self.config.detection.full_frame_interval
+                    if calibration.state.status in {"ready", "degraded"}
+                    else 0
+                )
+                if not need_full_frame and self._full_frame_counter > 0:
+                    self._full_frame_counter -= 1
                 now = time.time()
                 fps = (
                     0.0

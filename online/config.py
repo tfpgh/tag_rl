@@ -48,6 +48,7 @@ class DetectionConfig:
     latest_only_sleep_s: float = 0.002
     roi_padding_px: int = 120
     use_dynamic_roi: bool = True
+    full_frame_interval: int = 20
 
 
 @dataclass(slots=True)

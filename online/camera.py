@@ -95,7 +95,7 @@ class CameraWorker(threading.Thread):
                 self.state.set_raw_frame(frame, timestamp=now, frame_id=self._frame_id)
                 ok_jpeg, encoded = cv2.imencode(".jpg", frame)
                 if ok_jpeg:
-                    self.state.set_annotated_frame(frame, jpeg=encoded.tobytes())
+                    self.state.set_raw_jpeg(encoded.tobytes())
 
                 def update(snapshot) -> None:  # type: ignore[no-untyped-def]
                     snapshot.stats.capture_fps = fps

@@ -14,6 +14,7 @@ class RuntimeState:
         self._lock = threading.RLock()
         self._snapshot = Snapshot()
         self._raw_frame: np.ndarray | None = None
+        self._raw_jpeg: bytes | None = None
         self._annotated_frame: np.ndarray | None = None
         self._annotated_jpeg: bytes | None = None
         self._stop_event = threading.Event()
@@ -45,6 +46,10 @@ class RuntimeState:
             self._snapshot.frame.width = int(frame.shape[1])
             self._snapshot.frame.height = int(frame.shape[0])
 
+    def set_raw_jpeg(self, jpeg: bytes) -> None:
+        with self._lock:
+            self._raw_jpeg = jpeg
+
     def get_raw_frame(self) -> tuple[np.ndarray | None, int, float]:
         with self._lock:
             frame = None if self._raw_frame is None else self._raw_frame.copy()
@@ -57,7 +62,11 @@ class RuntimeState:
 
     def get_annotated_jpeg(self) -> bytes | None:
         with self._lock:
-            return self._annotated_jpeg
+            return (
+                self._annotated_jpeg
+                if self._annotated_jpeg is not None
+                else self._raw_jpeg
+            )
 
     def mutate_snapshot(self, mutator) -> None:  # type: ignore[no-untyped-def]
         with self._lock:

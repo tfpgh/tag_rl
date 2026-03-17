@@ -106,6 +106,4 @@ class DemoConfig:
     evader_robot: RobotEndpoint = field(
         default_factory=lambda: RobotEndpoint(name="evader", ip="192.168.1.5")
     )
-    checkpoint_path: Path = Path(
-        "runs/Feb28_12-38-35_node002/checkpoints/step_419430400.pkl"
-    )
+    checkpoint_path: Path = Path("checkpoints/1.pkl")

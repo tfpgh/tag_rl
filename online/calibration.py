@@ -9,8 +9,6 @@ import numpy as np
 from online.config import ArenaCalibrationConfig
 from online.types import CalibrationState, TagDetection
 
-CORNER_TAG_TO_WORLD_INDEX = {0: 0, 1: 1, 2: 2, 3: 3}
-
 
 @dataclass(slots=True)
 class CalibrationResult:
@@ -36,12 +34,13 @@ class ArenaCalibrator:
     def _world_corners(self) -> np.ndarray:
         half_w = self._arena_width / 2
         half_h = self._arena_height / 2
+        inset = self.config.tag_size_m / 2
         return np.array(
             [
-                [-half_w, -half_h],
-                [half_w, -half_h],
-                [half_w, half_h],
-                [-half_w, half_h],
+                [-half_w - inset, -half_h - inset],
+                [half_w + inset, -half_h - inset],
+                [half_w + inset, half_h + inset],
+                [-half_w - inset, half_h + inset],
             ],
             dtype=np.float32,
         )
@@ -58,39 +57,27 @@ class ArenaCalibrator:
         y0 = stats_h + buffer_px
         x1 = buffer_px + mat_w_px
         y1 = stats_h + buffer_px + mat_h_px
-        inset_px = int(round((self.config.tag_size_m / 2) * px_per_meter))
-        border_points = np.array(
+        tag_center_inset_px = int(round((self.config.tag_size_m / 2) * px_per_meter))
+        game_border_inset_px = int(round(self.config.tag_size_m * px_per_meter))
+        tag_center_points = np.array(
             [
-                [x0 + inset_px, y0 + inset_px],
-                [x1 - inset_px, y0 + inset_px],
-                [x1 - inset_px, y1 - inset_px],
-                [x0 + inset_px, y1 - inset_px],
+                [x0 + tag_center_inset_px, y0 + tag_center_inset_px],
+                [x1 - tag_center_inset_px, y0 + tag_center_inset_px],
+                [x1 - tag_center_inset_px, y1 - tag_center_inset_px],
+                [x0 + tag_center_inset_px, y1 - tag_center_inset_px],
             ],
             dtype=np.float32,
         )
-        return border_points, (frame_w, frame_h), border_points
-
-    def _choose_inward_corner(
-        self, detection: TagDetection, detections_by_id: dict[int, TagDetection]
-    ) -> np.ndarray:
-        corners = np.asarray(detection.corners_px, dtype=np.float32)
-        if detection.tag_id not in CORNER_TAG_TO_WORLD_INDEX:
-            return corners.mean(axis=0)
-        target_id = (
-            2
-            if detection.tag_id == 0
-            else 3
-            if detection.tag_id == 1
-            else 0
-            if detection.tag_id == 2
-            else 1
-        )
-        target = np.asarray(
-            detections_by_id[target_id].center_px,
+        game_border_points = np.array(
+            [
+                [x0 + game_border_inset_px, y0 + game_border_inset_px],
+                [x1 - game_border_inset_px, y0 + game_border_inset_px],
+                [x1 - game_border_inset_px, y1 - game_border_inset_px],
+                [x0 + game_border_inset_px, y1 - game_border_inset_px],
+            ],
             dtype=np.float32,
         )
-        distances = np.linalg.norm(corners - target[None, :], axis=1)
-        return corners[int(np.argmin(distances))]
+        return tag_center_points, (frame_w, frame_h), game_border_points
 
     def update(self, detections: list[TagDetection]) -> CalibrationResult:
         now = time.time()
@@ -102,9 +89,7 @@ class ArenaCalibrator:
         if have_all:
             src_points = np.array(
                 [
-                    self._choose_inward_corner(
-                        detections_by_id[tag_id], detections_by_id
-                    )
+                    detections_by_id[tag_id].center_px
                     for tag_id in self.config.corner_tag_ids
                 ],
                 dtype=np.float32,

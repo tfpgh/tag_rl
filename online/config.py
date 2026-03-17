@@ -63,8 +63,8 @@ class TrackingConfig:
     robot_pose_timeout_s: float = 0.20
     robot_heading_offset_rad: float = pi / 2
     obstacle_heading_offset_rad: float = 0.0
-    position_alpha: float = 0.45
-    yaw_alpha: float = 0.35
+    position_alpha: float = 0.7
+    yaw_alpha: float = 0.7
 
 
 @dataclass(slots=True)

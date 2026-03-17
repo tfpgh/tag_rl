@@ -89,8 +89,8 @@ class GuiConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     websocket_rate_hz: float = 20.0
-    mjpeg_rate_hz: float = 60.0
-    jpeg_quality: int = 85
+    mjpeg_rate_hz: float = 15.0
+    jpeg_quality: int = 70
     frontend_dir: Path = field(
         default_factory=lambda: Path(__file__).resolve().parent / "gui"
     )

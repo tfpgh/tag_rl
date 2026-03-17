@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "distrax>=0.1.7",
+    "fastapi>=0.116.1",
     "flax>=0.12.4",
     "imageio>=2.37.2",
     "imageio-ffmpeg>=0.6.0",
@@ -17,6 +18,7 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pupil-apriltags>=1.0.4.post11",
     "jax>=0.9.1",
+    "uvicorn>=0.35.0",
 ]
 
 [project.optional-dependencies]

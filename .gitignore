@@ -224,3 +224,6 @@ MUJOCO_LOG.TXT
 logs/
 
 runs/
+
+node_modules/
+*.tsbuildinfo

@@ -58,6 +58,19 @@ class DisplayConfig:
 
 
 @dataclass(slots=True)
+class TeleopConfig:
+    robot_ip: str = "192.168.1.5"
+    udp_port: int = 8888
+    send_hz: float = 20.0
+    linear_step: float = 0.15
+    angular_step: float = 0.015
+    linear_max: float = 1.0
+    angular_max: float = 1.0
+    robot_tag_id: int = 4
+    run_label: str = "manual_collect"
+
+
+@dataclass(slots=True)
 class TrackerConfig:
     arena: ArenaConfig = field(default_factory=ArenaConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
@@ -71,3 +84,4 @@ class TrackerConfig:
     min_roi_size_px: int = 160
     max_roi_size_px: int = 600
     full_frame_refresh_interval: int = 15
+    teleop: TeleopConfig = field(default_factory=TeleopConfig)

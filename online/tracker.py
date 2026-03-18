@@ -235,7 +235,7 @@ class BoardTracker:
             return None
         center = world_center[0]
         edge_delta = world_edge[1] - world_edge[0]
-        yaw = math.atan2(float(edge_delta[1]), float(edge_delta[0]))
+        yaw = math.atan2(float(edge_delta[1]), float(edge_delta[0])) + math.pi
         pose = Pose2D(
             x_mm=float(center[0]),
             y_mm=float(center[1]),

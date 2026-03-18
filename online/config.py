@@ -51,11 +51,18 @@ class ViewConfig:
 
 
 @dataclass(slots=True)
+class DisplayConfig:
+    show_raw_window: bool = True
+    show_arena_window: bool = True
+
+
+@dataclass(slots=True)
 class TrackerConfig:
     arena: ArenaConfig = field(default_factory=ArenaConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
     detector: DetectorConfig = field(default_factory=DetectorConfig)
     view: ViewConfig = field(default_factory=ViewConfig)
+    display: DisplayConfig = field(default_factory=DisplayConfig)
     calibration_frames: int = 30
     smoothing_alpha: float = 0.35
     use_roi_tracking: bool = True

@@ -202,7 +202,7 @@ class BoardTracker:
 
     def render_debug_views(
         self, frame: np.ndarray, board_state: BoardState
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, float]:
         render_start = time.perf_counter()
         raw = frame.copy()
         self._draw_raw_overlay(raw, board_state)
@@ -221,8 +221,8 @@ class BoardTracker:
                 board_state.calibration.warp_size_px,
             )
         self._draw_arena_overlay(arena, board_state)
-        board_state.stats.render_ms = (time.perf_counter() - render_start) * 1000.0
-        return raw, arena
+        render_ms = (time.perf_counter() - render_start) * 1000.0
+        return raw, arena, render_ms
 
     def _pose_from_detection(
         self,

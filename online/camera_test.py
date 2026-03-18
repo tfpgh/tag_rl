@@ -19,7 +19,7 @@ cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
 cap.set(cv2.CAP_PROP_EXPOSURE, 17)
 
-detector = Detector(families="tagStandard41h12", nthreads=30, quad_decimate=2.0)
+detector = Detector(families="tagStandard41h12", nthreads=30, quad_decimate=5.0)
 
 # Mat dimensions (mm)
 TAG_CENTER_W = 2338.4

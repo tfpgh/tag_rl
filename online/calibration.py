@@ -19,8 +19,8 @@ class ArenaViewLayout:
     board_height_px: int
     pixels_per_mm: float
     destination_tag_centers_px: np.ndarray
-    arena_width_mm: float
-    arena_height_mm: float
+    board_width_mm: float
+    board_height_mm: float
 
 
 def corner_tag_centers_mm(arena: ArenaConfig) -> np.ndarray:
@@ -35,16 +35,15 @@ def corner_tag_centers_mm(arena: ArenaConfig) -> np.ndarray:
 def build_arena_view_layout(arena: ArenaConfig, view: ViewConfig) -> ArenaViewLayout:
     buffer_px = int(view.buffer_fraction * view.frame_width)
     board_width_px = view.frame_width - 2 * buffer_px
-    pixels_per_mm = board_width_px / arena.width_mm
-    board_height_px = int(round(arena.height_mm * pixels_per_mm))
+    pixels_per_mm = board_width_px / arena.board_width_mm
+    board_height_px = int(round(arena.board_height_mm * pixels_per_mm))
     frame_height = view.stats_height + buffer_px + board_height_px + buffer_px
 
-    inset_x_px = 0.5 * (arena.width_mm - arena.tag_center_width_mm) * pixels_per_mm
-    inset_y_px = 0.5 * (arena.height_mm - arena.tag_center_height_mm) * pixels_per_mm
-    x0 = buffer_px + inset_x_px
-    x1 = buffer_px + board_width_px - inset_x_px
-    y0 = view.stats_height + buffer_px + inset_y_px
-    y1 = view.stats_height + buffer_px + board_height_px - inset_y_px
+    board_left_px = buffer_px
+    board_top_px = view.stats_height + buffer_px
+    board_right_px = board_left_px + board_width_px
+    board_bottom_px = board_top_px + board_height_px
+    half_tag_px = 0.5 * arena.tag_size_mm * pixels_per_mm
 
     return ArenaViewLayout(
         frame_width=view.frame_width,
@@ -55,10 +54,16 @@ def build_arena_view_layout(arena: ArenaConfig, view: ViewConfig) -> ArenaViewLa
         board_height_px=board_height_px,
         pixels_per_mm=pixels_per_mm,
         destination_tag_centers_px=np.array(
-            [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float32
+            [
+                [board_left_px - half_tag_px, board_top_px - half_tag_px],
+                [board_right_px + half_tag_px, board_top_px - half_tag_px],
+                [board_right_px + half_tag_px, board_bottom_px + half_tag_px],
+                [board_left_px - half_tag_px, board_bottom_px + half_tag_px],
+            ],
+            dtype=np.float32,
         ),
-        arena_width_mm=arena.width_mm,
-        arena_height_mm=arena.height_mm,
+        board_width_mm=arena.board_width_mm,
+        board_height_mm=arena.board_height_mm,
     )
 
 

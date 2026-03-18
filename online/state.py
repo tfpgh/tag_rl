@@ -46,7 +46,10 @@ class TrackingStats:
     fps: float
     frame_width: int
     frame_height: int
+    capture_ms: float
     detector_ms: float
+    tracking_ms: float
+    render_ms: float
     loop_ms: float
     visible_tags: int
 

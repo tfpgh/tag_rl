@@ -15,12 +15,12 @@ class ArenaConfig:
     obstacle_size_mm: float = 100.0
 
     @property
-    def width_mm(self) -> float:
-        return self.tag_center_width_mm + self.tag_size_mm
+    def board_width_mm(self) -> float:
+        return self.tag_center_width_mm - self.tag_size_mm
 
     @property
-    def height_mm(self) -> float:
-        return self.tag_center_height_mm + self.tag_size_mm
+    def board_height_mm(self) -> float:
+        return self.tag_center_height_mm - self.tag_size_mm
 
 
 @dataclass(slots=True)

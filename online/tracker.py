@@ -59,12 +59,15 @@ class BoardTracker:
         self.camera.release()
 
     def process_next_frame(self) -> tuple[np.ndarray, BoardState]:
+        frame_start = time.perf_counter()
         frame_timestamp, frame = self.camera.read()
+        capture_ms = (time.perf_counter() - frame_start) * 1000.0
         loop_start = time.perf_counter()
         detector_start = time.perf_counter()
         detections = self.detector.detect(frame)
         detector_ms = (time.perf_counter() - detector_start) * 1000.0
 
+        tracking_start = time.perf_counter()
         calibration = self.calibrator.update(detections)
         fps = 0.0
         if (
@@ -88,13 +91,17 @@ class BoardTracker:
         obstacles = self._obstacles_from_detections(
             detections, calibration, frame_timestamp
         )
+        tracking_ms = (time.perf_counter() - tracking_start) * 1000.0
 
         loop_ms = (time.perf_counter() - loop_start) * 1000.0
         stats = TrackingStats(
             fps=fps,
             frame_width=int(frame.shape[1]),
             frame_height=int(frame.shape[0]),
+            capture_ms=capture_ms,
             detector_ms=detector_ms,
+            tracking_ms=tracking_ms,
+            render_ms=0.0,
             loop_ms=loop_ms,
             visible_tags=len(detections),
         )
@@ -112,6 +119,7 @@ class BoardTracker:
     def render_debug_views(
         self, frame: np.ndarray, board_state: BoardState
     ) -> tuple[np.ndarray, np.ndarray]:
+        render_start = time.perf_counter()
         raw = frame.copy()
         self._draw_raw_overlay(raw, board_state)
 
@@ -129,6 +137,7 @@ class BoardTracker:
                 board_state.calibration.warp_size_px,
             )
         self._draw_arena_overlay(arena, board_state)
+        board_state.stats.render_ms = (time.perf_counter() - render_start) * 1000.0
         return raw, arena
 
     def _pose_from_detection(
@@ -222,7 +231,8 @@ class BoardTracker:
             )
 
         stats = (
-            f"FPS {board_state.stats.fps:.1f} | detect {board_state.stats.detector_ms:.1f}ms"
+            f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
+            f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
             f" | loop {board_state.stats.loop_ms:.1f}ms | tags {board_state.stats.visible_tags}"
         )
         cv2.putText(
@@ -260,8 +270,9 @@ class BoardTracker:
             self._draw_obstacle(frame, obstacle)
 
         stats = (
-            f"FPS {board_state.stats.fps:.1f} | det {board_state.stats.detector_ms:.1f}ms"
-            f" | loop {board_state.stats.loop_ms:.1f}ms | px/mm {board_state.calibration.pixels_per_mm:.3f}"
+            f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
+            f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
+            f" | draw {board_state.stats.render_ms:.1f}ms | px/mm {board_state.calibration.pixels_per_mm:.3f}"
         )
         cv2.rectangle(
             frame,
@@ -351,11 +362,11 @@ class BoardTracker:
         left = self.layout.buffer_px
         top = self.layout.stats_height + self.layout.buffer_px
         x = left + int(
-            round((x_mm + 0.5 * self.layout.arena_width_mm) * self.layout.pixels_per_mm)
+            round((x_mm + 0.5 * self.layout.board_width_mm) * self.layout.pixels_per_mm)
         )
         y = top + int(
             round(
-                (0.5 * self.layout.arena_height_mm - y_mm) * self.layout.pixels_per_mm
+                (0.5 * self.layout.board_height_mm - y_mm) * self.layout.pixels_per_mm
             )
         )
         return x, y

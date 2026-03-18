@@ -104,11 +104,6 @@ class BoardTracker:
             capture_ms=capture_ms,
             detector_ms=detector_ms,
             tracking_ms=tracking_ms,
-            render_ms=0.0,
-            imshow_ms=0.0,
-            waitkey_ms=0.0,
-            display_ms=0.0,
-            end_to_end_ms=0.0,
             loop_ms=loop_ms,
             visible_tags=len(detections),
         )
@@ -202,8 +197,7 @@ class BoardTracker:
 
     def render_debug_views(
         self, frame: np.ndarray, board_state: BoardState
-    ) -> tuple[np.ndarray, np.ndarray, float]:
-        render_start = time.perf_counter()
+    ) -> tuple[np.ndarray, np.ndarray]:
         raw = frame.copy()
         self._draw_raw_overlay(raw, board_state)
 
@@ -221,8 +215,7 @@ class BoardTracker:
                 board_state.calibration.warp_size_px,
             )
         self._draw_arena_overlay(arena, board_state)
-        render_ms = (time.perf_counter() - render_start) * 1000.0
-        return raw, arena, render_ms
+        return raw, arena
 
     def _pose_from_detection(
         self,
@@ -317,9 +310,7 @@ class BoardTracker:
         stats = (
             f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
             f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
-            f" | loop {board_state.stats.loop_ms:.1f}ms | disp {board_state.stats.display_ms:.1f}ms"
-            f" | total {board_state.stats.end_to_end_ms:.1f}ms"
-            f" | tags {board_state.stats.visible_tags}"
+            f" | loop {board_state.stats.loop_ms:.1f}ms | tags {board_state.stats.visible_tags}"
         )
         cv2.putText(
             frame,
@@ -358,9 +349,7 @@ class BoardTracker:
         stats = (
             f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
             f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
-            f" | draw {board_state.stats.render_ms:.1f}ms | show {board_state.stats.imshow_ms:.1f}ms"
-            f" | wait {board_state.stats.waitkey_ms:.1f}ms | total {board_state.stats.end_to_end_ms:.1f}ms"
-            f" | px/mm {board_state.calibration.pixels_per_mm:.3f}"
+            f" | loop {board_state.stats.loop_ms:.1f}ms | px/mm {board_state.calibration.pixels_per_mm:.3f}"
         )
         cv2.rectangle(
             frame,

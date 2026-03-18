@@ -107,6 +107,8 @@ class TeleopController:
 
     def snapshot(self) -> CommandState:
         with self._lock:
+            linear = self.linear
+            angular = self.angular
             left = clamp(self.linear - self.angular, -1.0, 1.0)
             right = clamp(self.linear + self.angular, -1.0, 1.0)
             left_int16 = int(left * MAX_INT16)
@@ -114,8 +116,8 @@ class TeleopController:
             packets_sent = self.packets_sent
         return CommandState(
             monotonic_time=time.monotonic(),
-            linear=self.linear,
-            angular=self.angular,
+            linear=linear,
+            angular=angular,
             left=left,
             right=right,
             left_int16=left_int16,

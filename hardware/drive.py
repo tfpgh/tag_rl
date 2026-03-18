@@ -5,7 +5,7 @@ import time
 import tty
 
 from online.config import TeleopConfig
-from online.teleop import MAX_INT16, TeleopController
+from online.teleop import TeleopController
 
 
 class Teleop:

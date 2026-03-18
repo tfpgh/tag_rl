@@ -29,7 +29,7 @@ class CameraConfig:
     backend: int | None = None
     frame_width: int = 1920
     frame_height: int = 1080
-    fps: int = 30
+    fps: int = 60
     mjpg: bool = True
     buffer_size: int = 1
     auto_exposure: float | None = 1.0

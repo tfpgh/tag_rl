@@ -108,6 +108,7 @@ class BoardTracker:
             imshow_ms=0.0,
             waitkey_ms=0.0,
             display_ms=0.0,
+            end_to_end_ms=0.0,
             loop_ms=loop_ms,
             visible_tags=len(detections),
         )
@@ -317,6 +318,7 @@ class BoardTracker:
             f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
             f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
             f" | loop {board_state.stats.loop_ms:.1f}ms | disp {board_state.stats.display_ms:.1f}ms"
+            f" | total {board_state.stats.end_to_end_ms:.1f}ms"
             f" | tags {board_state.stats.visible_tags}"
         )
         cv2.putText(
@@ -357,7 +359,8 @@ class BoardTracker:
             f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
             f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
             f" | draw {board_state.stats.render_ms:.1f}ms | show {board_state.stats.imshow_ms:.1f}ms"
-            f" | wait {board_state.stats.waitkey_ms:.1f}ms | px/mm {board_state.calibration.pixels_per_mm:.3f}"
+            f" | wait {board_state.stats.waitkey_ms:.1f}ms | total {board_state.stats.end_to_end_ms:.1f}ms"
+            f" | px/mm {board_state.calibration.pixels_per_mm:.3f}"
         )
         cv2.rectangle(
             frame,

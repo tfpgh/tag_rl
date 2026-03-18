@@ -14,6 +14,7 @@ def main() -> None:
     cv2.namedWindow(ARENA_WINDOW_NAME, cv2.WINDOW_NORMAL)
     try:
         while True:
+            frame_loop_start = time.perf_counter()
             frame, board_state = tracker.process_next_frame()
             raw_view, arena_view = tracker.render_debug_views(frame, board_state)
             show_start = time.perf_counter()
@@ -30,6 +31,9 @@ def main() -> None:
                 + board_state.stats.imshow_ms
                 + board_state.stats.waitkey_ms
             )
+            board_state.stats.end_to_end_ms = (
+                time.perf_counter() - frame_loop_start
+            ) * 1000.0
             if key in (ord("q"), 27):
                 break
     finally:

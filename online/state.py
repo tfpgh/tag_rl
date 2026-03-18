@@ -53,6 +53,7 @@ class TrackingStats:
     imshow_ms: float
     waitkey_ms: float
     display_ms: float
+    end_to_end_ms: float
     loop_ms: float
     visible_tags: int
 

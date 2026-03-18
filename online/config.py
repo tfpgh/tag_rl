@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from math import pi
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -114,7 +113,7 @@ class DemoConfig:
     gui: GuiConfig = field(default_factory=GuiConfig)
     env: EnvironmentConfig = field(default_factory=_default_env_config)
     chaser_robot: RobotEndpoint = field(
-        default_factory=lambda: RobotEndpoint(name="chaser", ip="192.168.1.3")
+        default_factory=lambda: RobotEndpoint(name="chaser", ip="192.168.1.4")
     )
     evader_robot: RobotEndpoint = field(
         default_factory=lambda: RobotEndpoint(name="evader", ip="192.168.1.5")

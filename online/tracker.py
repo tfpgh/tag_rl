@@ -54,6 +54,8 @@ class BoardTracker:
         self.calibrator = CornerTagCalibrator(config, self.layout)
         self._previous_frame_time: float | None = None
         self._smoothed_poses: dict[int, Pose2D] = {}
+        self._last_detections: dict[int, TagDetection] = {}
+        self._frame_index = 0
 
     def close(self) -> None:
         self.camera.release()
@@ -64,8 +66,9 @@ class BoardTracker:
         capture_ms = (time.perf_counter() - frame_start) * 1000.0
         loop_start = time.perf_counter()
         detector_start = time.perf_counter()
-        detections = self.detector.detect(frame)
+        detections = self._detect_tags(frame)
         detector_ms = (time.perf_counter() - detector_start) * 1000.0
+        self._frame_index += 1
 
         tracking_start = time.perf_counter()
         calibration = self.calibrator.update(detections)
@@ -115,6 +118,83 @@ class BoardTracker:
             stats=stats,
         )
         return frame, board_state
+
+    def _detect_tags(self, frame: np.ndarray) -> list[TagDetection]:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        expected_tag_ids = self._expected_tag_ids()
+        if not self.config.use_roi_tracking or not self._last_detections:
+            return self._full_frame_detect(gray)
+
+        roi_detections: dict[int, TagDetection] = {}
+        for tag_id in expected_tag_ids:
+            previous = self._last_detections.get(tag_id)
+            if previous is None:
+                continue
+            roi = self._roi_for_detection(previous, frame.shape)
+            detection = self.detector.detect_tag_in_roi(gray, roi, tag_id)
+            if detection is not None:
+                roi_detections[tag_id] = detection
+
+        missing_robot = any(
+            tag_id not in roi_detections
+            for tag_id in (
+                self.config.arena.chaser_tag_id,
+                self.config.arena.evader_tag_id,
+            )
+        )
+        missing_corner = any(
+            tag_id not in roi_detections for tag_id in self.config.arena.corner_tag_ids
+        )
+        needs_refresh = self._frame_index % self.config.full_frame_refresh_interval == 0
+
+        if (
+            missing_robot
+            or (not self.calibrator.is_calibrated and missing_corner)
+            or needs_refresh
+        ):
+            return self._full_frame_detect(gray)
+
+        self._last_detections.update(roi_detections)
+        return list(roi_detections.values())
+
+    def _full_frame_detect(self, gray: np.ndarray) -> list[TagDetection]:
+        detections = self.detector.detect_gray(gray)
+        self._last_detections.update(
+            {detection.tag_id: detection for detection in detections}
+        )
+        return detections
+
+    def _expected_tag_ids(self) -> tuple[int, ...]:
+        arena = self.config.arena
+        return (
+            *arena.corner_tag_ids,
+            arena.chaser_tag_id,
+            arena.evader_tag_id,
+            *arena.obstacle_tag_ids,
+        )
+
+    def _roi_for_detection(
+        self, detection: TagDetection, frame_shape: tuple[int, int, int]
+    ) -> tuple[int, int, int, int]:
+        frame_h, frame_w = frame_shape[:2]
+        span_x = float(
+            np.max(detection.corners_px[:, 0]) - np.min(detection.corners_px[:, 0])
+        )
+        span_y = float(
+            np.max(detection.corners_px[:, 1]) - np.min(detection.corners_px[:, 1])
+        )
+        base_size = max(span_x, span_y)
+        roi_size = int(round(base_size * self.config.roi_padding_scale))
+        roi_size = max(self.config.min_roi_size_px, roi_size)
+        roi_size = min(self.config.max_roi_size_px, roi_size)
+        half = roi_size // 2
+        cx = int(round(float(detection.center_px[0])))
+        cy = int(round(float(detection.center_px[1])))
+        x0 = max(0, cx - half)
+        y0 = max(0, cy - half)
+        x1 = min(frame_w, cx + half)
+        y1 = min(frame_h, cy + half)
+        return x0, y0, x1, y1
 
     def render_debug_views(
         self, frame: np.ndarray, board_state: BoardState

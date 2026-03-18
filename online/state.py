@@ -50,6 +50,9 @@ class TrackingStats:
     detector_ms: float
     tracking_ms: float
     render_ms: float
+    imshow_ms: float
+    waitkey_ms: float
+    display_ms: float
     loop_ms: float
     visible_tags: int
 

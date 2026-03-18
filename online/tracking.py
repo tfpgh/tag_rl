@@ -18,6 +18,24 @@ def _compute_yaw_from_corners(corners_world: np.ndarray) -> float:
     return math.atan2(float(axis[1]), float(axis[0]))
 
 
+def _wrap_angle(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def _resolve_pi_ambiguity(candidate_yaw: float, reference_yaw: float | None) -> float:
+    if reference_yaw is None:
+        return _wrap_angle(candidate_yaw)
+
+    candidates = (
+        _wrap_angle(candidate_yaw),
+        _wrap_angle(candidate_yaw + math.pi),
+    )
+    return min(
+        candidates,
+        key=lambda yaw: abs(_wrap_angle(yaw - reference_yaw)),
+    )
+
+
 @dataclass(slots=True)
 class TrackingBuffers:
     chaser_filter: PoseFilter
@@ -41,11 +59,13 @@ class WorldTracker:
         detection: TagDetection,
         transform,
         heading_offset: float,
+        reference_yaw: float | None,
         timestamp: float,
     ) -> Pose2D:
         center_world = transform(np.asarray([detection.center_px], dtype=np.float32))[0]
         corners_world = transform(np.asarray(detection.corners_px, dtype=np.float32))
         yaw = _compute_yaw_from_corners(corners_world) + heading_offset
+        yaw = _resolve_pi_ambiguity(yaw, reference_yaw)
         return Pose2D(
             x=float(center_world[0]),
             y=float(center_world[1]),
@@ -69,7 +89,11 @@ class WorldTracker:
         visible = detection is not None
         if detection is not None:
             raw_pose = self._pose_from_detection(
-                detection, transform, heading_offset, timestamp
+                detection,
+                transform,
+                heading_offset,
+                None if filtered_pose is None else filtered_pose.yaw,
+                timestamp,
             )
             filtered_pose = filter_state.update(raw_pose)
         age_s = (
@@ -127,6 +151,7 @@ class WorldTracker:
                 detection,
                 transform,
                 self.config.obstacle_heading_offset_rad,
+                None if filter_state.pose is None else filter_state.pose.yaw,
                 timestamp,
             )
             filter_state = self._buffers.obstacle_filters.setdefault(

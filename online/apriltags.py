@@ -7,15 +7,17 @@ import cv2
 import numpy as np
 from pupil_apriltags import Detector
 
-from online.state import TagDetection, TrackerConfig
+from online.config import TrackerConfig
+from online.state import TagDetection
 
 
 class AprilTagTracker:
     def __init__(self, config: TrackerConfig) -> None:
+        detector = config.detector
         self._detector = Detector(
-            families=config.detector_family,
-            nthreads=config.detector_threads,
-            quad_decimate=config.detector_quad_decimate,
+            families=detector.family,
+            nthreads=detector.threads,
+            quad_decimate=detector.quad_decimate,
         )
 
     def detect(self, frame: np.ndarray) -> list[TagDetection]:

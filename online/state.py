@@ -1,55 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
-
-
-CORNER_TAG_IDS = (0, 1, 2, 3)
-CHASER_TAG_ID = 4
-EVADER_TAG_ID = 5
-DEFAULT_OBSTACLE_TAG_IDS = (6,)
-
-TAG_CENTER_W_MM = 2338.4
-TAG_CENTER_H_MM = 1119.2
-TAG_SIZE_MM = 100.0
-MAT_W_MM = TAG_CENTER_W_MM + TAG_SIZE_MM
-MAT_H_MM = TAG_CENTER_H_MM + TAG_SIZE_MM
-
-
-@dataclass(slots=True)
-class CameraConfig:
-    device_index: int = 0
-    backend: int | None = None
-    frame_width: int = 1920
-    frame_height: int = 1080
-    fps: int = 30
-    mjpg: bool = True
-    buffer_size: int = 1
-    auto_exposure: float | None = 1.0
-    exposure: float | None = 17.0
-
-
-@dataclass(slots=True)
-class ArenaViewConfig:
-    frame_width: int = 1920
-    stats_height: int = 35
-    buffer_fraction: float = 0.01
-
-
-@dataclass(slots=True)
-class TrackerConfig:
-    camera: CameraConfig = field(default_factory=CameraConfig)
-    arena_view: ArenaViewConfig = field(default_factory=ArenaViewConfig)
-    detector_threads: int = 8
-    detector_quad_decimate: float = 2.0
-    detector_family: str = "tagStandard41h12"
-    calibration_frames: int = 30
-    smoothing_alpha: float = 0.35
-    chaser_tag_id: int = CHASER_TAG_ID
-    evader_tag_id: int = EVADER_TAG_ID
-    obstacle_tag_ids: tuple[int, ...] = DEFAULT_OBSTACLE_TAG_IDS
-    obstacle_size_mm: float = 100.0
 
 
 @dataclass(slots=True)

@@ -5,7 +5,7 @@ import time
 import cv2
 import numpy as np
 
-from online.state import CameraConfig
+from online.config import CameraConfig
 
 
 class CameraError(RuntimeError):

@@ -42,6 +42,7 @@ class ControlWorker(threading.Thread):
         self._last_chaser = np.zeros(2, dtype=np.float32)
         self._last_evader = np.zeros(2, dtype=np.float32)
         self._last_loop = 0.0
+        self._controls_were_enabled = False
 
     def _safe_stop(self, reason: str) -> None:
         chaser_state = self.chaser_robot.stop()
@@ -85,13 +86,19 @@ class ControlWorker(threading.Thread):
             try:
                 if operator.emergency_stop or not operator.control_enabled:
                     self._safe_stop("operator-disabled")
+                    self._controls_were_enabled = False
                 elif not snap.world.ready:
                     self._safe_stop("world-not-ready")
                     self.reset_episode("world-not-ready")
+                    self._controls_were_enabled = False
                 elif snap.stats.world_age_s > self.config.control.world_state_timeout_s:
                     self._safe_stop("world-stale")
                     self.reset_episode("world-stale")
+                    self._controls_were_enabled = False
                 else:
+                    if not self._controls_were_enabled:
+                        self.reset_episode("control-enabled")
+                        self._controls_were_enabled = True
                     chaser_obs, evader_obs, progress = self.observation_builder.build(
                         snap.world,
                         self._episode_step,

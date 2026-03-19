@@ -5,6 +5,7 @@ import json
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
@@ -20,7 +21,11 @@ from sysid.replay import (
 from sysid.stats import summarize_run
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
-LATENT_DIM = 7
+LATENT_DIM = 8
+
+
+def _replace_std_init(params: Any, std_init: float) -> Any:
+    return params.replace(std_init=std_init)
 
 
 def _format_duration(seconds: float) -> str:
@@ -66,8 +71,10 @@ def _mean_metrics(metrics_list: list[ReplayMetrics]) -> ReplayMetrics:
 
 
 def _decode_solution(evaluator, solution: jax.Array):
-    values, delays = evaluator.decode_population(solution[None, :])
-    return decoded_values_to_params(values[0], delays[0])
+    values, action_delays, observation_delays = evaluator.decode_population(
+        solution[None, :]
+    )
+    return decoded_values_to_params(values[0], action_delays[0], observation_delays[0])
 
 
 def _recommend_config_update(
@@ -84,6 +91,7 @@ def _recommend_config_update(
         "nominal": asdict(best_params),
         "pipeline_randomization": {
             "max_action_delay_steps": int(best_params.action_delay_steps + 1),
+            "max_observation_delay_steps": int(best_params.observation_delay_steps + 1),
             "position_noise_std_max": max(position_noise) if position_noise else 0.0,
             "yaw_noise_std_max": max(yaw_noise) if yaw_noise else 0.0,
             "frame_drop_probability_max": min(
@@ -92,7 +100,7 @@ def _recommend_config_update(
         },
         "notes": [
             "Set nominal dynamics to the fitted values before widening randomization ranges.",
-            "Keep observation delay and stale-observation settings unchanged until raw/stale logging exists.",
+            "Observation delay is now fit directly; stale-observation behavior still needs explicit logging to fit well.",
         ],
     }
 
@@ -125,14 +133,14 @@ def run_search(
         population_size=population_size,
         solution=jnp.zeros((LATENT_DIM,), dtype=jnp.float32),
     )
-    es_params = strategy.default_params.replace(std_init=std_init)
+    es_params = _replace_std_init(strategy.default_params, std_init)
     key = jax.random.key(seed)
     init_key, key = jax.random.split(key)
     state = strategy.init(
         init_key, jnp.zeros((LATENT_DIM,), dtype=jnp.float32), es_params
     )
 
-    best_record: dict[str, object] | None = None
+    best_record: dict[str, Any] | None = None
     history: list[dict[str, object]] = []
     started_at = time.perf_counter()
 
@@ -143,7 +151,7 @@ def run_search(
         fitness = train_evaluator.evaluate_population_fitness(population)
         state, metrics = strategy.tell(tell_key, population, fitness, state, es_params)
 
-        best_solution = metrics["best_solution"]
+        best_solution = cast(jax.Array, metrics["best_solution"])
         params = _decode_solution(train_evaluator, best_solution)
         train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
         validation_metrics = validation_evaluator.evaluate_population(
@@ -160,7 +168,8 @@ def run_search(
 
         if (
             best_record is None
-            or validation_metrics.score < best_record["validation_metrics"].score
+            or validation_metrics.score
+            < cast(ReplayMetrics, best_record["validation_metrics"]).score
         ):
             best_record = {
                 "params": params,
@@ -175,7 +184,7 @@ def run_search(
             (
                 f"gen={completed}/{generations} best_train={train_metrics.score:.4f} "
                 f"best_val={validation_metrics.score:.4f} "
-                f"delay={params.action_delay_steps} "
+                f"delay={params.action_delay_steps}/{params.observation_delay_steps} "
                 f"gen_time={_format_duration(time.perf_counter() - generation_started_at)} "
                 f"eta={_format_duration(eta)}"
             ),
@@ -186,12 +195,16 @@ def run_search(
     return {
         "train_dataset": _dataset_summary(train_dataset),
         "validation_dataset": _dataset_summary(validation_dataset),
-        "best_params": asdict(best_record["params"]),
-        "train_metrics": summarize_metrics(best_record["train_metrics"]),
-        "validation_metrics": summarize_metrics(best_record["validation_metrics"]),
+        "best_params": asdict(cast(Any, best_record["params"])),
+        "train_metrics": summarize_metrics(
+            cast(ReplayMetrics, best_record["train_metrics"])
+        ),
+        "validation_metrics": summarize_metrics(
+            cast(ReplayMetrics, best_record["validation_metrics"])
+        ),
         "history": history,
         "recommended_config_update": _recommend_config_update(
-            best_record["params"], train_runs
+            cast(Any, best_record["params"]), train_runs
         ),
     }
 

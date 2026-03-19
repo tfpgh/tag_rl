@@ -19,6 +19,7 @@ from sysid.types import PreparedDataset, ReplayMetrics, RunData
 @dataclass(frozen=True, slots=True)
 class NominalParameters:
     action_delay_steps: int = 0
+    observation_delay_steps: int = 0
     floor_friction_scale: float = 1.0
     mass_scale: float = 1.0
     inertia_scale: float = 1.0
@@ -65,6 +66,7 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
     return jnp.asarray(
         [
             float(params.action_delay_steps),
+            float(params.observation_delay_steps),
             params.floor_friction_scale,
             params.wheel_friction_scale,
             params.wheel_damping_scale,
@@ -77,10 +79,13 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
 
 
 def decoded_values_to_params(
-    values: jax.Array, delay_steps: jax.Array
+    values: jax.Array,
+    action_delay_steps: jax.Array,
+    observation_delay_steps: jax.Array,
 ) -> NominalParameters:
     return NominalParameters(
-        action_delay_steps=int(delay_steps),
+        action_delay_steps=int(action_delay_steps),
+        observation_delay_steps=int(observation_delay_steps),
         floor_friction_scale=float(values[0]),
         mass_scale=1.0,
         inertia_scale=1.0,
@@ -106,7 +111,10 @@ def make_dataset_evaluator(
     env_config: EnvironmentConfig | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
-    max_delay = env.config.pipeline_randomization.max_action_delay_steps
+    max_action_delay = env.config.pipeline_randomization.max_action_delay_steps
+    max_observation_delay = (
+        env.config.pipeline_randomization.max_observation_delay_steps
+    )
     is_chaser = dataset.role == "chaser"
     num_segments = int(dataset.initial_poses.shape[0])
     zero_qvel = jnp.zeros((num_segments, env.mj_model.nv), dtype=jnp.float32)
@@ -127,21 +135,36 @@ def make_dataset_evaluator(
     identity_quaternion = jnp.asarray([1.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
 
     lower_bounds = jnp.asarray(
-        [0.0, 0.9, 0.85, 0.75, 0.75, 0.75, -0.2], dtype=jnp.float32
+        [0.0, 0.0, 0.9, 0.85, 0.75, 0.75, 0.75, -0.2], dtype=jnp.float32
     )
     upper_bounds = jnp.asarray(
-        [float(max_delay), 1.15, 1.2, 1.35, 1.35, 1.3, 0.2], dtype=jnp.float32
+        [
+            float(max_action_delay),
+            float(max_observation_delay),
+            1.15,
+            1.2,
+            1.35,
+            1.35,
+            1.3,
+            0.2,
+        ],
+        dtype=jnp.float32,
     )
 
-    def decode_population(population: jax.Array) -> tuple[jax.Array, jax.Array]:
+    def decode_population(
+        population: jax.Array,
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
         bounded = lower_bounds + 0.5 * (jnp.tanh(population) + 1.0) * (
             upper_bounds - lower_bounds
         )
-        delay = jnp.clip(jnp.rint(bounded[:, 0]), 0.0, float(max_delay)).astype(
-            jnp.int32
-        )
-        continuous = bounded[:, 1:]
-        return continuous, delay
+        action_delay = jnp.clip(
+            jnp.rint(bounded[:, 0]), 0.0, float(max_action_delay)
+        ).astype(jnp.int32)
+        observation_delay = jnp.clip(
+            jnp.rint(bounded[:, 1]), 0.0, float(max_observation_delay)
+        ).astype(jnp.int32)
+        continuous = bounded[:, 2:]
+        return continuous, action_delay, observation_delay
 
     def default_agent() -> AgentDynamicsParams:
         one = jnp.asarray(1.0, dtype=jnp.float32)
@@ -248,21 +271,28 @@ def make_dataset_evaluator(
             [agent.position_xy[0], agent.position_xy[1], agent.yaw], dtype=jnp.float32
         )
 
-    def evaluate_one(values: jax.Array, delay_steps: jax.Array) -> jax.Array:
+    def evaluate_one(
+        values: jax.Array,
+        action_delay_steps: jax.Array,
+        observation_delay_steps: jax.Array,
+    ) -> jax.Array:
         model = randomize_model(env.mjx_model, domain_params(values), env.model_indices)
         batched_data = init_data(model)
         action_buffer = jnp.zeros(
-            (num_segments, max_delay + 1, env.mj_model.nu), dtype=jnp.float32
+            (num_segments, max_action_delay + 1, env.mj_model.nu), dtype=jnp.float32
+        )
+        observation_buffer = jnp.tile(
+            dataset.initial_poses[:, None, :], (1, max_observation_delay + 1, 1)
         )
 
         def rollout_step(
-            carry: tuple[mjx.Data, jax.Array], proposed_t: jax.Array
-        ) -> tuple[tuple[mjx.Data, jax.Array], jax.Array]:
-            data, buffer = carry
+            carry: tuple[mjx.Data, jax.Array, jax.Array], proposed_t: jax.Array
+        ) -> tuple[tuple[mjx.Data, jax.Array, jax.Array], jax.Array]:
+            data, buffer, pose_buffer = carry
             updated_buffer = jnp.concatenate(
                 [proposed_t[:, None, :], buffer[:, :-1, :]], axis=1
             )
-            applied = jnp.take(updated_buffer, delay_steps, axis=1)
+            applied = jnp.take(updated_buffer, action_delay_steps, axis=1)
             data = data.replace(ctrl=applied)
 
             def physics_substep(current: mjx.Data, _: None) -> tuple[mjx.Data, None]:
@@ -273,10 +303,16 @@ def make_dataset_evaluator(
                 physics_substep, data, None, length=env.substeps_per_action
             )
             poses = jax.vmap(extract_pose)(data)
-            return (data, updated_buffer), poses
+            updated_pose_buffer = jnp.concatenate(
+                [poses[:, None, :], pose_buffer[:, :-1, :]], axis=1
+            )
+            observed = jnp.take(updated_pose_buffer, observation_delay_steps, axis=1)
+            return (data, updated_buffer, updated_pose_buffer), observed
 
-        (_, _), predicted = jax.lax.scan(
-            rollout_step, (batched_data, action_buffer), proposed_ctrl
+        (_, _, _), predicted = jax.lax.scan(
+            rollout_step,
+            (batched_data, action_buffer, observation_buffer),
+            proposed_ctrl,
         )
         predicted = predicted.transpose(1, 0, 2)
         position_sq = jnp.sum(
@@ -318,13 +354,11 @@ def make_dataset_evaluator(
             dtype=jnp.float32,
         )
 
-    evaluate_population_raw = jax.jit(
-        jax.vmap(evaluate_one, in_axes=(0, 0)), static_argnums=()
-    )
+    evaluate_population_raw = jax.jit(jax.vmap(evaluate_one, in_axes=(0, 0, 0)))
 
     def evaluate_population(population: jax.Array) -> list[ReplayMetrics]:
-        values, delays = decode_population(population)
-        raw = evaluate_population_raw(values, delays)
+        values, action_delays, observation_delays = decode_population(population)
+        raw = evaluate_population_raw(values, action_delays, observation_delays)
         return [
             ReplayMetrics(
                 position_rmse_m=float(item[0]),

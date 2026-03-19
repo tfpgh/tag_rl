@@ -71,12 +71,6 @@ class TeleopConfig:
 
 
 @dataclass(slots=True)
-class CollectionConfig:
-    scripted_repeat_count: int = 3
-    settle_time_s: float = 1.0
-
-
-@dataclass(slots=True)
 class TrackerConfig:
     arena: ArenaConfig = field(default_factory=ArenaConfig)
     camera: CameraConfig = field(default_factory=CameraConfig)
@@ -91,4 +85,3 @@ class TrackerConfig:
     max_roi_size_px: int = 600
     full_frame_refresh_interval: int = 15
     teleop: TeleopConfig = field(default_factory=TeleopConfig)
-    collection: CollectionConfig = field(default_factory=CollectionConfig)

@@ -357,6 +357,7 @@ def make_dataset_evaluator(
             proposed_ctrl,
         )
         predicted = predicted.transpose(1, 0, 2)
+        valid_prediction = jnp.all(jnp.isfinite(predicted))
         position_sq = jnp.sum(
             jnp.square(predicted[..., :2] - references[..., :2]), axis=-1
         )
@@ -384,7 +385,7 @@ def make_dataset_evaluator(
             + 0.5 * endpoint_position
             + 0.1 * endpoint_yaw_mean
         )
-        return jnp.asarray(
+        raw_metrics = jnp.asarray(
             [
                 position_rmse,
                 yaw_rmse,
@@ -395,6 +396,11 @@ def make_dataset_evaluator(
             ],
             dtype=jnp.float32,
         )
+        safe_metrics = jnp.asarray(
+            [10.0, 10.0, 10.0, 10.0, 1e6, valid_steps], dtype=jnp.float32
+        )
+        finite_metrics = jnp.all(jnp.isfinite(raw_metrics))
+        return jnp.where(valid_prediction & finite_metrics, raw_metrics, safe_metrics)
 
     evaluate_population_raw_single = jax.jit(jax.vmap(evaluate_one, in_axes=(0, 0, 0)))
     evaluate_population_raw_sharded = jax.pmap(

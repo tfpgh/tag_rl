@@ -156,9 +156,9 @@ def sample_pipeline_params(
         stale_steps_rng,
     ) = random.split(rng, 8)
     pipe = config.pipeline_randomization
-    max_action_delay = jnp.int32(jnp.floor(scale * pipe.max_action_delay_steps))
+    max_action_delay = jnp.int32(jnp.floor(scale * pipe.max_action_delay_substeps))
     max_observation_delay = jnp.int32(
-        jnp.floor(scale * pipe.max_observation_delay_steps)
+        jnp.floor(scale * pipe.max_observation_delay_substeps)
     )
     max_stale_steps = jnp.int32(
         jnp.maximum(0, jnp.floor(scale * pipe.max_stale_observation_steps))
@@ -171,13 +171,15 @@ def sample_pipeline_params(
         operand=None,
     )
 
-    action_delay_steps = random.randint(action_delay_rng, (), 0, max_action_delay + 1)
-    observation_delay_steps = random.randint(
+    action_delay_substeps = random.randint(
+        action_delay_rng, (), 0, max_action_delay + 1
+    )
+    observation_delay_substeps = random.randint(
         obs_delay_rng, (), 0, max_observation_delay + 1
     )
     return PipelineParams(
-        action_delay_steps=jnp.int32(action_delay_steps),
-        observation_delay_steps=jnp.int32(observation_delay_steps),
+        action_delay_substeps=jnp.int32(action_delay_substeps),
+        observation_delay_substeps=jnp.int32(observation_delay_substeps),
         action_drop_probability=random.uniform(
             action_drop_rng,
             (),

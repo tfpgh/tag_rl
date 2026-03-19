@@ -18,8 +18,8 @@ from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
 @dataclass(frozen=True, slots=True)
 class NominalParameters:
-    action_delay_steps: int = 0
-    observation_delay_steps: int = 0
+    action_delay_substeps: int = 0
+    observation_delay_substeps: int = 0
     floor_friction_scale: float = 1.0
     mass_scale: float = 1.0
     com_offset_x: float = 0.0
@@ -67,8 +67,8 @@ def evaluate_run(
 def encode_params(params: NominalParameters) -> jnp.ndarray:
     return jnp.asarray(
         [
-            float(params.action_delay_steps),
-            float(params.observation_delay_steps),
+            float(params.action_delay_substeps),
+            float(params.observation_delay_substeps),
             params.floor_friction_scale,
             params.mass_scale,
             params.com_offset_x,
@@ -87,12 +87,12 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
 
 def decoded_values_to_params(
     values: jax.Array,
-    action_delay_steps: jax.Array,
-    observation_delay_steps: jax.Array,
+    action_delay_substeps: jax.Array,
+    observation_delay_substeps: jax.Array,
 ) -> NominalParameters:
     return NominalParameters(
-        action_delay_steps=int(action_delay_steps),
-        observation_delay_steps=int(observation_delay_steps),
+        action_delay_substeps=int(action_delay_substeps),
+        observation_delay_substeps=int(observation_delay_substeps),
         floor_friction_scale=float(values[0]),
         mass_scale=float(values[1]),
         com_offset_x=float(values[2]),
@@ -121,9 +121,11 @@ def make_dataset_evaluator(
     env_config: EnvironmentConfig | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
-    max_action_delay = max(env.config.pipeline_randomization.max_action_delay_steps, 3)
+    max_action_delay = max(
+        env.config.pipeline_randomization.max_action_delay_substeps, 30
+    )
     max_observation_delay = max(
-        env.config.pipeline_randomization.max_observation_delay_steps, 3
+        env.config.pipeline_randomization.max_observation_delay_substeps, 30
     )
     is_chaser = dataset.role == "chaser"
     num_segments = int(dataset.initial_poses.shape[0])
@@ -302,8 +304,8 @@ def make_dataset_evaluator(
 
     def evaluate_one(
         values: jax.Array,
-        action_delay_steps: jax.Array,
-        observation_delay_steps: jax.Array,
+        action_delay_substeps: jax.Array,
+        observation_delay_substeps: jax.Array,
     ) -> jax.Array:
         model = randomize_model(env.mjx_model, domain_params(values), env.model_indices)
         batched_data = init_data(model)
@@ -318,25 +320,33 @@ def make_dataset_evaluator(
             carry: tuple[mjx.Data, jax.Array, jax.Array], proposed_t: jax.Array
         ) -> tuple[tuple[mjx.Data, jax.Array, jax.Array], jax.Array]:
             data, buffer, pose_buffer = carry
-            updated_buffer = jnp.concatenate(
-                [proposed_t[:, None, :], buffer[:, :-1, :]], axis=1
-            )
-            applied = jnp.take(updated_buffer, action_delay_steps, axis=1)
-            data = data.replace(ctrl=applied)
 
-            def physics_substep(current: mjx.Data, _: None) -> tuple[mjx.Data, None]:
-                stepped = jax.vmap(lambda single: mjx.step(model, single))(current)
-                return stepped, None
+            def physics_substep(
+                inner_carry: tuple[mjx.Data, jax.Array, jax.Array], _: None
+            ) -> tuple[tuple[mjx.Data, jax.Array, jax.Array], jax.Array]:
+                inner_data, inner_buffer, inner_pose_buffer = inner_carry
+                updated_buffer = jnp.concatenate(
+                    [proposed_t[:, None, :], inner_buffer[:, :-1, :]], axis=1
+                )
+                applied = jnp.take(updated_buffer, action_delay_substeps, axis=1)
+                inner_data = inner_data.replace(ctrl=applied)
+                stepped = jax.vmap(lambda single: mjx.step(model, single))(inner_data)
+                poses = jax.vmap(extract_pose)(stepped)
+                updated_pose_buffer = jnp.concatenate(
+                    [poses[:, None, :], inner_pose_buffer[:, :-1, :]], axis=1
+                )
+                observed = jnp.take(
+                    updated_pose_buffer, observation_delay_substeps, axis=1
+                )
+                return (stepped, updated_buffer, updated_pose_buffer), observed
 
-            data, _ = jax.lax.scan(
-                physics_substep, data, None, length=env.substeps_per_action
+            (data, buffer, pose_buffer), observed_substeps = jax.lax.scan(
+                physics_substep,
+                (data, buffer, pose_buffer),
+                None,
+                length=env.substeps_per_action,
             )
-            poses = jax.vmap(extract_pose)(data)
-            updated_pose_buffer = jnp.concatenate(
-                [poses[:, None, :], pose_buffer[:, :-1, :]], axis=1
-            )
-            observed = jnp.take(updated_pose_buffer, observation_delay_steps, axis=1)
-            return (data, updated_buffer, updated_pose_buffer), observed
+            return (data, buffer, pose_buffer), observed_substeps[-1]
 
         (_, _, _), predicted = jax.lax.scan(
             rollout_step,
@@ -405,8 +415,8 @@ def make_dataset_evaluator(
     )
 
     search_bounds = {
-        "action_delay_steps": (0.0, float(max_action_delay)),
-        "observation_delay_steps": (0.0, float(max_observation_delay)),
+        "action_delay_substeps": (0.0, float(max_action_delay)),
+        "observation_delay_substeps": (0.0, float(max_observation_delay)),
         "floor_friction_scale": (0.7, 1.4),
         "mass_scale": (0.7, 1.4),
         "com_offset_x": (-0.006, 0.006),

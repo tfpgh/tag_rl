@@ -36,8 +36,8 @@ class DomainParams(NamedTuple):
 
 
 class PipelineParams(NamedTuple):
-    action_delay_steps: jax.Array
-    observation_delay_steps: jax.Array
+    action_delay_substeps: jax.Array
+    observation_delay_substeps: jax.Array
     action_drop_probability: jax.Array
     frame_drop_probability: jax.Array
     stale_observation_probability: jax.Array
@@ -90,8 +90,8 @@ class TagEnvironmentStepInfo(NamedTuple):
     obstacle_count: jax.Array
     chaser_collision: jax.Array
     evader_collision: jax.Array
-    action_delay_steps: jax.Array
-    observation_delay_steps: jax.Array
+    action_delay_substeps: jax.Array
+    observation_delay_substeps: jax.Array
     action_drop_probability: jax.Array
     frame_drop_probability: jax.Array
     stale_observation_probability: jax.Array

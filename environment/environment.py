@@ -61,10 +61,10 @@ class TagEnvironment:
         self.tag_distance = 2 * config.agent_radius * config.tag_distance_factor
         self.obs_size = observation_size(config)
         self.max_action_buffer_len = (
-            config.pipeline_randomization.max_action_delay_steps + 1
+            config.pipeline_randomization.max_action_delay_substeps + 1
         )
         self.max_observation_buffer_len = (
-            config.pipeline_randomization.max_observation_delay_steps + 1
+            config.pipeline_randomization.max_observation_delay_substeps + 1
         )
 
         self._template_mjx_data = mjx.make_data(self.mj_model)
@@ -215,25 +215,27 @@ class TagEnvironment:
     def _push_buffer(self, buffer: jax.Array, value: jax.Array) -> jax.Array:
         return jnp.roll(buffer, shift=-1, axis=0).at[-1].set(value)
 
-    def _select_delayed(self, buffer: jax.Array, delay_steps: jax.Array) -> jax.Array:
-        return buffer[-1 - delay_steps]
+    def _select_delayed(
+        self, buffer: jax.Array, delay_substeps: jax.Array
+    ) -> jax.Array:
+        return buffer[-1 - delay_substeps]
 
-    def _apply_action_pipeline(
-        self, state: TagEnvironmentState, proposed_actions: jax.Array, rng: jax.Array
-    ) -> tuple[jax.Array, jax.Array, jax.Array]:
-        pipeline = state.pipeline_params
-        buffered_actions = self._push_buffer(state.action_buffer, proposed_actions)
-        delayed_actions = self._select_delayed(
-            buffered_actions, pipeline.action_delay_steps
+    def _expand_actions_to_substeps(self, proposed_actions: jax.Array) -> jax.Array:
+        return jnp.repeat(
+            proposed_actions[None, :, :], self.substeps_per_action, axis=0
         )
-        drop = jax.random.bernoulli(rng, pipeline.action_drop_probability)
+
+    def _prepare_action_substep_sequence(
+        self, state: TagEnvironmentState, proposed_actions: jax.Array
+    ) -> tuple[jax.Array, jax.Array]:
+        expanded_actions = self._expand_actions_to_substeps(proposed_actions)
         fallback_actions = jnp.where(
             self.config.pipeline_randomization.hold_last_action_on_drop,
             state.last_applied_actions,
-            jnp.zeros_like(delayed_actions),
+            jnp.zeros_like(proposed_actions),
         )
-        applied_actions = jnp.where(drop, fallback_actions, delayed_actions)
-        return buffered_actions, applied_actions, delayed_actions
+        expanded_fallback_actions = self._expand_actions_to_substeps(fallback_actions)
+        return expanded_actions, expanded_fallback_actions
 
     def _sample_measurement(
         self,
@@ -362,7 +364,7 @@ class TagEnvironment:
         self, state: TagEnvironmentState
     ) -> tuple[jax.Array, jax.Array]:
         delayed_observations = self._select_delayed(
-            state.observation_buffer, state.pipeline_params.observation_delay_steps
+            state.observation_buffer, state.pipeline_params.observation_delay_substeps
         )
         return delayed_observations[0], delayed_observations[1]
 
@@ -477,21 +479,156 @@ class TagEnvironment:
             jnp.where(is_frozen, jnp.zeros(2), proposed_actions[0])
         )
         action_rng, measurement_rng = jax.random.split(rng)
-        action_buffer, applied_actions, _ = self._apply_action_pipeline(
-            state, proposed_actions, action_rng
+        proposed_action_substeps, fallback_action_substeps = (
+            self._prepare_action_substep_sequence(state, proposed_actions)
+        )
+        action_drop = jax.random.bernoulli(
+            action_rng, state.pipeline_params.action_drop_probability
         )
 
         randomized_model = randomize_model(
             self.mjx_model, state.domain_params, self.model_indices
         )
-        control_actions = jnp.concatenate([applied_actions[0], applied_actions[1]])
-        mjx_data = state.mjx_data.replace(ctrl=control_actions)
+        measurement_substep_rngs = jax.random.split(
+            measurement_rng, self.substeps_per_action
+        )
 
-        def substep(data: mjx.Data, _: None) -> tuple[mjx.Data, None]:
-            return mjx.step(randomized_model, data), None
+        def substep(
+            carry: tuple[
+                mjx.Data,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+            ],
+            inputs: tuple[jax.Array, jax.Array, jax.Array],
+        ) -> tuple[
+            tuple[
+                mjx.Data,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+                jax.Array,
+            ],
+            None,
+        ]:
+            (
+                data,
+                action_buffer,
+                observation_buffer,
+                last_applied_actions,
+                last_measured_agent_positions_xy,
+                last_measured_agent_yaws,
+                last_measured_obstacle_positions_xy,
+                last_measured_obstacle_yaws,
+                stale_steps_remaining,
+            ) = carry
+            proposed_action_substep, fallback_action_substep, substep_rng = inputs
 
-        mjx_data, _ = jax.lax.scan(
-            substep, mjx_data, None, length=self.substeps_per_action
+            action_buffer = self._push_buffer(action_buffer, proposed_action_substep)
+            delayed_actions = self._select_delayed(
+                action_buffer, state.pipeline_params.action_delay_substeps
+            )
+            applied_actions = jnp.where(
+                state.pipeline_params.action_drop_probability > 0.0,
+                jnp.where(
+                    action_drop,
+                    fallback_action_substep,
+                    delayed_actions,
+                ),
+                delayed_actions,
+            )
+            control_actions = jnp.concatenate([applied_actions[0], applied_actions[1]])
+            data = data.replace(ctrl=control_actions)
+            data = mjx.step(randomized_model, data)
+
+            chaser, evader = self._agent_pair_kinematics(data)
+            true_agent_positions_xy = jnp.stack(
+                [chaser.position_xy, evader.position_xy], axis=0
+            )
+            true_agent_yaws = jnp.stack([chaser.yaw, evader.yaw], axis=0)
+            measurement_state = state._replace(
+                mjx_data=data,
+                action_buffer=action_buffer,
+                observation_buffer=observation_buffer,
+                last_applied_actions=last_applied_actions,
+                last_measured_agent_positions_xy=last_measured_agent_positions_xy,
+                last_measured_agent_yaws=last_measured_agent_yaws,
+                last_measured_obstacle_positions_xy=last_measured_obstacle_positions_xy,
+                last_measured_obstacle_yaws=last_measured_obstacle_yaws,
+                stale_observation_steps_remaining=stale_steps_remaining,
+            )
+            (
+                measured_agent_positions_xy,
+                measured_agent_yaws,
+                measured_obstacle_positions_xy,
+                measured_obstacle_yaws,
+                next_stale_steps_remaining,
+            ) = self._sample_measurement(
+                measurement_state, true_agent_positions_xy, true_agent_yaws, substep_rng
+            )
+            current_observations = self._compute_observation_pair_from_measurement(
+                measured_agent_positions_xy,
+                measured_agent_yaws,
+                measured_obstacle_positions_xy,
+                measured_obstacle_yaws,
+                state.obstacle_active,
+                state.step_count + 1,
+            )
+            observation_buffer = self._push_buffer(
+                observation_buffer, current_observations
+            )
+            return (
+                data,
+                action_buffer,
+                observation_buffer,
+                applied_actions,
+                measured_agent_positions_xy,
+                measured_agent_yaws,
+                measured_obstacle_positions_xy,
+                measured_obstacle_yaws,
+                next_stale_steps_remaining,
+            ), None
+
+        (
+            (
+                mjx_data,
+                action_buffer,
+                observation_buffer,
+                applied_actions,
+                measured_agent_positions_xy,
+                measured_agent_yaws,
+                measured_obstacle_positions_xy,
+                measured_obstacle_yaws,
+                stale_steps_remaining,
+            ),
+            _,
+        ) = jax.lax.scan(
+            substep,
+            (
+                state.mjx_data,
+                state.action_buffer,
+                state.observation_buffer,
+                state.last_applied_actions,
+                state.last_measured_agent_positions_xy,
+                state.last_measured_agent_yaws,
+                state.last_measured_obstacle_positions_xy,
+                state.last_measured_obstacle_yaws,
+                state.stale_observation_steps_remaining,
+            ),
+            (
+                proposed_action_substeps,
+                fallback_action_substeps,
+                measurement_substep_rngs,
+            ),
         )
 
         step_count = state.step_count + 1
@@ -530,10 +667,6 @@ class TagEnvironment:
             - config.collision_penalty * evader_collision
         )
 
-        true_agent_positions_xy = jnp.stack(
-            [chaser.position_xy, evader.position_xy], axis=0
-        )
-        true_agent_yaws = jnp.stack([chaser.yaw, evader.yaw], axis=0)
         interim_state = state._replace(
             mjx_data=mjx_data,
             action_buffer=action_buffer,
@@ -541,28 +674,8 @@ class TagEnvironment:
             step_count=step_count,
             prev_distance=distance,
         )
-        (
-            measured_agent_positions_xy,
-            measured_agent_yaws,
-            measured_obstacle_positions_xy,
-            measured_obstacle_yaws,
-            stale_steps_remaining,
-        ) = self._sample_measurement(
-            interim_state, true_agent_positions_xy, true_agent_yaws, measurement_rng
-        )
-        current_observations = self._compute_observation_pair_from_measurement(
-            measured_agent_positions_xy,
-            measured_agent_yaws,
-            measured_obstacle_positions_xy,
-            measured_obstacle_yaws,
-            obstacle_active,
-            step_count,
-        )
-        observation_buffer = self._push_buffer(
-            state.observation_buffer, current_observations
-        )
         delayed_observations = self._select_delayed(
-            observation_buffer, state.pipeline_params.observation_delay_steps
+            observation_buffer, state.pipeline_params.observation_delay_substeps
         )
 
         new_state = interim_state._replace(
@@ -581,8 +694,8 @@ class TagEnvironment:
             obstacle_count=obstacle_active.astype(jnp.int32).sum(),
             chaser_collision=chaser_collision,
             evader_collision=evader_collision,
-            action_delay_steps=state.pipeline_params.action_delay_steps,
-            observation_delay_steps=state.pipeline_params.observation_delay_steps,
+            action_delay_substeps=state.pipeline_params.action_delay_substeps,
+            observation_delay_substeps=state.pipeline_params.observation_delay_substeps,
             action_drop_probability=state.pipeline_params.action_drop_probability,
             frame_drop_probability=state.pipeline_params.frame_drop_probability,
             stale_observation_probability=state.pipeline_params.stale_observation_probability,

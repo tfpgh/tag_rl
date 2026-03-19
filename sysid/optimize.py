@@ -90,8 +90,10 @@ def _recommend_config_update(
     return {
         "nominal": asdict(best_params),
         "pipeline_randomization": {
-            "max_action_delay_steps": int(best_params.action_delay_steps + 1),
-            "max_observation_delay_steps": int(best_params.observation_delay_steps + 1),
+            "max_action_delay_substeps": int(best_params.action_delay_substeps + 1),
+            "max_observation_delay_substeps": int(
+                best_params.observation_delay_substeps + 1
+            ),
             "position_noise_std_max": max(position_noise) if position_noise else 0.0,
             "yaw_noise_std_max": max(yaw_noise) if yaw_noise else 0.0,
             "frame_drop_probability_max": min(
@@ -223,7 +225,7 @@ def run_search(
             (
                 f"gen={completed}/{generations} best_train={train_metrics.score:.4f} "
                 f"best_val={validation_metrics.score:.4f} "
-                f"delay={params.action_delay_steps}/{params.observation_delay_steps} "
+                f"delay={params.action_delay_substeps}/{params.observation_delay_substeps} "
                 f"gen_time={_format_duration(time.perf_counter() - generation_started_at)} "
                 f"eta={_format_duration(eta)}"
             ),

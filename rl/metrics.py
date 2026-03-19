@@ -48,8 +48,8 @@ def compute_training_metrics(
     evader_action_any_clipped = jnp.any(evader_action_clipped > 0, axis=-1).astype(
         jnp.float32
     )
-    action_delay_steps = traj_batch.info.action_delay_steps.astype(jnp.float32)
-    observation_delay_steps = traj_batch.info.observation_delay_steps.astype(
+    action_delay_substeps = traj_batch.info.action_delay_substeps.astype(jnp.float32)
+    observation_delay_substeps = traj_batch.info.observation_delay_substeps.astype(
         jnp.float32
     )
     obstacle_count = traj_batch.info.obstacle_count.astype(jnp.float32)
@@ -142,10 +142,12 @@ def compute_training_metrics(
         ),
         "chaser_collision_term_sum": chaser_collision.sum(),
         "evader_collision_term_sum": evader_collision.sum(),
-        "action_delay_steps_sum": action_delay_steps.sum(),
-        "action_delay_steps_sq_sum": jnp.square(action_delay_steps).sum(),
-        "observation_delay_steps_sum": observation_delay_steps.sum(),
-        "observation_delay_steps_sq_sum": jnp.square(observation_delay_steps).sum(),
+        "action_delay_substeps_sum": action_delay_substeps.sum(),
+        "action_delay_substeps_sq_sum": jnp.square(action_delay_substeps).sum(),
+        "observation_delay_substeps_sum": observation_delay_substeps.sum(),
+        "observation_delay_substeps_sq_sum": jnp.square(
+            observation_delay_substeps
+        ).sum(),
         "obstacle_count_sum": obstacle_count.sum(),
         "obstacle_count_sq_sum": jnp.square(obstacle_count).sum(),
         "action_drop_probability_sum": action_drop_probability.sum(),
@@ -274,20 +276,20 @@ def compute_training_metrics(
         ),
         "env/termination_by_chaser_collision_rate": chaser_collision_termination_rate,
         "env/termination_by_evader_collision_rate": evader_collision_termination_rate,
-        "randomization/action_delay_steps": safe_rate(
-            metric_sums["action_delay_steps_sum"], metric_sums["distance_count"]
+        "randomization/action_delay_substeps": safe_rate(
+            metric_sums["action_delay_substeps_sum"], metric_sums["distance_count"]
         ),
-        "randomization/action_delay_steps_std": safe_std(
-            metric_sums["action_delay_steps_sum"],
-            metric_sums["action_delay_steps_sq_sum"],
+        "randomization/action_delay_substeps_std": safe_std(
+            metric_sums["action_delay_substeps_sum"],
+            metric_sums["action_delay_substeps_sq_sum"],
             metric_sums["distance_count"],
         ),
-        "randomization/observation_delay_steps": safe_rate(
-            metric_sums["observation_delay_steps_sum"], metric_sums["distance_count"]
+        "randomization/observation_delay_substeps": safe_rate(
+            metric_sums["observation_delay_substeps_sum"], metric_sums["distance_count"]
         ),
-        "randomization/observation_delay_steps_std": safe_std(
-            metric_sums["observation_delay_steps_sum"],
-            metric_sums["observation_delay_steps_sq_sum"],
+        "randomization/observation_delay_substeps_std": safe_std(
+            metric_sums["observation_delay_substeps_sum"],
+            metric_sums["observation_delay_substeps_sq_sum"],
             metric_sums["distance_count"],
         ),
         "randomization/obstacle_count": safe_rate(

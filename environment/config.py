@@ -65,8 +65,8 @@ class DynamicsRandomizationConfig:
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    max_action_delay_steps: int = 2
-    max_observation_delay_steps: int = 2
+    max_action_delay_substeps: int = 20
+    max_observation_delay_substeps: int = 20
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.01
     frame_drop_probability_max: float = 0.02
@@ -264,8 +264,11 @@ class EnvironmentConfig:
             raise ValueError("CoM offset limits must be nonnegative")
 
         pipe = self.pipeline_randomization
-        if pipe.max_action_delay_steps < 0 or pipe.max_observation_delay_steps < 0:
-            raise ValueError("delay steps must be nonnegative")
+        if (
+            pipe.max_action_delay_substeps < 0
+            or pipe.max_observation_delay_substeps < 0
+        ):
+            raise ValueError("delay substeps must be nonnegative")
         if pipe.max_stale_observation_steps < 0:
             raise ValueError("max_stale_observation_steps must be nonnegative")
         for name, value in (

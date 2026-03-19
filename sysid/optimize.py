@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -33,6 +34,21 @@ class CandidateResult:
 class SearchResult:
     best: CandidateResult
     history: list[dict[str, object]]
+
+
+def _format_duration(seconds: float) -> str:
+    if seconds < 60.0:
+        return f"{seconds:.1f}s"
+    minutes, remaining = divmod(seconds, 60.0)
+    if minutes < 60.0:
+        return f"{int(minutes)}m {remaining:.0f}s"
+    hours, minutes = divmod(minutes, 60.0)
+    return f"{int(hours)}h {int(minutes)}m"
+
+
+def _log(message: str, quiet: bool) -> None:
+    if not quiet:
+        print(message, flush=True)
 
 
 def _vector_from_params(params: NominalParameters) -> np.ndarray:
@@ -95,6 +111,7 @@ def _cross_entropy_search(
     generations: int,
     population_size: int,
     elite_count: int,
+    quiet: bool,
 ) -> SearchResult:
     rng = np.random.default_rng(seed)
     lows = np.array([BOUNDS[name][0] for name in PARAMETER_NAMES], dtype=np.float64)
@@ -104,7 +121,9 @@ def _cross_entropy_search(
 
     best_result: CandidateResult | None = None
     history: list[dict[str, object]] = []
+    started_at = time.perf_counter()
     for generation in range(generations):
+        generation_started_at = time.perf_counter()
         raw_samples = rng.normal(
             loc=mean, scale=std, size=(population_size, len(PARAMETER_NAMES))
         )
@@ -135,6 +154,19 @@ def _cross_entropy_search(
                 "params": asdict(best_generation.params),
             }
         )
+        elapsed = time.perf_counter() - started_at
+        completed = generation + 1
+        eta = (elapsed / completed) * (generations - completed) if completed else 0.0
+        generation_duration = time.perf_counter() - generation_started_at
+        _log(
+            (
+                f"delay={action_delay_steps} gen={completed}/{generations} "
+                f"best_val={best_generation.validation_metrics.score:.4f} "
+                f"gen_time={_format_duration(generation_duration)} "
+                f"eta={_format_duration(eta)}"
+            ),
+            quiet,
+        )
         if (
             best_result is None
             or best_generation.validation_metrics.score
@@ -153,10 +185,12 @@ def fit_nominal_parameters(
     population_size: int = 32,
     elite_count: int = 8,
     seed: int = 0,
+    quiet: bool = False,
 ) -> SearchResult:
     best: SearchResult | None = None
     run_sets = (train_runs, validation_runs)
     for action_delay_steps in range(3):
+        _log(f"starting delay sweep {action_delay_steps}/2", quiet)
         result = _cross_entropy_search(
             run_sets,
             action_delay_steps=action_delay_steps,
@@ -164,6 +198,7 @@ def fit_nominal_parameters(
             generations=generations,
             population_size=population_size,
             elite_count=elite_count,
+            quiet=quiet,
         )
         if (
             best is None
@@ -219,6 +254,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--elite-count", type=int, default=8)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
 
@@ -232,6 +268,7 @@ def main() -> None:
         population_size=args.population_size,
         elite_count=args.elite_count,
         seed=args.seed,
+        quiet=args.quiet,
     )
     best_params = result.best.params
     output = {

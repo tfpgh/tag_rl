@@ -123,6 +123,30 @@ def _console_param_summary(params: Any) -> str:
     return " ".join(parts)
 
 
+def _params_bound_summary(
+    params: Any, search_bounds: dict[str, tuple[float, float]]
+) -> dict[str, dict[str, float | bool]]:
+    summary: dict[str, dict[str, float | bool]] = {}
+    for name, value in asdict(params).items():
+        bounds = search_bounds.get(name)
+        if bounds is None:
+            continue
+        summary[name] = _bound_proximity(float(value), bounds)
+    return summary
+
+
+def _console_bound_hits(bound_summary: dict[str, dict[str, float | bool]]) -> str:
+    hits: list[str] = []
+    for name, info in bound_summary.items():
+        if info["near_lower"]:
+            hits.append(f"{name}=low")
+        elif info["near_upper"]:
+            hits.append(f"{name}=high")
+    if not hits:
+        return "bounds=none"
+    return "bounds=" + ",".join(hits)
+
+
 def _parameter_summary(
     history: list[dict[str, object]],
     best_params: Any,
@@ -289,6 +313,12 @@ def run_search(
         best_solution = cast(jax.Array, metrics["best_solution"])
         params = _decode_solution(train_evaluator, best_solution)
         mean_params = _decode_mean(train_evaluator, cast(jax.Array, state.mean))
+        param_bound_summary = _params_bound_summary(
+            params, train_evaluator.search_bounds
+        )
+        mean_param_bound_summary = _params_bound_summary(
+            mean_params, train_evaluator.search_bounds
+        )
         train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
         validation_metrics = validation_evaluator.evaluate_population(
             best_solution[None, :]
@@ -300,7 +330,9 @@ def run_search(
         record = {
             "generation": generation,
             "params": asdict(params),
+            "params_bound_summary": param_bound_summary,
             "mean_params": asdict(mean_params),
+            "mean_params_bound_summary": mean_param_bound_summary,
             "train": summarize_metrics(train_metrics),
             "validation": summarize_metrics(validation_metrics),
             "best_fitness": best_so_far,
@@ -322,6 +354,7 @@ def run_search(
                 "best_solution": best_solution,
                 "mean_params": mean_params,
                 "best_generation": generation,
+                "params_bound_summary": param_bound_summary,
             }
 
         elapsed = time.perf_counter() - started_at
@@ -335,6 +368,7 @@ def run_search(
                 f"sigma={float(state.std):.3f} gap={train_val_gap:+.4f} "
                 f"best={best_so_far:.4f}/{best_in_generation:.4f} "
                 f"{_console_param_summary(params)} "
+                f"{_console_bound_hits(param_bound_summary)} "
                 f"gen_time={_format_duration(time.perf_counter() - generation_started_at)} "
                 f"eta={_format_duration(eta)}"
             ),
@@ -350,6 +384,7 @@ def run_search(
         "best_params": asdict(cast(Any, best_record["params"])),
         "best_generation": int(best_record["best_generation"]),
         "best_mean_params": asdict(cast(Any, best_record["mean_params"])),
+        "best_params_bound_summary": cast(Any, best_record["params_bound_summary"]),
         "train_metrics": summarize_metrics(
             cast(ReplayMetrics, best_record["train_metrics"])
         ),

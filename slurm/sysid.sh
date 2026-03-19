@@ -8,8 +8,6 @@
 #SBATCH --gres=gpu:rtxa6000:1
 #SBATCH --time=12:00:00
 
-set -euo pipefail
-
 TRAIN_RUN_ROOT="data/train"
 VAL_RUN_ROOT="data/val"
 

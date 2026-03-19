@@ -5,6 +5,7 @@ from typing import Callable
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from mujoco import mjx
 
 from environment.config import EnvironmentConfig
@@ -403,7 +404,9 @@ def make_dataset_evaluator(
     )
 
     def evaluate_population_raw(population: jax.Array) -> jax.Array:
-        population = jnp.asarray(population, dtype=jnp.float32)
+        population = jnp.asarray(
+            np.asarray(jax.device_get(population)), dtype=jnp.float32
+        )
         values, action_delays, observation_delays = decode_population(population)
         population_size = int(population.shape[0])
         if device_count == 1:

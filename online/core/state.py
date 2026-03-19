@@ -16,8 +16,8 @@ class TagDetection:
 
 @dataclass(slots=True)
 class Pose2D:
-    x_mm: float
-    y_mm: float
+    x_m: float
+    y_m: float
     yaw_rad: float
     visible: bool
     last_seen_timestamp: float | None
@@ -27,7 +27,7 @@ class Pose2D:
 class ObstacleState:
     tag_id: int
     pose: Pose2D
-    size_mm: float
+    size_m: float
 
 
 @dataclass(slots=True)
@@ -38,7 +38,7 @@ class ArenaCalibration:
     image_to_warp: np.ndarray | None
     image_to_world: np.ndarray | None
     warp_size_px: tuple[int, int]
-    pixels_per_mm: float
+    pixels_per_m: float
 
 
 @dataclass(slots=True)

@@ -14,6 +14,16 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def _pose_xy(pose: dict | None) -> tuple[float, float] | None:
+    if pose is None:
+        return None
+    if "x_m" in pose and "y_m" in pose:
+        return float(pose["x_m"]), float(pose["y_m"])
+    if "x_mm" in pose and "y_mm" in pose:
+        return float(pose["x_mm"]) / 1000.0, float(pose["y_mm"]) / 1000.0
+    return None
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         print("usage: python3 -m online.inspect_run data/real_runs/<run_dir>")
@@ -48,6 +58,12 @@ def main() -> None:
     print(f"mean_detector_ms: {_mean([item['detector_ms'] for item in tracker]):.2f}")
     print(f"mean_tracking_ms: {_mean([item['tracking_ms'] for item in tracker]):.2f}")
     print(f"mean_loop_ms: {_mean([item['loop_ms'] for item in tracker]):.2f}")
+    poses_xy = [xy for pose in target_robot if (xy := _pose_xy(pose)) is not None]
+    if poses_xy:
+        xs = [xy[0] for xy in poses_xy]
+        ys = [xy[1] for xy in poses_xy]
+        print(f"target_x_range_m: {min(xs):.3f}..{max(xs):.3f}")
+        print(f"target_y_range_m: {min(ys):.3f}..{max(ys):.3f}")
 
 
 if __name__ == "__main__":

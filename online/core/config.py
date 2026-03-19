@@ -9,18 +9,18 @@ class ArenaConfig:
     chaser_tag_id: int = 4
     evader_tag_id: int = 5
     obstacle_tag_ids: tuple[int, ...] = (6,)
-    tag_size_mm: float = 100.0
-    tag_center_width_mm: float = 2338.4
-    tag_center_height_mm: float = 1119.2
-    obstacle_size_mm: float = 100.0
+    tag_size_m: float = 0.1
+    tag_center_width_m: float = 2.3384
+    tag_center_height_m: float = 1.1192
+    obstacle_size_m: float = 0.1
 
     @property
-    def board_width_mm(self) -> float:
-        return self.tag_center_width_mm - self.tag_size_mm
+    def board_width_m(self) -> float:
+        return self.tag_center_width_m - self.tag_size_m
 
     @property
-    def board_height_mm(self) -> float:
-        return self.tag_center_height_mm - self.tag_size_mm
+    def board_height_m(self) -> float:
+        return self.tag_center_height_m - self.tag_size_m
 
 
 @dataclass(slots=True)

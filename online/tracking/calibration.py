@@ -17,15 +17,15 @@ class ArenaViewLayout:
     buffer_px: int
     board_width_px: int
     board_height_px: int
-    pixels_per_mm: float
+    pixels_per_m: float
     destination_tag_centers_px: np.ndarray
-    board_width_mm: float
-    board_height_mm: float
+    board_width_m: float
+    board_height_m: float
 
 
-def corner_tag_centers_mm(arena: ArenaConfig) -> np.ndarray:
-    half_w = arena.tag_center_width_mm / 2.0
-    half_h = arena.tag_center_height_mm / 2.0
+def corner_tag_centers_m(arena: ArenaConfig) -> np.ndarray:
+    half_w = arena.tag_center_width_m / 2.0
+    half_h = arena.tag_center_height_m / 2.0
     return np.array(
         [[-half_w, half_h], [half_w, half_h], [half_w, -half_h], [-half_w, -half_h]],
         dtype=np.float32,
@@ -35,15 +35,15 @@ def corner_tag_centers_mm(arena: ArenaConfig) -> np.ndarray:
 def build_arena_view_layout(arena: ArenaConfig, view: ViewConfig) -> ArenaViewLayout:
     buffer_px = int(view.buffer_fraction * view.frame_width)
     board_width_px = view.frame_width - 2 * buffer_px
-    pixels_per_mm = board_width_px / arena.board_width_mm
-    board_height_px = int(round(arena.board_height_mm * pixels_per_mm))
+    pixels_per_m = board_width_px / arena.board_width_m
+    board_height_px = int(round(arena.board_height_m * pixels_per_m))
     frame_height = view.stats_height + buffer_px + board_height_px + buffer_px
 
     board_left_px = buffer_px
     board_top_px = view.stats_height + buffer_px
     board_right_px = board_left_px + board_width_px
     board_bottom_px = board_top_px + board_height_px
-    half_tag_px = 0.5 * arena.tag_size_mm * pixels_per_mm
+    half_tag_px = 0.5 * arena.tag_size_m * pixels_per_m
 
     return ArenaViewLayout(
         frame_width=view.frame_width,
@@ -52,7 +52,7 @@ def build_arena_view_layout(arena: ArenaConfig, view: ViewConfig) -> ArenaViewLa
         buffer_px=buffer_px,
         board_width_px=board_width_px,
         board_height_px=board_height_px,
-        pixels_per_mm=pixels_per_mm,
+        pixels_per_m=pixels_per_m,
         destination_tag_centers_px=np.array(
             [
                 [board_left_px - half_tag_px, board_top_px - half_tag_px],
@@ -62,8 +62,8 @@ def build_arena_view_layout(arena: ArenaConfig, view: ViewConfig) -> ArenaViewLa
             ],
             dtype=np.float32,
         ),
-        board_width_mm=arena.board_width_mm,
-        board_height_mm=arena.board_height_mm,
+        board_width_m=arena.board_width_m,
+        board_height_m=arena.board_height_m,
     )
 
 
@@ -73,7 +73,7 @@ class CornerTagCalibrator:
         self._required_samples = config.calibration_frames
         self._layout = layout
         self._samples = {tag_id: [] for tag_id in self._arena.corner_tag_ids}
-        self._world_tag_centers = corner_tag_centers_mm(self._arena)
+        self._world_tag_centers = corner_tag_centers_m(self._arena)
         self._image_to_warp: np.ndarray | None = None
         self._image_to_world: np.ndarray | None = None
 
@@ -127,7 +127,7 @@ class CornerTagCalibrator:
             if self._image_to_world is None
             else self._image_to_world.copy(),
             warp_size_px=(self._layout.frame_width, self._layout.frame_height),
-            pixels_per_mm=self._layout.pixels_per_mm,
+            pixels_per_m=self._layout.pixels_per_m,
         )
 
 

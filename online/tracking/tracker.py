@@ -237,8 +237,8 @@ class BoardTracker:
         edge_delta = world_edge[1] - world_edge[0]
         yaw = math.atan2(float(edge_delta[1]), float(edge_delta[0])) + math.pi
         pose = Pose2D(
-            x_mm=float(center[0]),
-            y_mm=float(center[1]),
+            x_m=float(center[0]),
+            y_m=float(center[1]),
             yaw_rad=yaw,
             visible=True,
             last_seen_timestamp=timestamp,
@@ -252,8 +252,8 @@ class BoardTracker:
             return pose
         alpha = self.config.smoothing_alpha
         smoothed = Pose2D(
-            x_mm=(1.0 - alpha) * previous.x_mm + alpha * pose.x_mm,
-            y_mm=(1.0 - alpha) * previous.y_mm + alpha * pose.y_mm,
+            x_m=(1.0 - alpha) * previous.x_m + alpha * pose.x_m,
+            y_m=(1.0 - alpha) * previous.y_m + alpha * pose.y_m,
             yaw_rad=_blend_angle(previous.yaw_rad, pose.yaw_rad, alpha),
             visible=True,
             last_seen_timestamp=pose.last_seen_timestamp,
@@ -279,7 +279,7 @@ class BoardTracker:
                 ObstacleState(
                     tag_id=detection.tag_id,
                     pose=pose,
-                    size_mm=self.config.arena.obstacle_size_mm,
+                    size_m=self.config.arena.obstacle_size_m,
                 )
             )
         return obstacles
@@ -349,7 +349,7 @@ class BoardTracker:
         stats = (
             f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
             f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
-            f" | loop {board_state.stats.loop_ms:.1f}ms | px/mm {board_state.calibration.pixels_per_mm:.3f}"
+            f" | loop {board_state.stats.loop_ms:.1f}ms | px/m {board_state.calibration.pixels_per_m:.1f}"
         )
         cv2.rectangle(
             frame,
@@ -393,7 +393,7 @@ class BoardTracker:
                 2,
             )
             return
-        center = self._world_to_view(pose.x_mm, pose.y_mm)
+        center = self._world_to_view(pose.x_m, pose.y_m)
         heading = (
             int(round(center[0] + 45.0 * math.cos(pose.yaw_rad))),
             int(round(center[1] - 45.0 * math.sin(pose.yaw_rad))),
@@ -402,7 +402,7 @@ class BoardTracker:
         cv2.line(frame, center, heading, color, 3)
         cv2.putText(
             frame,
-            f"{label} ({pose.x_mm:.0f}, {pose.y_mm:.0f})mm {math.degrees(pose.yaw_rad):.0f}deg",
+            f"{label} ({pose.x_m:.3f}, {pose.y_m:.3f})m {math.degrees(pose.yaw_rad):.0f}deg",
             (center[0] + 12, center[1] - 12),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
@@ -411,8 +411,8 @@ class BoardTracker:
         )
 
     def _draw_obstacle(self, frame: np.ndarray, obstacle: ObstacleState) -> None:
-        center = self._world_to_view(obstacle.pose.x_mm, obstacle.pose.y_mm)
-        half = int(round(0.5 * obstacle.size_mm * self.layout.pixels_per_mm))
+        center = self._world_to_view(obstacle.pose.x_m, obstacle.pose.y_m)
+        half = int(round(0.5 * obstacle.size_m * self.layout.pixels_per_m))
         corners = np.array(
             [[-half, -half], [half, -half], [half, half], [-half, half]],
             dtype=np.float32,
@@ -435,15 +435,13 @@ class BoardTracker:
             2,
         )
 
-    def _world_to_view(self, x_mm: float, y_mm: float) -> tuple[int, int]:
+    def _world_to_view(self, x_m: float, y_m: float) -> tuple[int, int]:
         left = self.layout.buffer_px
         top = self.layout.stats_height + self.layout.buffer_px
         x = left + int(
-            round((x_mm + 0.5 * self.layout.board_width_mm) * self.layout.pixels_per_mm)
+            round((x_m + 0.5 * self.layout.board_width_m) * self.layout.pixels_per_m)
         )
         y = top + int(
-            round(
-                (0.5 * self.layout.board_height_mm - y_mm) * self.layout.pixels_per_mm
-            )
+            round((0.5 * self.layout.board_height_m - y_m) * self.layout.pixels_per_m)
         )
         return x, y

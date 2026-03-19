@@ -15,8 +15,8 @@ def _pose_dict(pose: Pose2D | None) -> dict[str, Any] | None:
     if pose is None:
         return None
     return {
-        "x_mm": pose.x_mm,
-        "y_mm": pose.y_mm,
+        "x_m": pose.x_m,
+        "y_m": pose.y_m,
         "yaw_rad": pose.yaw_rad,
         "visible": pose.visible,
         "last_seen_timestamp": pose.last_seen_timestamp,
@@ -26,7 +26,7 @@ def _pose_dict(pose: Pose2D | None) -> dict[str, Any] | None:
 def _obstacle_dict(obstacle: ObstacleState) -> dict[str, Any]:
     return {
         "tag_id": obstacle.tag_id,
-        "size_mm": obstacle.size_mm,
+        "size_m": obstacle.size_m,
         "pose": _pose_dict(obstacle.pose),
     }
 
@@ -52,6 +52,8 @@ class RunLogger:
         self._samples_file = self._samples_path.open("w", encoding="utf-8")
         self._commands_file = self._commands_path.open("w", encoding="utf-8")
         self._robot_tag_id = config.teleop.robot_tag_id
+        self._chaser_tag_id = config.arena.chaser_tag_id
+        self._evader_tag_id = config.arena.evader_tag_id
         self._write_metadata(config)
 
     def close(self) -> None:
@@ -97,9 +99,9 @@ class RunLogger:
         self._commands_file.flush()
 
     def _target_pose(self, board_state: BoardState) -> Pose2D | None:
-        if self._robot_tag_id == 4:
+        if self._robot_tag_id == self._chaser_tag_id:
             return board_state.chaser
-        if self._robot_tag_id == 5:
+        if self._robot_tag_id == self._evader_tag_id:
             return board_state.evader
         return None
 
@@ -110,6 +112,7 @@ class RunLogger:
             "camera": asdict(config.camera),
             "detector": asdict(config.detector),
             "arena": asdict(config.arena),
+            "world_units": "meters",
             "tracker": {
                 "calibration_frames": config.calibration_frames,
                 "smoothing_alpha": config.smoothing_alpha,

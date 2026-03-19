@@ -170,7 +170,7 @@ def make_dataset_evaluator(
         [
             float(max_action_delay),
             float(max_observation_delay),
-            1.7,
+            3.5,
             1.7,
             0.01,
             0.01,
@@ -455,7 +455,7 @@ def make_dataset_evaluator(
     search_bounds = {
         "action_delay_substeps": (0.0, float(max_action_delay)),
         "observation_delay_substeps": (0.0, float(max_observation_delay)),
-        "floor_friction_scale": (0.55, 1.7),
+        "floor_friction_scale": (0.55, 3.5),
         "mass_scale": (0.55, 1.7),
         "com_offset_x": (-0.01, 0.01),
         "com_offset_y": (-0.01, 0.01),

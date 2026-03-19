@@ -106,12 +106,48 @@ def _recommend_config_update(
 
 
 def _dataset_summary(dataset: PreparedDataset) -> dict[str, object]:
+    segment_label_counts: dict[str, int] = {}
+    for label in dataset.segment_labels:
+        segment_label_counts[label] = segment_label_counts.get(label, 0) + 1
     return {
         "role": dataset.role,
         "segment_count": int(dataset.initial_poses.shape[0]),
         "segment_steps": int(dataset.controls.shape[1]),
         "run_names": list(dataset.run_names),
+        "segment_label_counts": segment_label_counts,
     }
+
+
+def _subset_dataset(dataset: PreparedDataset, label: str) -> PreparedDataset | None:
+    indices = [
+        index for index, value in enumerate(dataset.segment_labels) if value == label
+    ]
+    if not indices:
+        return None
+    selection = jnp.asarray(indices, dtype=jnp.int32)
+    return PreparedDataset(
+        initial_poses=dataset.initial_poses[selection],
+        controls=dataset.controls[selection],
+        references=dataset.references[selection],
+        mask=dataset.mask[selection],
+        role=dataset.role,
+        run_names=tuple(dataset.run_names[index] for index in indices),
+        segment_labels=tuple(dataset.segment_labels[index] for index in indices),
+    )
+
+
+def _per_label_metrics(
+    dataset: PreparedDataset, best_solution: jax.Array
+) -> dict[str, dict[str, float]]:
+    results: dict[str, dict[str, float]] = {}
+    for label in sorted(set(dataset.segment_labels)):
+        subset = _subset_dataset(dataset, label)
+        if subset is None:
+            continue
+        evaluator = make_dataset_evaluator(subset)
+        metrics = evaluator.evaluate_population(best_solution[None, :])[0]
+        results[label] = summarize_metrics(metrics)
+    return results
 
 
 def run_search(
@@ -175,6 +211,7 @@ def run_search(
                 "params": params,
                 "train_metrics": train_metrics,
                 "validation_metrics": validation_metrics,
+                "best_solution": best_solution,
             }
 
         elapsed = time.perf_counter() - started_at
@@ -201,6 +238,12 @@ def run_search(
         ),
         "validation_metrics": summarize_metrics(
             cast(ReplayMetrics, best_record["validation_metrics"])
+        ),
+        "train_metrics_by_label": _per_label_metrics(
+            train_dataset, cast(jax.Array, best_record["best_solution"])
+        ),
+        "validation_metrics_by_label": _per_label_metrics(
+            validation_dataset, cast(jax.Array, best_record["best_solution"])
         ),
         "history": history,
         "recommended_config_update": _recommend_config_update(

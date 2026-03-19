@@ -22,7 +22,7 @@ echo "== train analysis =="
 uv run -m sysid.analyze_run "$TRAIN_RUN_ROOT"
 
 echo "== train optimize =="
-uv run -m sysid.optimize "$TRAIN_RUN_ROOT" --population-size 512 --generations 500 --std-init 2.0
+uv run -m sysid.optimize "$TRAIN_RUN_ROOT" --population-size 512 --generations 500 --std-init 0.8
 
 echo "== val analysis =="
 uv run -m sysid.analyze_run "$VAL_RUN_ROOT"

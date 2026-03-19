@@ -86,7 +86,7 @@ def _agent_mjcf(
             <geom
                 name="{name}_left_wheel_geom"
                 type="cylinder"
-                size="0.020 0.0015"
+                size="0.020 0.0020"
                 euler="90 0 0"
                 mass="0.00425"
                 group="{GEOM_GROUP_AGENT}"
@@ -107,7 +107,7 @@ def _agent_mjcf(
             <geom
                 name="{name}_right_wheel_geom"
                 type="cylinder"
-                size="0.020 0.0015"
+                size="0.020 0.0020"
                 euler="90 0 0"
                 mass="0.00425"
                 group="{GEOM_GROUP_AGENT}"

@@ -115,7 +115,6 @@ class RunLogger:
             "world_units": "meters",
             "tracker": {
                 "calibration_frames": config.calibration_frames,
-                "smoothing_alpha": config.smoothing_alpha,
                 "use_roi_tracking": config.use_roi_tracking,
                 "roi_padding_scale": config.roi_padding_scale,
                 "min_roi_size_px": config.min_roi_size_px,

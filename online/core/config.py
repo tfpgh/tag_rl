@@ -78,7 +78,6 @@ class TrackerConfig:
     view: ViewConfig = field(default_factory=ViewConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
     calibration_frames: int = 30
-    smoothing_alpha: float = 0.85
     use_roi_tracking: bool = True
     roi_padding_scale: float = 3.0
     min_roi_size_px: int = 160

@@ -109,11 +109,13 @@ def _dataset_summary(dataset: PreparedDataset) -> dict[str, object]:
     segment_label_counts: dict[str, int] = {}
     for label in dataset.segment_labels:
         segment_label_counts[label] = segment_label_counts.get(label, 0) + 1
+    unique_run_names = sorted(set(dataset.run_names))
     return {
         "role": dataset.role,
+        "run_count": len(unique_run_names),
+        "run_names": unique_run_names,
         "segment_count": int(dataset.initial_poses.shape[0]),
         "segment_steps": int(dataset.controls.shape[1]),
-        "run_names": list(dataset.run_names),
         "segment_label_counts": segment_label_counts,
     }
 
@@ -262,6 +264,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-segment-steps", type=int, default=160)
     parser.add_argument("--min-segment-steps", type=int, default=12)
     parser.add_argument("--min-segment-duration-s", type=float, default=0.6)
+    parser.add_argument("--transition-duration-s", type=float, default=0.25)
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -271,6 +274,7 @@ def main() -> None:
     args = parse_args()
     dataset_config = DatasetConfig(
         min_segment_duration_s=args.min_segment_duration_s,
+        transition_duration_s=args.transition_duration_s,
         min_segment_steps=args.min_segment_steps,
         max_segment_steps=args.max_segment_steps,
     )

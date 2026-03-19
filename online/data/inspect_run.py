@@ -17,11 +17,7 @@ def _mean(values: list[float]) -> float:
 def _pose_xy(pose: dict | None) -> tuple[float, float] | None:
     if pose is None:
         return None
-    if "x_m" in pose and "y_m" in pose:
-        return float(pose["x_m"]), float(pose["y_m"])
-    if "x_mm" in pose and "y_mm" in pose:
-        return float(pose["x_mm"]) / 1000.0, float(pose["y_mm"]) / 1000.0
-    return None
+    return float(pose["x_m"]), float(pose["y_m"])
 
 
 def main() -> None:

@@ -36,15 +36,6 @@ OBSTACLE_COLOR = (180, 180, 80)
 ARENA_BORDER_COLOR = (50, 60, 255)
 
 
-def _wrap_angle(angle: float) -> float:
-    return math.atan2(math.sin(angle), math.cos(angle))
-
-
-def _blend_angle(previous: float, current: float, alpha: float) -> float:
-    delta = _wrap_angle(current - previous)
-    return _wrap_angle(previous + alpha * delta)
-
-
 class BoardTracker:
     def __init__(self, config: TrackerConfig) -> None:
         self.config = config
@@ -53,7 +44,6 @@ class BoardTracker:
         self.detector = AprilTagTracker(config)
         self.calibrator = CornerTagCalibrator(config, self.layout)
         self._previous_frame_time: float | None = None
-        self._smoothed_poses: dict[int, Pose2D] = {}
         self._last_detections: dict[int, TagDetection] = {}
         self._frame_index = 0
 
@@ -243,23 +233,7 @@ class BoardTracker:
             visible=True,
             last_seen_timestamp=timestamp,
         )
-        return self._smooth_pose(detection.tag_id, pose)
-
-    def _smooth_pose(self, tag_id: int, pose: Pose2D) -> Pose2D:
-        previous = self._smoothed_poses.get(tag_id)
-        if previous is None:
-            self._smoothed_poses[tag_id] = pose
-            return pose
-        alpha = self.config.smoothing_alpha
-        smoothed = Pose2D(
-            x_m=(1.0 - alpha) * previous.x_m + alpha * pose.x_m,
-            y_m=(1.0 - alpha) * previous.y_m + alpha * pose.y_m,
-            yaw_rad=_blend_angle(previous.yaw_rad, pose.yaw_rad, alpha),
-            visible=True,
-            last_seen_timestamp=pose.last_seen_timestamp,
-        )
-        self._smoothed_poses[tag_id] = smoothed
-        return smoothed
+        return pose
 
     def _obstacles_from_detections(
         self,

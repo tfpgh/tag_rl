@@ -17,14 +17,10 @@ def _pose_from_record(
 ) -> PoseSample | None:
     if payload is None:
         return None
-    if "x_m" in payload and "y_m" in payload:
-        x_m = float(payload["x_m"])
-        y_m = float(payload["y_m"])
-    elif "x_mm" in payload and "y_mm" in payload:
-        x_m = float(payload["x_mm"]) / 1000.0
-        y_m = float(payload["y_mm"]) / 1000.0
-    else:
+    if "x_m" not in payload or "y_m" not in payload:
         return None
+    x_m = float(payload["x_m"])
+    y_m = float(payload["y_m"])
     return PoseSample(
         monotonic_time=monotonic_time,
         x_m=x_m,

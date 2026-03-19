@@ -12,6 +12,7 @@ from sysid.types import PreparedDataset, RunData
 @dataclass(frozen=True, slots=True)
 class DatasetConfig:
     min_segment_duration_s: float = 0.6
+    transition_duration_s: float = 0.25
     min_segment_steps: int = 12
     max_segment_steps: int = 160
 
@@ -56,12 +57,14 @@ def build_prepared_dataset(
             continue
 
         segments = extract_command_segments(
-            run.command_timeline, min_duration_s=dataset_config.min_segment_duration_s
+            run.command_timeline,
+            min_duration_s=dataset_config.min_segment_duration_s,
+            transition_duration_s=dataset_config.transition_duration_s,
         )
         if not segments:
             _append_aligned_trajectory(
                 aligned,
-                run.label,
+                run.run_dir.name,
                 "full_run",
                 dataset_config,
                 initial_poses,
@@ -89,7 +92,7 @@ def build_prepared_dataset(
                 aligned,
                 start_index,
                 end_index,
-                run.label,
+                run.run_dir.name,
                 segment.label,
                 dataset_config,
                 initial_poses,

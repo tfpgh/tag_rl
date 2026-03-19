@@ -440,9 +440,8 @@ def make_dataset_evaluator(
             for item in raw
         ]
 
-    evaluate_population_fitness = jax.jit(
-        lambda population: evaluate_population_raw(population)[:, 4]
-    )
+    def evaluate_population_fitness(population: jax.Array) -> jax.Array:
+        return evaluate_population_raw(population)[:, 4]
 
     search_bounds = {
         "action_delay_substeps": (0.0, float(max_action_delay)),

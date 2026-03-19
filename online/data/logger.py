@@ -44,7 +44,7 @@ class RunLogger:
     def __init__(self, config: TrackerConfig, root: Path | None = None) -> None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         label = config.teleop.run_label.replace(" ", "_")
-        base = root or Path("data/real_runs")
+        base = root or Path("data")
         self.run_dir = base / f"{timestamp}_{label}"
         self.run_dir.mkdir(parents=True, exist_ok=False)
         self._samples_path = self.run_dir / "samples.jsonl"

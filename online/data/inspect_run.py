@@ -22,7 +22,7 @@ def _pose_xy(pose: dict | None) -> tuple[float, float] | None:
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print("usage: python3 -m online.inspect_run data/real_runs/<run_dir>")
+        print("usage: python3 -m online.inspect_run data/<run_dir>")
         raise SystemExit(1)
 
     run_dir = Path(sys.argv[1])

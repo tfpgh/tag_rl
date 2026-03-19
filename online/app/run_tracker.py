@@ -10,6 +10,8 @@ from online.tracking.tracker import ARENA_WINDOW_NAME, RAW_WINDOW_NAME, BoardTra
 
 def main() -> None:
     config = TrackerConfig()
+    config.display.show_raw_window = True
+    config.display.show_arena_window = True
     tracker = BoardTracker(config)
 
     show_raw = config.display.show_raw_window

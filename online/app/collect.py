@@ -37,6 +37,7 @@ def main() -> None:
 
     show_raw = config.display.show_raw_window
     show_arena = config.display.show_arena_window
+    show_preview = show_raw or show_arena
     preview_interval_s = 1.0 / config.display.preview_fps
     next_preview_time = 0.0
     frame_index = 0
@@ -72,7 +73,7 @@ def main() -> None:
                 logger.log_command(event)
 
             now = time.perf_counter()
-            if now >= next_preview_time:
+            if show_preview and now >= next_preview_time:
                 raw_view, arena_view = tracker.render_debug_views(frame, board_state)
                 if show_raw:
                     cv2.imshow(RAW_WINDOW_NAME, raw_view)
@@ -82,9 +83,10 @@ def main() -> None:
 
             _print_status(logger, frame_index, command_state.packets_sent)
 
-            key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27):
-                running = False
+            if show_preview:
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("q"), 27):
+                    running = False
 
             frame_index += 1
     finally:

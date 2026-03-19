@@ -52,8 +52,8 @@ class ViewConfig:
 
 @dataclass(slots=True)
 class DisplayConfig:
-    show_raw_window: bool = True
-    show_arena_window: bool = True
+    show_raw_window: bool = False
+    show_arena_window: bool = False
     preview_fps: float = 15.0
 
 

@@ -22,6 +22,12 @@ from sysid.stats import summarize_run
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
 LATENT_DIM = 13
+CONSOLE_PARAM_NAMES = (
+    "motor_strength_scale",
+    "wheel_damping_scale",
+    "wheel_frictionloss_scale",
+    "floor_friction_scale",
+)
 
 
 def _replace_std_init(params: Any, std_init: float) -> Any:
@@ -75,6 +81,95 @@ def _decode_solution(evaluator, solution: jax.Array):
         solution[None, :]
     )
     return decoded_values_to_params(values[0], action_delays[0], observation_delays[0])
+
+
+def _decode_mean(evaluator, mean: jax.Array):
+    return _decode_solution(evaluator, mean)
+
+
+def _normalized_param_position(value: float, bounds: tuple[float, float]) -> float:
+    lower, upper = bounds
+    if upper <= lower:
+        return 0.5
+    return (value - lower) / (upper - lower)
+
+
+def _bound_proximity(
+    value: float, bounds: tuple[float, float]
+) -> dict[str, float | bool]:
+    lower, upper = bounds
+    if upper <= lower:
+        return {
+            "normalized": 0.5,
+            "distance_to_lower": 0.0,
+            "distance_to_upper": 0.0,
+            "near_lower": False,
+            "near_upper": False,
+        }
+    normalized = _normalized_param_position(value, bounds)
+    return {
+        "normalized": normalized,
+        "distance_to_lower": value - lower,
+        "distance_to_upper": upper - value,
+        "near_lower": normalized <= 0.05,
+        "near_upper": normalized >= 0.95,
+    }
+
+
+def _console_param_summary(params: Any) -> str:
+    parts = []
+    for name in CONSOLE_PARAM_NAMES:
+        parts.append(f"{name.split('_')[0]}={getattr(params, name):.3f}")
+    return " ".join(parts)
+
+
+def _parameter_summary(
+    history: list[dict[str, object]],
+    best_params: Any,
+    mean_params: Any,
+    search_bounds: dict[str, tuple[float, float]],
+    best_generation: int,
+) -> dict[str, object]:
+    param_names = list(asdict(best_params).keys())
+    summary: dict[str, object] = {}
+    tail_count = max(1, len(history) // 5)
+    tail_history = history[-tail_count:]
+    for name in param_names:
+        best_value = float(getattr(best_params, name))
+        mean_value = float(getattr(mean_params, name))
+        trajectory = [
+            float(cast(dict[str, Any], record["params"])[name]) for record in history
+        ]
+        tail_trajectory = [
+            float(cast(dict[str, Any], record["params"])[name])
+            for record in tail_history
+        ]
+        bounds = search_bounds.get(name)
+        proximity = (
+            _bound_proximity(best_value, bounds)
+            if bounds is not None
+            else {"normalized": None}
+        )
+        late_span = (
+            max(tail_trajectory) - min(tail_trajectory) if tail_trajectory else 0.0
+        )
+        total_span = max(trajectory) - min(trajectory) if trajectory else 0.0
+        summary[name] = {
+            "best_value": best_value,
+            "mean_value": mean_value,
+            "initial_value": trajectory[0],
+            "final_value": trajectory[-1],
+            "min_visited": min(trajectory),
+            "max_visited": max(trajectory),
+            "total_span": total_span,
+            "late_span": late_span,
+            "best_generation": best_generation,
+            "stability": "stable"
+            if late_span <= 0.02 * max(total_span, 1e-6)
+            else "moving",
+            "bound_info": proximity,
+        }
+    return summary
 
 
 def _recommend_config_update(
@@ -193,16 +288,25 @@ def run_search(
 
         best_solution = cast(jax.Array, metrics["best_solution"])
         params = _decode_solution(train_evaluator, best_solution)
+        mean_params = _decode_mean(train_evaluator, cast(jax.Array, state.mean))
         train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
         validation_metrics = validation_evaluator.evaluate_population(
             best_solution[None, :]
         )[0]
+        best_so_far = float(metrics["best_fitness"])
+        best_in_generation = float(metrics["best_fitness_in_generation"])
+        train_val_gap = validation_metrics.score - train_metrics.score
 
         record = {
             "generation": generation,
             "params": asdict(params),
+            "mean_params": asdict(mean_params),
             "train": summarize_metrics(train_metrics),
             "validation": summarize_metrics(validation_metrics),
+            "best_fitness": best_so_far,
+            "best_fitness_in_generation": best_in_generation,
+            "train_val_gap": train_val_gap,
+            "sigma": float(state.std),
         }
         history.append(record)
 
@@ -216,6 +320,8 @@ def run_search(
                 "train_metrics": train_metrics,
                 "validation_metrics": validation_metrics,
                 "best_solution": best_solution,
+                "mean_params": mean_params,
+                "best_generation": generation,
             }
 
         elapsed = time.perf_counter() - started_at
@@ -226,6 +332,9 @@ def run_search(
                 f"gen={completed}/{generations} best_train={train_metrics.score:.4f} "
                 f"best_val={validation_metrics.score:.4f} "
                 f"delay={params.action_delay_substeps}/{params.observation_delay_substeps} "
+                f"sigma={float(state.std):.3f} gap={train_val_gap:+.4f} "
+                f"best={best_so_far:.4f}/{best_in_generation:.4f} "
+                f"{_console_param_summary(params)} "
                 f"gen_time={_format_duration(time.perf_counter() - generation_started_at)} "
                 f"eta={_format_duration(eta)}"
             ),
@@ -238,6 +347,8 @@ def run_search(
         "train_dataset": _dataset_summary(train_dataset),
         "validation_dataset": _dataset_summary(validation_dataset),
         "best_params": asdict(cast(Any, best_record["params"])),
+        "best_generation": int(best_record["best_generation"]),
+        "best_mean_params": asdict(cast(Any, best_record["mean_params"])),
         "train_metrics": summarize_metrics(
             cast(ReplayMetrics, best_record["train_metrics"])
         ),
@@ -253,6 +364,13 @@ def run_search(
         "history": history,
         "recommended_config_update": _recommend_config_update(
             cast(Any, best_record["params"]), train_runs
+        ),
+        "parameter_summary": _parameter_summary(
+            history,
+            cast(Any, best_record["params"]),
+            cast(Any, best_record["mean_params"]),
+            train_evaluator.search_bounds,
+            int(best_record["best_generation"]),
         ),
     }
 

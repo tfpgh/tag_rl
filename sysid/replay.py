@@ -22,6 +22,8 @@ class NominalParameters:
     observation_delay_steps: int = 0
     floor_friction_scale: float = 1.0
     mass_scale: float = 1.0
+    com_offset_x: float = 0.0
+    com_offset_y: float = 0.0
     inertia_scale: float = 1.0
     wheel_friction_scale: float = 1.0
     caster_friction_scale: float = 1.0
@@ -68,7 +70,12 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
             float(params.action_delay_steps),
             float(params.observation_delay_steps),
             params.floor_friction_scale,
+            params.mass_scale,
+            params.com_offset_x,
+            params.com_offset_y,
+            params.inertia_scale,
             params.wheel_friction_scale,
+            params.caster_friction_scale,
             params.wheel_damping_scale,
             params.wheel_frictionloss_scale,
             params.motor_strength_scale,
@@ -87,14 +94,16 @@ def decoded_values_to_params(
         action_delay_steps=int(action_delay_steps),
         observation_delay_steps=int(observation_delay_steps),
         floor_friction_scale=float(values[0]),
-        mass_scale=1.0,
-        inertia_scale=1.0,
-        wheel_friction_scale=float(values[1]),
-        caster_friction_scale=1.0,
-        wheel_damping_scale=float(values[2]),
-        wheel_frictionloss_scale=float(values[3]),
-        motor_strength_scale=float(values[4]),
-        motor_balance=float(values[5]),
+        mass_scale=float(values[1]),
+        com_offset_x=float(values[2]),
+        com_offset_y=float(values[3]),
+        inertia_scale=float(values[4]),
+        wheel_friction_scale=float(values[5]),
+        caster_friction_scale=float(values[6]),
+        wheel_damping_scale=float(values[7]),
+        wheel_frictionloss_scale=float(values[8]),
+        motor_strength_scale=float(values[9]),
+        motor_balance=float(values[10]),
     )
 
 
@@ -133,20 +142,41 @@ def make_dataset_evaluator(
     parked_yaw = 0.0
     parked_quat = yaw_to_quaternion(jnp.asarray(parked_yaw, dtype=jnp.float32))
     identity_quaternion = jnp.asarray([1.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
+    dynamics = env.config.dynamics_randomization
 
     lower_bounds = jnp.asarray(
-        [0.0, 0.0, 0.9, 0.85, 0.75, 0.75, 0.75, -0.2], dtype=jnp.float32
+        [
+            0.0,
+            0.0,
+            dynamics.floor_friction_scale_min,
+            dynamics.chassis_mass_scale_min,
+            -dynamics.com_offset_x_max,
+            -dynamics.com_offset_y_max,
+            dynamics.inertia_scale_min,
+            dynamics.wheel_friction_scale_min,
+            dynamics.caster_friction_scale_min,
+            dynamics.wheel_damping_scale_min,
+            dynamics.wheel_frictionloss_scale_min,
+            dynamics.motor_strength_scale_min,
+            -dynamics.motor_balance_delta_max,
+        ],
+        dtype=jnp.float32,
     )
     upper_bounds = jnp.asarray(
         [
             float(max_action_delay),
             float(max_observation_delay),
-            1.15,
-            1.2,
-            1.35,
-            1.35,
-            1.3,
-            0.2,
+            dynamics.floor_friction_scale_max,
+            dynamics.chassis_mass_scale_max,
+            dynamics.com_offset_x_max,
+            dynamics.com_offset_y_max,
+            dynamics.inertia_scale_max,
+            dynamics.wheel_friction_scale_max,
+            dynamics.caster_friction_scale_max,
+            dynamics.wheel_damping_scale_max,
+            dynamics.wheel_frictionloss_scale_max,
+            dynamics.motor_strength_scale_max,
+            dynamics.motor_balance_delta_max,
         ],
         dtype=jnp.float32,
     )
@@ -185,15 +215,15 @@ def make_dataset_evaluator(
     def domain_params(values: jax.Array) -> DomainParams:
         floor_friction_scale = values[0]
         agent = AgentDynamicsParams(
-            mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
-            com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
-            inertia_scale=jnp.asarray(1.0, dtype=jnp.float32),
-            wheel_friction_scale=values[1],
-            caster_friction_scale=jnp.asarray(1.0, dtype=jnp.float32),
-            wheel_damping_scale=values[2],
-            wheel_frictionloss_scale=values[3],
-            motor_strength_scale=values[4],
-            motor_balance=values[5],
+            mass_scale=values[1],
+            com_offset_xy=jnp.asarray([values[2], values[3]], dtype=jnp.float32),
+            inertia_scale=values[4],
+            wheel_friction_scale=values[5],
+            caster_friction_scale=values[6],
+            wheel_damping_scale=values[7],
+            wheel_frictionloss_scale=values[8],
+            motor_strength_scale=values[9],
+            motor_balance=values[10],
         )
         if is_chaser:
             return DomainParams(

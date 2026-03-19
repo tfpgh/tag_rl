@@ -114,6 +114,7 @@ class DatasetEvaluator:
     evaluate_population_fitness: Callable
     population_size_hint: int
     search_bounds: dict[str, tuple[float, float]]
+    device_count: int
 
 
 def make_dataset_evaluator(
@@ -121,6 +122,7 @@ def make_dataset_evaluator(
     env_config: EnvironmentConfig | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
+    device_count = max(1, jax.local_device_count())
     max_action_delay = max(
         env.config.pipeline_randomization.max_action_delay_substeps, 40
     )
@@ -393,11 +395,39 @@ def make_dataset_evaluator(
             dtype=jnp.float32,
         )
 
-    evaluate_population_raw = jax.jit(jax.vmap(evaluate_one, in_axes=(0, 0, 0)))
+    evaluate_population_raw_single = jax.jit(jax.vmap(evaluate_one, in_axes=(0, 0, 0)))
+    evaluate_population_raw_sharded = jax.pmap(
+        lambda values, action_delays, observation_delays: jax.vmap(
+            evaluate_one, in_axes=(0, 0, 0)
+        )(values, action_delays, observation_delays)
+    )
+
+    def evaluate_population_raw(population: jax.Array) -> jax.Array:
+        population = jnp.asarray(population, dtype=jnp.float32)
+        values, action_delays, observation_delays = decode_population(population)
+        population_size = int(population.shape[0])
+        if device_count == 1:
+            return evaluate_population_raw_single(
+                values, action_delays, observation_delays
+            )
+
+        remainder = population_size % device_count
+        pad = (device_count - remainder) % device_count
+        if pad > 0:
+            values = jnp.pad(values, ((0, pad), (0, 0)))
+            action_delays = jnp.pad(action_delays, ((0, pad),))
+            observation_delays = jnp.pad(observation_delays, ((0, pad),))
+
+        shard_size = values.shape[0] // device_count
+        values = values.reshape(device_count, shard_size, values.shape[-1])
+        action_delays = action_delays.reshape(device_count, shard_size)
+        observation_delays = observation_delays.reshape(device_count, shard_size)
+        raw = evaluate_population_raw_sharded(values, action_delays, observation_delays)
+        raw = raw.reshape(device_count * shard_size, raw.shape[-1])
+        return raw[:population_size]
 
     def evaluate_population(population: jax.Array) -> list[ReplayMetrics]:
-        values, action_delays, observation_delays = decode_population(population)
-        raw = evaluate_population_raw(values, action_delays, observation_delays)
+        raw = evaluate_population_raw(population)
         return [
             ReplayMetrics(
                 position_rmse_m=float(item[0]),
@@ -411,7 +441,7 @@ def make_dataset_evaluator(
         ]
 
     evaluate_population_fitness = jax.jit(
-        lambda population: evaluate_population_raw(*decode_population(population))[:, 4]
+        lambda population: evaluate_population_raw(population)[:, 4]
     )
 
     search_bounds = {
@@ -436,4 +466,5 @@ def make_dataset_evaluator(
         evaluate_population_fitness=evaluate_population_fitness,
         population_size_hint=num_segments,
         search_bounds=search_bounds,
+        device_count=device_count,
     )

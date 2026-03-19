@@ -3,9 +3,9 @@
 #SBATCH --job-name=sysid
 #SBATCH --output=logs/%j.out
 #SBATCH --partition=gpu-standard
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=64gb
-#SBATCH --gres=gpu:rtxa6000:1
+#SBATCH --gres=gpu:rtxa6000:4
 #SBATCH --time=12:00:00
 
 TRAIN_RUN_ROOT="data/train"
@@ -22,7 +22,7 @@ echo "== train analysis =="
 uv run -m sysid.analyze_run "$TRAIN_RUN_ROOT"
 
 echo "== train optimize =="
-uv run -m sysid.optimize "$TRAIN_RUN_ROOT" --population-size 256 --generations 350 --std-init 1.0
+uv run -m sysid.optimize "$TRAIN_RUN_ROOT" --population-size 512 --generations 500 --std-init 2.0
 
 echo "== val analysis =="
 uv run -m sysid.analyze_run "$VAL_RUN_ROOT"

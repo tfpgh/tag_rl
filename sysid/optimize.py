@@ -344,6 +344,7 @@ def run_search(
     assert best_record is not None
     return {
         "search_bounds": train_evaluator.search_bounds,
+        "device_count": train_evaluator.device_count,
         "train_dataset": _dataset_summary(train_dataset),
         "validation_dataset": _dataset_summary(validation_dataset),
         "best_params": asdict(cast(Any, best_record["params"])),

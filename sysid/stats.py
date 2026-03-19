@@ -4,7 +4,8 @@ import math
 from statistics import mean, pstdev
 from typing import Any
 
-from sysid.segments import extract_command_segments, filter_pose_samples
+from sysid.align import align_run
+from sysid.segments import extract_motion_segments, filter_pose_samples
 from sysid.types import RunData
 
 
@@ -50,7 +51,8 @@ def visibility_summary(run: RunData) -> dict[str, float]:
 
 
 def stationary_pose_noise(run: RunData) -> dict[str, float]:
-    segments = extract_command_segments(run.command_timeline)
+    aligned = align_run(run)
+    segments = extract_motion_segments(aligned)
     stationary_segments = [segment for segment in segments if segment.label == "idle"]
     x_residuals: list[float] = []
     y_residuals: list[float] = []
@@ -78,8 +80,9 @@ def stationary_pose_noise(run: RunData) -> dict[str, float]:
     }
 
 
-def command_summary(run: RunData) -> dict[str, Any]:
-    segments = extract_command_segments(run.command_timeline)
+def segment_summary(run: RunData) -> dict[str, Any]:
+    aligned = align_run(run)
+    segments = extract_motion_segments(aligned)
     counts: dict[str, int] = {}
     durations: dict[str, float] = {}
     for segment in segments:
@@ -99,5 +102,5 @@ def summarize_run(run: RunData) -> dict[str, Any]:
         "tracker": tracker_summary(run),
         "visibility": visibility_summary(run),
         "noise": stationary_pose_noise(run),
-        "commands": command_summary(run),
+        "segments": segment_summary(run),
     }

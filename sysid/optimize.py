@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import jax
 import jax.numpy as jnp
-from evosax.algorithms import Sep_CMA_ES
+from evosax.algorithms import CMA_ES
 
 from sysid.dataset import DatasetConfig, build_prepared_dataset
 from sysid.load_runs import discover_run_dirs, load_run
@@ -167,7 +167,7 @@ def run_search(
     train_evaluator = make_dataset_evaluator(train_dataset)
     validation_evaluator = make_dataset_evaluator(validation_dataset)
 
-    strategy = Sep_CMA_ES(
+    strategy = CMA_ES(
         population_size=population_size,
         solution=jnp.zeros((LATENT_DIM,), dtype=jnp.float32),
     )
@@ -232,6 +232,7 @@ def run_search(
 
     assert best_record is not None
     return {
+        "search_bounds": train_evaluator.search_bounds,
         "train_dataset": _dataset_summary(train_dataset),
         "validation_dataset": _dataset_summary(validation_dataset),
         "best_params": asdict(cast(Any, best_record["params"])),

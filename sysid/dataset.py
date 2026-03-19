@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import jax.numpy as jnp
 
 from sysid.align import align_run
-from sysid.segments import extract_command_segments
+from sysid.segments import extract_motion_segments
 from sysid.types import PreparedDataset, RunData
 
 
@@ -56,8 +56,8 @@ def build_prepared_dataset(
         if len(aligned.times_s) < dataset_config.min_segment_steps + 1:
             continue
 
-        segments = extract_command_segments(
-            run.command_timeline,
+        segments = extract_motion_segments(
+            aligned,
             min_duration_s=dataset_config.min_segment_duration_s,
             transition_duration_s=dataset_config.transition_duration_s,
         )

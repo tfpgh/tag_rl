@@ -113,6 +113,7 @@ class DatasetEvaluator:
     evaluate_population: Callable
     evaluate_population_fitness: Callable
     population_size_hint: int
+    search_bounds: dict[str, tuple[float, float]]
 
 
 def make_dataset_evaluator(
@@ -120,9 +121,9 @@ def make_dataset_evaluator(
     env_config: EnvironmentConfig | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
-    max_action_delay = env.config.pipeline_randomization.max_action_delay_steps
-    max_observation_delay = (
-        env.config.pipeline_randomization.max_observation_delay_steps
+    max_action_delay = max(env.config.pipeline_randomization.max_action_delay_steps, 3)
+    max_observation_delay = max(
+        env.config.pipeline_randomization.max_observation_delay_steps, 3
     )
     is_chaser = dataset.role == "chaser"
     num_segments = int(dataset.initial_poses.shape[0])
@@ -142,23 +143,21 @@ def make_dataset_evaluator(
     parked_yaw = 0.0
     parked_quat = yaw_to_quaternion(jnp.asarray(parked_yaw, dtype=jnp.float32))
     identity_quaternion = jnp.asarray([1.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
-    dynamics = env.config.dynamics_randomization
-
     lower_bounds = jnp.asarray(
         [
             0.0,
             0.0,
-            dynamics.floor_friction_scale_min,
-            dynamics.chassis_mass_scale_min,
-            -dynamics.com_offset_x_max,
-            -dynamics.com_offset_y_max,
-            dynamics.inertia_scale_min,
-            dynamics.wheel_friction_scale_min,
-            dynamics.caster_friction_scale_min,
-            dynamics.wheel_damping_scale_min,
-            dynamics.wheel_frictionloss_scale_min,
-            dynamics.motor_strength_scale_min,
-            -dynamics.motor_balance_delta_max,
+            0.7,
+            0.7,
+            -0.006,
+            -0.006,
+            0.6,
+            0.7,
+            0.6,
+            0.4,
+            0.4,
+            0.6,
+            -0.2,
         ],
         dtype=jnp.float32,
     )
@@ -166,17 +165,17 @@ def make_dataset_evaluator(
         [
             float(max_action_delay),
             float(max_observation_delay),
-            dynamics.floor_friction_scale_max,
-            dynamics.chassis_mass_scale_max,
-            dynamics.com_offset_x_max,
-            dynamics.com_offset_y_max,
-            dynamics.inertia_scale_max,
-            dynamics.wheel_friction_scale_max,
-            dynamics.caster_friction_scale_max,
-            dynamics.wheel_damping_scale_max,
-            dynamics.wheel_frictionloss_scale_max,
-            dynamics.motor_strength_scale_max,
-            dynamics.motor_balance_delta_max,
+            1.4,
+            1.4,
+            0.006,
+            0.006,
+            1.6,
+            1.4,
+            1.6,
+            1.8,
+            2.0,
+            1.6,
+            0.2,
         ],
         dtype=jnp.float32,
     )
@@ -405,9 +404,26 @@ def make_dataset_evaluator(
         lambda population: evaluate_population_raw(*decode_population(population))[:, 4]
     )
 
+    search_bounds = {
+        "action_delay_steps": (0.0, float(max_action_delay)),
+        "observation_delay_steps": (0.0, float(max_observation_delay)),
+        "floor_friction_scale": (0.7, 1.4),
+        "mass_scale": (0.7, 1.4),
+        "com_offset_x": (-0.006, 0.006),
+        "com_offset_y": (-0.006, 0.006),
+        "inertia_scale": (0.6, 1.6),
+        "wheel_friction_scale": (0.7, 1.4),
+        "caster_friction_scale": (0.6, 1.6),
+        "wheel_damping_scale": (0.4, 1.8),
+        "wheel_frictionloss_scale": (0.4, 2.0),
+        "motor_strength_scale": (0.6, 1.6),
+        "motor_balance": (-0.2, 0.2),
+    }
+
     return DatasetEvaluator(
         decode_population=decode_population,
         evaluate_population=evaluate_population,
         evaluate_population_fitness=evaluate_population_fitness,
         population_size_hint=num_segments,
+        search_bounds=search_bounds,
     )

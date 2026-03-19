@@ -122,10 +122,10 @@ def make_dataset_evaluator(
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
     max_action_delay = max(
-        env.config.pipeline_randomization.max_action_delay_substeps, 30
+        env.config.pipeline_randomization.max_action_delay_substeps, 40
     )
     max_observation_delay = max(
-        env.config.pipeline_randomization.max_observation_delay_substeps, 30
+        env.config.pipeline_randomization.max_observation_delay_substeps, 40
     )
     is_chaser = dataset.role == "chaser"
     num_segments = int(dataset.initial_poses.shape[0])
@@ -149,17 +149,17 @@ def make_dataset_evaluator(
         [
             0.0,
             0.0,
-            0.7,
-            0.7,
-            -0.006,
-            -0.006,
-            0.6,
-            0.7,
-            0.6,
-            0.4,
-            0.4,
-            0.6,
-            -0.2,
+            0.55,
+            0.55,
+            -0.01,
+            -0.01,
+            0.45,
+            0.55,
+            0.45,
+            0.2,
+            0.2,
+            0.45,
+            -0.3,
         ],
         dtype=jnp.float32,
     )
@@ -167,17 +167,17 @@ def make_dataset_evaluator(
         [
             float(max_action_delay),
             float(max_observation_delay),
-            1.4,
-            1.4,
-            0.006,
-            0.006,
-            1.6,
-            1.4,
-            1.6,
-            1.8,
+            1.7,
+            1.7,
+            0.01,
+            0.01,
             2.0,
-            1.6,
-            0.2,
+            1.7,
+            2.0,
+            2.5,
+            2.8,
+            1.9,
+            0.3,
         ],
         dtype=jnp.float32,
     )
@@ -417,17 +417,17 @@ def make_dataset_evaluator(
     search_bounds = {
         "action_delay_substeps": (0.0, float(max_action_delay)),
         "observation_delay_substeps": (0.0, float(max_observation_delay)),
-        "floor_friction_scale": (0.7, 1.4),
-        "mass_scale": (0.7, 1.4),
-        "com_offset_x": (-0.006, 0.006),
-        "com_offset_y": (-0.006, 0.006),
-        "inertia_scale": (0.6, 1.6),
-        "wheel_friction_scale": (0.7, 1.4),
-        "caster_friction_scale": (0.6, 1.6),
-        "wheel_damping_scale": (0.4, 1.8),
-        "wheel_frictionloss_scale": (0.4, 2.0),
-        "motor_strength_scale": (0.6, 1.6),
-        "motor_balance": (-0.2, 0.2),
+        "floor_friction_scale": (0.55, 1.7),
+        "mass_scale": (0.55, 1.7),
+        "com_offset_x": (-0.01, 0.01),
+        "com_offset_y": (-0.01, 0.01),
+        "inertia_scale": (0.45, 2.0),
+        "wheel_friction_scale": (0.55, 1.7),
+        "caster_friction_scale": (0.45, 2.0),
+        "wheel_damping_scale": (0.2, 2.5),
+        "wheel_frictionloss_scale": (0.2, 2.8),
+        "motor_strength_scale": (0.45, 1.9),
+        "motor_balance": (-0.3, 0.3),
     }
 
     return DatasetEvaluator(

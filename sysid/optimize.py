@@ -3,37 +3,24 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 
-import numpy as np
+import jax
+import jax.numpy as jnp
+from evosax.algorithms import Sep_CMA_ES
 
+from sysid.dataset import DatasetConfig, build_prepared_dataset
 from sysid.load_runs import discover_run_dirs, load_run
-from sysid.replay import NominalParameters, evaluate_run, summarize_metrics
-from sysid.types import ReplayMetrics, RunData
+from sysid.replay import (
+    decoded_values_to_params,
+    make_dataset_evaluator,
+    summarize_metrics,
+)
+from sysid.stats import summarize_run
+from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
-BOUNDS = {
-    "floor_friction_scale": (0.9, 1.15),
-    "wheel_friction_scale": (0.85, 1.2),
-    "wheel_damping_scale": (0.75, 1.35),
-    "wheel_frictionloss_scale": (0.75, 1.35),
-    "motor_strength_scale": (0.75, 1.3),
-    "motor_balance": (-0.2, 0.2),
-}
-PARAMETER_NAMES = tuple(BOUNDS.keys())
-
-
-@dataclass(frozen=True, slots=True)
-class CandidateResult:
-    params: NominalParameters
-    train_metrics: ReplayMetrics
-    validation_metrics: ReplayMetrics
-
-
-@dataclass(frozen=True, slots=True)
-class SearchResult:
-    best: CandidateResult
-    history: list[dict[str, object]]
+LATENT_DIM = 7
 
 
 def _format_duration(seconds: float) -> str:
@@ -51,27 +38,12 @@ def _log(message: str, quiet: bool) -> None:
         print(message, flush=True)
 
 
-def _vector_from_params(params: NominalParameters) -> np.ndarray:
-    return np.array(
-        [getattr(params, name) for name in PARAMETER_NAMES], dtype=np.float64
-    )
-
-
-def _params_from_vector(
-    vector: np.ndarray, action_delay_steps: int
-) -> NominalParameters:
-    payload = {
-        name: float(value) for name, value in zip(PARAMETER_NAMES, vector, strict=True)
-    }
-    return NominalParameters(action_delay_steps=action_delay_steps, **payload)
-
-
-def _clip_to_bounds(vector: np.ndarray) -> np.ndarray:
-    clipped = vector.copy()
-    for index, name in enumerate(PARAMETER_NAMES):
-        low, high = BOUNDS[name]
-        clipped[index] = np.clip(clipped[index], low, high)
-    return clipped
+def _split_runs(run_dirs: list[str]) -> tuple[list[RunData], list[RunData]]:
+    runs = [load_run(path) for path in discover_run_dirs(run_dirs)]
+    if len(runs) <= 1:
+        return runs, runs
+    validation_count = max(1, len(runs) // 4)
+    return runs[:-validation_count], runs[-validation_count:]
 
 
 def _mean_metrics(metrics_list: list[ReplayMetrics]) -> ReplayMetrics:
@@ -93,135 +65,14 @@ def _mean_metrics(metrics_list: list[ReplayMetrics]) -> ReplayMetrics:
     )
 
 
-def _evaluate_candidate(
-    run_sets: tuple[list[RunData], list[RunData]], params: NominalParameters
-) -> CandidateResult:
-    train_runs, validation_runs = run_sets
-    train_metrics = [evaluate_run(run, params) for run in train_runs]
-    validation_metrics = [evaluate_run(run, params) for run in validation_runs]
-    train_mean = _mean_metrics(train_metrics)
-    validation_mean = _mean_metrics(validation_metrics)
-    return CandidateResult(params, train_mean, validation_mean)
-
-
-def _cross_entropy_search(
-    run_sets: tuple[list[RunData], list[RunData]],
-    action_delay_steps: int,
-    seed: int,
-    generations: int,
-    population_size: int,
-    elite_count: int,
-    quiet: bool,
-) -> SearchResult:
-    rng = np.random.default_rng(seed)
-    lows = np.array([BOUNDS[name][0] for name in PARAMETER_NAMES], dtype=np.float64)
-    highs = np.array([BOUNDS[name][1] for name in PARAMETER_NAMES], dtype=np.float64)
-    mean = _vector_from_params(NominalParameters())
-    std = 0.25 * (highs - lows)
-
-    best_result: CandidateResult | None = None
-    history: list[dict[str, object]] = []
-    started_at = time.perf_counter()
-    for generation in range(generations):
-        generation_started_at = time.perf_counter()
-        raw_samples = rng.normal(
-            loc=mean, scale=std, size=(population_size, len(PARAMETER_NAMES))
-        )
-        candidates = np.vstack([_clip_to_bounds(sample) for sample in raw_samples])
-        results = [
-            _evaluate_candidate(
-                run_sets, _params_from_vector(candidate, action_delay_steps)
-            )
-            for candidate in candidates
-        ]
-        ranked = sorted(
-            results,
-            key=lambda item: (
-                item.validation_metrics.score,
-                item.train_metrics.score,
-            ),
-        )
-        elites = ranked[:elite_count]
-        elite_vectors = np.vstack([_vector_from_params(item.params) for item in elites])
-        mean = elite_vectors.mean(axis=0)
-        std = np.maximum(elite_vectors.std(axis=0), 0.05 * (highs - lows))
-        best_generation = elites[0]
-        history.append(
-            {
-                "generation": generation,
-                "train": summarize_metrics(best_generation.train_metrics),
-                "validation": summarize_metrics(best_generation.validation_metrics),
-                "params": asdict(best_generation.params),
-            }
-        )
-        elapsed = time.perf_counter() - started_at
-        completed = generation + 1
-        eta = (elapsed / completed) * (generations - completed) if completed else 0.0
-        generation_duration = time.perf_counter() - generation_started_at
-        _log(
-            (
-                f"delay={action_delay_steps} gen={completed}/{generations} "
-                f"best_val={best_generation.validation_metrics.score:.4f} "
-                f"gen_time={_format_duration(generation_duration)} "
-                f"eta={_format_duration(eta)}"
-            ),
-            quiet,
-        )
-        if (
-            best_result is None
-            or best_generation.validation_metrics.score
-            < best_result.validation_metrics.score
-        ):
-            best_result = best_generation
-
-    assert best_result is not None
-    return SearchResult(best_result, history)
-
-
-def fit_nominal_parameters(
-    train_runs: list[RunData],
-    validation_runs: list[RunData],
-    generations: int = 12,
-    population_size: int = 32,
-    elite_count: int = 8,
-    seed: int = 0,
-    quiet: bool = False,
-) -> SearchResult:
-    best: SearchResult | None = None
-    run_sets = (train_runs, validation_runs)
-    for action_delay_steps in range(3):
-        _log(f"starting delay sweep {action_delay_steps}/2", quiet)
-        result = _cross_entropy_search(
-            run_sets,
-            action_delay_steps=action_delay_steps,
-            seed=seed + action_delay_steps,
-            generations=generations,
-            population_size=population_size,
-            elite_count=elite_count,
-            quiet=quiet,
-        )
-        if (
-            best is None
-            or result.best.validation_metrics.score < best.best.validation_metrics.score
-        ):
-            best = result
-    assert best is not None
-    return best
-
-
-def _split_runs(run_dirs: list[str]) -> tuple[list[RunData], list[RunData]]:
-    runs = [load_run(path) for path in discover_run_dirs(run_dirs)]
-    if len(runs) <= 1:
-        return runs, runs
-    validation_count = max(1, len(runs) // 4)
-    return runs[:-validation_count], runs[-validation_count:]
+def _decode_solution(evaluator, solution: jax.Array):
+    values, delays = evaluator.decode_population(solution[None, :])
+    return decoded_values_to_params(values[0], delays[0])
 
 
 def _recommend_config_update(
-    best_params: NominalParameters, train_runs: list[RunData]
+    best_params, train_runs: list[RunData]
 ) -> dict[str, object]:
-    from sysid.stats import summarize_run
-
     summaries = [summarize_run(run) for run in train_runs]
     position_noise = [summary["noise"]["position_noise_std_m"] for summary in summaries]
     yaw_noise = [summary["noise"]["yaw_noise_std_rad"] for summary in summaries]
@@ -246,13 +97,115 @@ def _recommend_config_update(
     }
 
 
+def _dataset_summary(dataset: PreparedDataset) -> dict[str, object]:
+    return {
+        "role": dataset.role,
+        "segment_count": int(dataset.initial_poses.shape[0]),
+        "segment_steps": int(dataset.controls.shape[1]),
+        "run_names": list(dataset.run_names),
+    }
+
+
+def run_search(
+    train_runs: list[RunData],
+    validation_runs: list[RunData],
+    dataset_config: DatasetConfig,
+    population_size: int,
+    generations: int,
+    seed: int,
+    std_init: float,
+    quiet: bool,
+) -> dict[str, object]:
+    train_dataset = build_prepared_dataset(train_runs, config=dataset_config)
+    validation_dataset = build_prepared_dataset(validation_runs, config=dataset_config)
+    train_evaluator = make_dataset_evaluator(train_dataset)
+    validation_evaluator = make_dataset_evaluator(validation_dataset)
+
+    strategy = Sep_CMA_ES(
+        population_size=population_size,
+        solution=jnp.zeros((LATENT_DIM,), dtype=jnp.float32),
+    )
+    es_params = strategy.default_params.replace(std_init=std_init)
+    key = jax.random.key(seed)
+    init_key, key = jax.random.split(key)
+    state = strategy.init(
+        init_key, jnp.zeros((LATENT_DIM,), dtype=jnp.float32), es_params
+    )
+
+    best_record: dict[str, object] | None = None
+    history: list[dict[str, object]] = []
+    started_at = time.perf_counter()
+
+    for generation in range(generations):
+        generation_started_at = time.perf_counter()
+        ask_key, tell_key, key = jax.random.split(key, 3)
+        population, state = strategy.ask(ask_key, state, es_params)
+        fitness = train_evaluator.evaluate_population_fitness(population)
+        state, metrics = strategy.tell(tell_key, population, fitness, state, es_params)
+
+        best_solution = metrics["best_solution"]
+        params = _decode_solution(train_evaluator, best_solution)
+        train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
+        validation_metrics = validation_evaluator.evaluate_population(
+            best_solution[None, :]
+        )[0]
+
+        record = {
+            "generation": generation,
+            "params": asdict(params),
+            "train": summarize_metrics(train_metrics),
+            "validation": summarize_metrics(validation_metrics),
+        }
+        history.append(record)
+
+        if (
+            best_record is None
+            or validation_metrics.score < best_record["validation_metrics"].score
+        ):
+            best_record = {
+                "params": params,
+                "train_metrics": train_metrics,
+                "validation_metrics": validation_metrics,
+            }
+
+        elapsed = time.perf_counter() - started_at
+        completed = generation + 1
+        eta = (elapsed / completed) * (generations - completed) if completed else 0.0
+        _log(
+            (
+                f"gen={completed}/{generations} best_train={train_metrics.score:.4f} "
+                f"best_val={validation_metrics.score:.4f} "
+                f"delay={params.action_delay_steps} "
+                f"gen_time={_format_duration(time.perf_counter() - generation_started_at)} "
+                f"eta={_format_duration(eta)}"
+            ),
+            quiet,
+        )
+
+    assert best_record is not None
+    return {
+        "train_dataset": _dataset_summary(train_dataset),
+        "validation_dataset": _dataset_summary(validation_dataset),
+        "best_params": asdict(best_record["params"]),
+        "train_metrics": summarize_metrics(best_record["train_metrics"]),
+        "validation_metrics": summarize_metrics(best_record["validation_metrics"]),
+        "history": history,
+        "recommended_config_update": _recommend_config_update(
+            best_record["params"], train_runs
+        ),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dirs", nargs="+")
-    parser.add_argument("--generations", type=int, default=12)
-    parser.add_argument("--population-size", type=int, default=32)
-    parser.add_argument("--elite-count", type=int, default=8)
+    parser.add_argument("--generations", type=int, default=20)
+    parser.add_argument("--population-size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--std-init", type=float, default=0.75)
+    parser.add_argument("--max-segment-steps", type=int, default=160)
+    parser.add_argument("--min-segment-steps", type=int, default=12)
+    parser.add_argument("--min-segment-duration-s", type=float, default=0.6)
     parser.add_argument("--output", type=str, default=None)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
@@ -260,26 +213,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    dataset_config = DatasetConfig(
+        min_segment_duration_s=args.min_segment_duration_s,
+        min_segment_steps=args.min_segment_steps,
+        max_segment_steps=args.max_segment_steps,
+    )
     train_runs, validation_runs = _split_runs(args.run_dirs)
-    result = fit_nominal_parameters(
+    output = run_search(
         train_runs,
         validation_runs,
-        generations=args.generations,
+        dataset_config=dataset_config,
         population_size=args.population_size,
-        elite_count=args.elite_count,
+        generations=args.generations,
         seed=args.seed,
+        std_init=args.std_init,
         quiet=args.quiet,
     )
-    best_params = result.best.params
-    output = {
-        "train_runs": [str(run.run_dir) for run in train_runs],
-        "validation_runs": [str(run.run_dir) for run in validation_runs],
-        "best_params": asdict(best_params),
-        "train_metrics": summarize_metrics(result.best.train_metrics),
-        "validation_metrics": summarize_metrics(result.best.validation_metrics),
-        "history": result.history,
-        "recommended_config_update": _recommend_config_update(best_params, train_runs),
-    }
     payload = json.dumps(output, indent=2, sort_keys=True)
     if args.output is not None:
         Path(args.output).write_text(payload + "\n", encoding="utf-8")

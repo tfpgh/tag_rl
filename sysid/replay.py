@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Literal
+from typing import Callable
 
-import mujoco
-import numpy as np
+import jax
+import jax.numpy as jnp
+from mujoco import mjx
 
 from environment.config import EnvironmentConfig
-from environment.mjcf import generate_mjcf
-from environment.mujoco_data import JointQposSlices
-from sysid.align import align_run
-from sysid.types import AlignedTrajectory, ReplayMetrics, RunData
-
-RobotRole = Literal["chaser", "evader"]
+from environment.environment import TagEnvironment
+from environment.mujoco_data import yaw_to_quaternion
+from environment.randomization import randomize_model
+from environment.types import AgentDynamicsParams, DomainParams
+from sysid.dataset import build_prepared_dataset
+from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,311 +30,10 @@ class NominalParameters:
     motor_balance: float = 0.0
 
 
-@dataclass(frozen=True, slots=True)
-class ModelIndices:
-    floor_geom_id: int
-    chaser_body_id: int
-    evader_body_id: int
-    chaser_left_wheel_geom_id: int
-    chaser_right_wheel_geom_id: int
-    chaser_caster_geom_id: int
-    evader_left_wheel_geom_id: int
-    evader_right_wheel_geom_id: int
-    evader_caster_geom_id: int
-    chaser_left_wheel_dof_id: int
-    chaser_right_wheel_dof_id: int
-    evader_left_wheel_dof_id: int
-    evader_right_wheel_dof_id: int
-    chaser_left_actuator_id: int
-    chaser_right_actuator_id: int
-    evader_left_actuator_id: int
-    evader_right_actuator_id: int
-
-
-def infer_target_role(run: RunData) -> RobotRole:
+def infer_target_role(run: RunData) -> str:
     if run.target_robot_tag_id == 5:
         return "evader"
     return "chaser"
-
-
-def _yaw_to_quaternion(yaw: float) -> np.ndarray:
-    return np.array([np.cos(yaw / 2.0), 0.0, 0.0, np.sin(yaw / 2.0)], dtype=np.float64)
-
-
-def _quaternion_to_yaw(quaternion: np.ndarray) -> float:
-    w, x, y, z = quaternion
-    return float(np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z)))
-
-
-@lru_cache(maxsize=1)
-def _base_model(
-    config_key: tuple[float, ...],
-) -> tuple[mujoco.MjModel, ModelIndices, JointQposSlices, int]:
-    config = EnvironmentConfig()
-    xml = generate_mjcf(config, mode="training")
-    model = mujoco.MjModel.from_xml_string(xml)
-    slices = JointQposSlices(model)
-    substeps_per_action = round(1.0 / (config.action_frequency * model.opt.timestep))
-
-    def geom_id(name: str) -> int:
-        return mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name)
-
-    def body_id(name: str) -> int:
-        return mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
-
-    def joint_dof_id(name: str) -> int:
-        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
-        return int(model.jnt_dofadr[joint_id])
-
-    def actuator_id(name: str) -> int:
-        return mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
-
-    indices = ModelIndices(
-        floor_geom_id=geom_id("floor"),
-        chaser_body_id=body_id("chaser"),
-        evader_body_id=body_id("evader"),
-        chaser_left_wheel_geom_id=geom_id("chaser_left_wheel_geom"),
-        chaser_right_wheel_geom_id=geom_id("chaser_right_wheel_geom"),
-        chaser_caster_geom_id=geom_id("chaser_caster_ball_geom"),
-        evader_left_wheel_geom_id=geom_id("evader_left_wheel_geom"),
-        evader_right_wheel_geom_id=geom_id("evader_right_wheel_geom"),
-        evader_caster_geom_id=geom_id("evader_caster_ball_geom"),
-        chaser_left_wheel_dof_id=joint_dof_id("chaser_left_wheel_joint"),
-        chaser_right_wheel_dof_id=joint_dof_id("chaser_right_wheel_joint"),
-        evader_left_wheel_dof_id=joint_dof_id("evader_left_wheel_joint"),
-        evader_right_wheel_dof_id=joint_dof_id("evader_right_wheel_joint"),
-        chaser_left_actuator_id=actuator_id("chaser_left_motor"),
-        chaser_right_actuator_id=actuator_id("chaser_right_motor"),
-        evader_left_actuator_id=actuator_id("evader_left_motor"),
-        evader_right_actuator_id=actuator_id("evader_right_motor"),
-    )
-    return model, indices, slices, substeps_per_action
-
-
-def _model_cache_key(config: EnvironmentConfig) -> tuple[float, ...]:
-    return (
-        config.arena_width,
-        config.arena_height,
-        config.agent_radius,
-        config.agent_z,
-        float(config.action_frequency),
-    )
-
-
-def _clone_model(
-    config: EnvironmentConfig,
-) -> tuple[mujoco.MjModel, ModelIndices, JointQposSlices, int]:
-    base_model, indices, slices, substeps = _base_model(_model_cache_key(config))
-    model = mujoco.MjModel.from_xml_string(generate_mjcf(config, mode="training"))
-    return model, indices, slices, substeps
-
-
-def _agent_indices(
-    indices: ModelIndices, role: RobotRole
-) -> tuple[int, int, int, int, int, int, int]:
-    if role == "chaser":
-        return (
-            indices.chaser_body_id,
-            indices.chaser_left_wheel_geom_id,
-            indices.chaser_right_wheel_geom_id,
-            indices.chaser_caster_geom_id,
-            indices.chaser_left_wheel_dof_id,
-            indices.chaser_right_wheel_dof_id,
-            indices.chaser_left_actuator_id,
-        )
-    return (
-        indices.evader_body_id,
-        indices.evader_left_wheel_geom_id,
-        indices.evader_right_wheel_geom_id,
-        indices.evader_caster_geom_id,
-        indices.evader_left_wheel_dof_id,
-        indices.evader_right_wheel_dof_id,
-        indices.evader_left_actuator_id,
-    )
-
-
-def _apply_nominal_parameters(
-    model: mujoco.MjModel,
-    indices: ModelIndices,
-    params: NominalParameters,
-    role: RobotRole,
-) -> None:
-    model.geom_friction[indices.floor_geom_id, 0] *= params.floor_friction_scale
-
-    if role == "chaser":
-        body_id = indices.chaser_body_id
-        left_geom_id = indices.chaser_left_wheel_geom_id
-        right_geom_id = indices.chaser_right_wheel_geom_id
-        caster_geom_id = indices.chaser_caster_geom_id
-        left_dof_id = indices.chaser_left_wheel_dof_id
-        right_dof_id = indices.chaser_right_wheel_dof_id
-        left_actuator_id = indices.chaser_left_actuator_id
-        right_actuator_id = indices.chaser_right_actuator_id
-    else:
-        body_id = indices.evader_body_id
-        left_geom_id = indices.evader_left_wheel_geom_id
-        right_geom_id = indices.evader_right_wheel_geom_id
-        caster_geom_id = indices.evader_caster_geom_id
-        left_dof_id = indices.evader_left_wheel_dof_id
-        right_dof_id = indices.evader_right_wheel_dof_id
-        left_actuator_id = indices.evader_left_actuator_id
-        right_actuator_id = indices.evader_right_actuator_id
-
-    wheel_scale_left = params.wheel_friction_scale * (1.0 + params.motor_balance)
-    wheel_scale_right = params.wheel_friction_scale * (1.0 - params.motor_balance)
-    motor_scale_left = params.motor_strength_scale * (1.0 + params.motor_balance)
-    motor_scale_right = params.motor_strength_scale * (1.0 - params.motor_balance)
-
-    model.geom_friction[left_geom_id, 0] *= wheel_scale_left
-    model.geom_friction[right_geom_id, 0] *= wheel_scale_right
-    model.geom_friction[caster_geom_id, 0] *= params.caster_friction_scale
-    model.body_mass[body_id] *= params.mass_scale
-    model.body_inertia[body_id] *= params.mass_scale * params.inertia_scale
-    model.dof_damping[left_dof_id] *= params.wheel_damping_scale
-    model.dof_damping[right_dof_id] *= params.wheel_damping_scale
-    model.dof_frictionloss[left_dof_id] *= params.wheel_frictionloss_scale
-    model.dof_frictionloss[right_dof_id] *= params.wheel_frictionloss_scale
-    model.actuator_gear[left_actuator_id, 0] *= motor_scale_left
-    model.actuator_gear[right_actuator_id, 0] *= motor_scale_right
-
-
-def _parked_pose(config: EnvironmentConfig) -> tuple[np.ndarray, float]:
-    return (
-        np.array(
-            [
-                0.5 * config.arena_width - 2.0 * config.agent_radius,
-                -(0.5 * config.arena_height - 2.0 * config.agent_radius),
-            ],
-            dtype=np.float64,
-        ),
-        0.0,
-    )
-
-
-def _set_initial_state(
-    data: mujoco.MjData,
-    slices: JointQposSlices,
-    trajectory: AlignedTrajectory,
-    role: RobotRole,
-    config: EnvironmentConfig,
-) -> None:
-    data.qpos[:] = 0.0
-    data.qvel[:] = 0.0
-    target_xy = np.array([trajectory.x_m[0], trajectory.y_m[0]], dtype=np.float64)
-    parked_xy, parked_yaw = _parked_pose(config)
-    target_quat = _yaw_to_quaternion(trajectory.yaw_rad[0])
-    parked_quat = _yaw_to_quaternion(parked_yaw)
-    identity_quaternion = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-
-    if role == "chaser":
-        chaser_xy, chaser_quat = target_xy, target_quat
-        evader_xy, evader_quat = parked_xy, parked_quat
-    else:
-        chaser_xy, chaser_quat = parked_xy, parked_quat
-        evader_xy, evader_quat = target_xy, target_quat
-
-    data.qpos[slices.chaser_root.start : slices.chaser_root.start + 3] = [
-        chaser_xy[0],
-        chaser_xy[1],
-        config.agent_z,
-    ]
-    data.qpos[slices.chaser_root.start + 3 : slices.chaser_root.start + 7] = chaser_quat
-    data.qpos[slices.chaser_caster_ball_joint] = identity_quaternion
-    data.qpos[slices.evader_root.start : slices.evader_root.start + 3] = [
-        evader_xy[0],
-        evader_xy[1],
-        config.agent_z,
-    ]
-    data.qpos[slices.evader_root.start + 3 : slices.evader_root.start + 7] = evader_quat
-    data.qpos[slices.evader_caster_ball_joint] = identity_quaternion
-    mujoco.mj_forward(data.model, data)
-
-
-def _command_array(trajectory: AlignedTrajectory, role: RobotRole) -> np.ndarray:
-    left = np.asarray(trajectory.left, dtype=np.float64)
-    right = np.asarray(trajectory.right, dtype=np.float64)
-    zeros = np.zeros_like(left)
-    if role == "chaser":
-        return np.stack([left, right, zeros, zeros], axis=-1)
-    return np.stack([zeros, zeros, left, right], axis=-1)
-
-
-def _apply_action_delay(ctrl: np.ndarray, action_delay_steps: int) -> np.ndarray:
-    if action_delay_steps <= 0:
-        return ctrl
-    delayed = np.zeros_like(ctrl)
-    delayed[action_delay_steps:] = ctrl[:-action_delay_steps]
-    return delayed
-
-
-def replay_aligned_trajectory(
-    trajectory: AlignedTrajectory,
-    params: NominalParameters,
-    target_role: RobotRole,
-    env_config: EnvironmentConfig | None = None,
-) -> np.ndarray:
-    if not trajectory.times_s:
-        return np.zeros((0, 3), dtype=np.float64)
-
-    config = env_config or EnvironmentConfig()
-    model, indices, slices, substeps_per_action = _clone_model(config)
-    data = mujoco.MjData(model)
-    _apply_nominal_parameters(model, indices, params, target_role)
-    _set_initial_state(data, slices, trajectory, target_role, config)
-    controls = _apply_action_delay(
-        _command_array(trajectory, target_role), params.action_delay_steps
-    )
-
-    poses = np.zeros((len(trajectory.times_s), 3), dtype=np.float64)
-    for index, ctrl in enumerate(controls):
-        data.ctrl[:] = ctrl
-        for _ in range(substeps_per_action):
-            mujoco.mj_step(model, data)
-        root_slice = (
-            slices.chaser_root if target_role == "chaser" else slices.evader_root
-        )
-        root_qpos = data.qpos[root_slice]
-        poses[index, 0] = root_qpos[0]
-        poses[index, 1] = root_qpos[1]
-        poses[index, 2] = _quaternion_to_yaw(np.asarray(root_qpos[3:7]))
-    return poses
-
-
-def evaluate_run(
-    run: RunData,
-    params: NominalParameters,
-    target_hz: float | None = None,
-    env_config: EnvironmentConfig | None = None,
-) -> ReplayMetrics:
-    trajectory = align_run(run, target_hz=target_hz)
-    if not trajectory.times_s:
-        return ReplayMetrics(0.0, 0.0, 0.0, 0.0, float("inf"), 0)
-
-    predicted = replay_aligned_trajectory(
-        trajectory, params, infer_target_role(run), env_config=env_config
-    )
-    reference = np.stack([trajectory.x_m, trajectory.y_m, trajectory.yaw_rad], axis=-1)
-    delta_xy = reference[:, :2] - predicted[:, :2]
-    position_sq = np.sum(np.square(delta_xy), axis=-1)
-    yaw_delta = np.arctan2(
-        np.sin(reference[:, 2] - predicted[:, 2]),
-        np.cos(reference[:, 2] - predicted[:, 2]),
-    )
-    position_rmse = float(np.sqrt(np.mean(position_sq)))
-    yaw_rmse = float(np.sqrt(np.mean(np.square(yaw_delta))))
-    endpoint_position = float(np.sqrt(position_sq[-1]))
-    endpoint_yaw = float(abs(yaw_delta[-1]))
-    score = (
-        position_rmse + 0.25 * yaw_rmse + 0.5 * endpoint_position + 0.1 * endpoint_yaw
-    )
-    return ReplayMetrics(
-        position_rmse_m=position_rmse,
-        yaw_rmse_rad=yaw_rmse,
-        endpoint_position_error_m=endpoint_position,
-        endpoint_yaw_error_rad=endpoint_yaw,
-        score=score,
-        sample_count=int(reference.shape[0]),
-    )
 
 
 def summarize_metrics(metrics: ReplayMetrics) -> dict[str, float]:
@@ -346,3 +45,305 @@ def summarize_metrics(metrics: ReplayMetrics) -> dict[str, float]:
         "score": metrics.score,
         "sample_count": float(metrics.sample_count),
     }
+
+
+def evaluate_run(
+    run: RunData,
+    params: NominalParameters,
+    target_hz: float | None = None,
+    env_config: EnvironmentConfig | None = None,
+) -> ReplayMetrics:
+    dataset = build_prepared_dataset([run], target_hz=target_hz)
+    evaluator = make_dataset_evaluator(dataset, env_config=env_config)
+    metrics = evaluator.evaluate_population(
+        jnp.asarray([encode_params(params)], dtype=jnp.float32)
+    )
+    return metrics[0]
+
+
+def encode_params(params: NominalParameters) -> jnp.ndarray:
+    return jnp.asarray(
+        [
+            float(params.action_delay_steps),
+            params.floor_friction_scale,
+            params.wheel_friction_scale,
+            params.wheel_damping_scale,
+            params.wheel_frictionloss_scale,
+            params.motor_strength_scale,
+            params.motor_balance,
+        ],
+        dtype=jnp.float32,
+    )
+
+
+def decoded_values_to_params(
+    values: jax.Array, delay_steps: jax.Array
+) -> NominalParameters:
+    return NominalParameters(
+        action_delay_steps=int(delay_steps),
+        floor_friction_scale=float(values[0]),
+        mass_scale=1.0,
+        inertia_scale=1.0,
+        wheel_friction_scale=float(values[1]),
+        caster_friction_scale=1.0,
+        wheel_damping_scale=float(values[2]),
+        wheel_frictionloss_scale=float(values[3]),
+        motor_strength_scale=float(values[4]),
+        motor_balance=float(values[5]),
+    )
+
+
+@dataclass(slots=True)
+class DatasetEvaluator:
+    decode_population: Callable
+    evaluate_population: Callable
+    evaluate_population_fitness: Callable
+    population_size_hint: int
+
+
+def make_dataset_evaluator(
+    dataset: PreparedDataset,
+    env_config: EnvironmentConfig | None = None,
+) -> DatasetEvaluator:
+    env = TagEnvironment(env_config or EnvironmentConfig())
+    max_delay = env.config.pipeline_randomization.max_action_delay_steps
+    is_chaser = dataset.role == "chaser"
+    num_segments = int(dataset.initial_poses.shape[0])
+    zero_qvel = jnp.zeros((num_segments, env.mj_model.nv), dtype=jnp.float32)
+    zero_ctrl = jnp.zeros((num_segments, env.mj_model.nu), dtype=jnp.float32)
+    mask = dataset.mask
+    references = dataset.references
+    controls_left = dataset.controls[..., 0]
+    controls_right = dataset.controls[..., 1]
+    parked_xy = jnp.asarray(
+        [
+            0.5 * env.config.arena_width - 2.0 * env.config.agent_radius,
+            -(0.5 * env.config.arena_height - 2.0 * env.config.agent_radius),
+        ],
+        dtype=jnp.float32,
+    )
+    parked_yaw = 0.0
+    parked_quat = yaw_to_quaternion(jnp.asarray(parked_yaw, dtype=jnp.float32))
+    identity_quaternion = jnp.asarray([1.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
+
+    lower_bounds = jnp.asarray(
+        [0.0, 0.9, 0.85, 0.75, 0.75, 0.75, -0.2], dtype=jnp.float32
+    )
+    upper_bounds = jnp.asarray(
+        [float(max_delay), 1.15, 1.2, 1.35, 1.35, 1.3, 0.2], dtype=jnp.float32
+    )
+
+    def decode_population(population: jax.Array) -> tuple[jax.Array, jax.Array]:
+        bounded = lower_bounds + 0.5 * (jnp.tanh(population) + 1.0) * (
+            upper_bounds - lower_bounds
+        )
+        delay = jnp.clip(jnp.rint(bounded[:, 0]), 0.0, float(max_delay)).astype(
+            jnp.int32
+        )
+        continuous = bounded[:, 1:]
+        return continuous, delay
+
+    def default_agent() -> AgentDynamicsParams:
+        one = jnp.asarray(1.0, dtype=jnp.float32)
+        return AgentDynamicsParams(
+            mass_scale=one,
+            com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
+            inertia_scale=one,
+            wheel_friction_scale=one,
+            caster_friction_scale=one,
+            wheel_damping_scale=one,
+            wheel_frictionloss_scale=one,
+            motor_strength_scale=one,
+            motor_balance=jnp.asarray(0.0, dtype=jnp.float32),
+        )
+
+    parked_agent = default_agent()
+
+    def domain_params(values: jax.Array) -> DomainParams:
+        floor_friction_scale = values[0]
+        agent = AgentDynamicsParams(
+            mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
+            com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
+            inertia_scale=jnp.asarray(1.0, dtype=jnp.float32),
+            wheel_friction_scale=values[1],
+            caster_friction_scale=jnp.asarray(1.0, dtype=jnp.float32),
+            wheel_damping_scale=values[2],
+            wheel_frictionloss_scale=values[3],
+            motor_strength_scale=values[4],
+            motor_balance=values[5],
+        )
+        if is_chaser:
+            return DomainParams(
+                floor_friction_scale=floor_friction_scale,
+                chaser=agent,
+                evader=parked_agent,
+            )
+        return DomainParams(
+            floor_friction_scale=floor_friction_scale, chaser=parked_agent, evader=agent
+        )
+
+    def make_initial_qpos(initial_pose: jax.Array) -> jax.Array:
+        qpos = jnp.zeros(env.mj_model.nq, dtype=jnp.float32)
+        target_xy = initial_pose[:2]
+        target_quat = yaw_to_quaternion(initial_pose[2])
+        if is_chaser:
+            chaser_xy, chaser_quat = target_xy, target_quat
+            evader_xy, evader_quat = parked_xy, parked_quat
+        else:
+            chaser_xy, chaser_quat = parked_xy, parked_quat
+            evader_xy, evader_quat = target_xy, target_quat
+        qpos = qpos.at[
+            env.joint_qpos_slices.chaser_root.start : env.joint_qpos_slices.chaser_root.start
+            + 3
+        ].set(
+            jnp.asarray(
+                [chaser_xy[0], chaser_xy[1], env.config.agent_z], dtype=jnp.float32
+            )
+        )
+        qpos = qpos.at[
+            env.joint_qpos_slices.chaser_root.start
+            + 3 : env.joint_qpos_slices.chaser_root.start + 7
+        ].set(chaser_quat)
+        qpos = qpos.at[env.joint_qpos_slices.chaser_caster_ball_joint].set(
+            identity_quaternion
+        )
+        qpos = qpos.at[
+            env.joint_qpos_slices.evader_root.start : env.joint_qpos_slices.evader_root.start
+            + 3
+        ].set(
+            jnp.asarray(
+                [evader_xy[0], evader_xy[1], env.config.agent_z], dtype=jnp.float32
+            )
+        )
+        qpos = qpos.at[
+            env.joint_qpos_slices.evader_root.start
+            + 3 : env.joint_qpos_slices.evader_root.start + 7
+        ].set(evader_quat)
+        qpos = qpos.at[env.joint_qpos_slices.evader_caster_ball_joint].set(
+            identity_quaternion
+        )
+        return qpos
+
+    initial_qpos = jax.vmap(make_initial_qpos)(dataset.initial_poses)
+
+    def init_data(model: mjx.Model) -> mjx.Data:
+        def init_one(qpos: jax.Array, qvel: jax.Array, ctrl: jax.Array) -> mjx.Data:
+            data = env._template_mjx_data.replace(qpos=qpos, qvel=qvel, ctrl=ctrl)
+            return env.forward(model, data)
+
+        return jax.vmap(init_one)(initial_qpos, zero_qvel, zero_ctrl)
+
+    def proposed_controls() -> jax.Array:
+        zeros = jnp.zeros_like(controls_left.T)
+        if is_chaser:
+            return jnp.stack([controls_left.T, controls_right.T, zeros, zeros], axis=-1)
+        return jnp.stack([zeros, zeros, controls_left.T, controls_right.T], axis=-1)
+
+    proposed_ctrl = proposed_controls()
+
+    def extract_pose(data: mjx.Data) -> jax.Array:
+        chaser, evader = env._agent_pair_kinematics(data)
+        agent = chaser if is_chaser else evader
+        return jnp.asarray(
+            [agent.position_xy[0], agent.position_xy[1], agent.yaw], dtype=jnp.float32
+        )
+
+    def evaluate_one(values: jax.Array, delay_steps: jax.Array) -> jax.Array:
+        model = randomize_model(env.mjx_model, domain_params(values), env.model_indices)
+        batched_data = init_data(model)
+        action_buffer = jnp.zeros(
+            (num_segments, max_delay + 1, env.mj_model.nu), dtype=jnp.float32
+        )
+
+        def rollout_step(
+            carry: tuple[mjx.Data, jax.Array], proposed_t: jax.Array
+        ) -> tuple[tuple[mjx.Data, jax.Array], jax.Array]:
+            data, buffer = carry
+            updated_buffer = jnp.concatenate(
+                [proposed_t[:, None, :], buffer[:, :-1, :]], axis=1
+            )
+            applied = jnp.take(updated_buffer, delay_steps, axis=1)
+            data = data.replace(ctrl=applied)
+
+            def physics_substep(current: mjx.Data, _: None) -> tuple[mjx.Data, None]:
+                stepped = jax.vmap(lambda single: mjx.step(model, single))(current)
+                return stepped, None
+
+            data, _ = jax.lax.scan(
+                physics_substep, data, None, length=env.substeps_per_action
+            )
+            poses = jax.vmap(extract_pose)(data)
+            return (data, updated_buffer), poses
+
+        (_, _), predicted = jax.lax.scan(
+            rollout_step, (batched_data, action_buffer), proposed_ctrl
+        )
+        predicted = predicted.transpose(1, 0, 2)
+        position_sq = jnp.sum(
+            jnp.square(predicted[..., :2] - references[..., :2]), axis=-1
+        )
+        yaw_delta = jnp.arctan2(
+            jnp.sin(predicted[..., 2] - references[..., 2]),
+            jnp.cos(predicted[..., 2] - references[..., 2]),
+        )
+        valid_steps = jnp.maximum(jnp.sum(mask), 1.0)
+        position_rmse = jnp.sqrt(jnp.sum(position_sq * mask) / valid_steps)
+        yaw_rmse = jnp.sqrt(jnp.sum(jnp.square(yaw_delta) * mask) / valid_steps)
+
+        segment_counts = jnp.maximum(jnp.sum(mask, axis=1).astype(jnp.int32), 1)
+        last_indices = segment_counts - 1
+        endpoint_position_sq = jnp.take_along_axis(
+            position_sq, last_indices[:, None], axis=1
+        )[:, 0]
+        endpoint_yaw = jnp.abs(
+            jnp.take_along_axis(yaw_delta, last_indices[:, None], axis=1)[:, 0]
+        )
+        endpoint_position = jnp.mean(jnp.sqrt(endpoint_position_sq))
+        endpoint_yaw_mean = jnp.mean(endpoint_yaw)
+        score = (
+            position_rmse
+            + 0.25 * yaw_rmse
+            + 0.5 * endpoint_position
+            + 0.1 * endpoint_yaw_mean
+        )
+        return jnp.asarray(
+            [
+                position_rmse,
+                yaw_rmse,
+                endpoint_position,
+                endpoint_yaw_mean,
+                score,
+                valid_steps,
+            ],
+            dtype=jnp.float32,
+        )
+
+    evaluate_population_raw = jax.jit(
+        jax.vmap(evaluate_one, in_axes=(0, 0)), static_argnums=()
+    )
+
+    def evaluate_population(population: jax.Array) -> list[ReplayMetrics]:
+        values, delays = decode_population(population)
+        raw = evaluate_population_raw(values, delays)
+        return [
+            ReplayMetrics(
+                position_rmse_m=float(item[0]),
+                yaw_rmse_rad=float(item[1]),
+                endpoint_position_error_m=float(item[2]),
+                endpoint_yaw_error_rad=float(item[3]),
+                score=float(item[4]),
+                sample_count=int(item[5]),
+            )
+            for item in raw
+        ]
+
+    evaluate_population_fitness = jax.jit(
+        lambda population: evaluate_population_raw(*decode_population(population))[:, 4]
+    )
+
+    return DatasetEvaluator(
+        decode_population=decode_population,
+        evaluate_population=evaluate_population,
+        evaluate_population_fitness=evaluate_population_fitness,
+        population_size_hint=num_segments,
+    )

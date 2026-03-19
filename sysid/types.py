@@ -73,3 +73,14 @@ class ReplayMetrics:
     endpoint_yaw_error_rad: float
     score: float
     sample_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDataset:
+    initial_poses: Any
+    controls: Any
+    references: Any
+    mask: Any
+    role: str
+    run_names: tuple[str, ...]
+    segment_labels: tuple[str, ...]

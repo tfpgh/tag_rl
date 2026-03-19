@@ -8,10 +8,10 @@ import tty
 
 import cv2
 
-from online.config import TrackerConfig
-from online.logger import RunLogger
-from online.teleop import TeleopController
-from online.tracker import ARENA_WINDOW_NAME, RAW_WINDOW_NAME, BoardTracker
+from online.control.teleop import TeleopController
+from online.core.config import TrackerConfig
+from online.data.logger import RunLogger
+from online.tracking.tracker import ARENA_WINDOW_NAME, RAW_WINDOW_NAME, BoardTracker
 
 
 def _print_status(logger: RunLogger, frame_index: int, packets_sent: int) -> None:

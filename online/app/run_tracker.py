@@ -4,8 +4,8 @@ import time
 
 import cv2
 
-from online.config import TrackerConfig
-from online.tracker import ARENA_WINDOW_NAME, RAW_WINDOW_NAME, BoardTracker
+from online.core.config import TrackerConfig
+from online.tracking.tracker import ARENA_WINDOW_NAME, RAW_WINDOW_NAME, BoardTracker
 
 
 def main() -> None:

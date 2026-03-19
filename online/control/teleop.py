@@ -7,7 +7,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 
-from online.config import TeleopConfig
+from online.core.config import TeleopConfig
 
 MAX_INT16 = 32767
 
@@ -104,6 +104,13 @@ class TeleopController:
             elif key in ("q", "\x1b"):
                 return False
         return True
+
+    def set_command(self, linear: float, angular: float) -> None:
+        with self._lock:
+            self.linear = clamp(linear, -self.config.linear_max, self.config.linear_max)
+            self.angular = clamp(
+                angular, -self.config.angular_max, self.config.angular_max
+            )
 
     def snapshot(self) -> CommandState:
         with self._lock:

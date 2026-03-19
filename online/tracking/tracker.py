@@ -6,15 +6,8 @@ import time
 import cv2
 import numpy as np
 
-from online.apriltags import AprilTagTracker
-from online.calibration import (
-    CornerTagCalibrator,
-    build_arena_view_layout,
-    transform_points,
-)
-from online.camera import CameraStream
-from online.config import TrackerConfig
-from online.state import (
+from online.core.config import TrackerConfig
+from online.core.state import (
     ArenaCalibration,
     BoardState,
     ObstacleState,
@@ -22,6 +15,13 @@ from online.state import (
     TagDetection,
     TrackingStats,
 )
+from online.tracking.apriltags import AprilTagTracker
+from online.tracking.calibration import (
+    CornerTagCalibrator,
+    build_arena_view_layout,
+    transform_points,
+)
+from online.tracking.camera import CameraStream
 
 RAW_WINDOW_NAME = "Tracker Raw"
 ARENA_WINDOW_NAME = "Tracker Arena"

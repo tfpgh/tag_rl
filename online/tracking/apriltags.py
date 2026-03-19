@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 from pupil_apriltags import Detector
 
-from online.config import TrackerConfig
-from online.state import TagDetection
+from online.core.config import TrackerConfig
+from online.core.state import TagDetection
 
 
 class AprilTagTracker:

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from online.config import ArenaConfig, TrackerConfig, ViewConfig
-from online.state import ArenaCalibration, TagDetection
+from online.core.config import ArenaConfig, TrackerConfig, ViewConfig
+from online.core.state import ArenaCalibration, TagDetection
 
 
 @dataclass(frozen=True, slots=True)

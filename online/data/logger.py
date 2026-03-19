@@ -6,9 +6,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from online.config import TrackerConfig
-from online.state import BoardState, ObstacleState, Pose2D, TagDetection
-from online.teleop import CommandEvent, CommandState
+from online.control.teleop import CommandEvent, CommandState
+from online.core.config import TrackerConfig
+from online.core.state import BoardState, ObstacleState, Pose2D, TagDetection
 
 
 def _pose_dict(pose: Pose2D | None) -> dict[str, Any] | None:

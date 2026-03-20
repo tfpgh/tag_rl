@@ -356,12 +356,7 @@ def make_dataset_evaluator(
         )
         endpoint_position = jnp.mean(jnp.sqrt(endpoint_position_sq))
         endpoint_yaw_mean = jnp.mean(endpoint_yaw)
-        score = (
-            position_rmse
-            + 0.25 * yaw_rmse
-            + 0.5 * endpoint_position
-            + 0.1 * endpoint_yaw_mean
-        )
+        score = position_rmse + 0.3 * yaw_rmse
         raw_metrics = jnp.asarray(
             [
                 position_rmse,

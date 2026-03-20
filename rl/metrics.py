@@ -62,7 +62,6 @@ def compute_training_metrics(
     )
     position_noise_std = traj_batch.info.position_noise_std.astype(jnp.float32)
     yaw_noise_std = traj_batch.info.yaw_noise_std.astype(jnp.float32)
-    floor_friction_scale = traj_batch.info.floor_friction_scale.astype(jnp.float32)
     chaser_mass_scale = traj_batch.info.chaser_mass_scale.astype(jnp.float32)
     evader_mass_scale = traj_batch.info.evader_mass_scale.astype(jnp.float32)
     chaser_motor_balance = traj_batch.info.chaser_motor_balance.astype(jnp.float32)
@@ -162,9 +161,6 @@ def compute_training_metrics(
         "position_noise_std_sq_sum": jnp.square(position_noise_std).sum(),
         "yaw_noise_std_sum": yaw_noise_std.sum(),
         "yaw_noise_std_sq_sum": jnp.square(yaw_noise_std).sum(),
-        "floor_friction_scale_sum": floor_friction_scale.sum(),
-        "floor_friction_scale_sq_sum": jnp.square(floor_friction_scale).sum(),
-        "floor_friction_scale_abs_dev_sum": jnp.abs(floor_friction_scale - 1.0).sum(),
         "chaser_mass_scale_sum": chaser_mass_scale.sum(),
         "chaser_mass_scale_sq_sum": jnp.square(chaser_mass_scale).sum(),
         "chaser_mass_scale_abs_dev_sum": jnp.abs(chaser_mass_scale - 1.0).sum(),
@@ -339,18 +335,6 @@ def compute_training_metrics(
         "randomization/yaw_noise_std_std": safe_std(
             metric_sums["yaw_noise_std_sum"],
             metric_sums["yaw_noise_std_sq_sum"],
-            metric_sums["distance_count"],
-        ),
-        "randomization/floor_friction_scale": safe_rate(
-            metric_sums["floor_friction_scale_sum"], metric_sums["distance_count"]
-        ),
-        "randomization/floor_friction_scale_std": safe_std(
-            metric_sums["floor_friction_scale_sum"],
-            metric_sums["floor_friction_scale_sq_sum"],
-            metric_sums["distance_count"],
-        ),
-        "randomization/floor_friction_scale_abs_deviation": safe_rate(
-            metric_sums["floor_friction_scale_abs_dev_sum"],
             metric_sums["distance_count"],
         ),
         "randomization/chaser_mass_scale": safe_rate(

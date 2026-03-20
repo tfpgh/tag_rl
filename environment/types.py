@@ -20,17 +20,14 @@ class ObstacleState(NamedTuple):
 class AgentDynamicsParams(NamedTuple):
     mass_scale: jax.Array
     com_offset_xy: jax.Array
-    inertia_scale: jax.Array
     wheel_friction_scale: jax.Array
     caster_friction_scale: jax.Array
-    wheel_damping_scale: jax.Array
     wheel_frictionloss_scale: jax.Array
     motor_strength_scale: jax.Array
     motor_balance: jax.Array
 
 
 class DomainParams(NamedTuple):
-    floor_friction_scale: jax.Array
     chaser: AgentDynamicsParams
     evader: AgentDynamicsParams
 
@@ -97,7 +94,6 @@ class TagEnvironmentStepInfo(NamedTuple):
     stale_observation_probability: jax.Array
     position_noise_std: jax.Array
     yaw_noise_std: jax.Array
-    floor_friction_scale: jax.Array
     chaser_mass_scale: jax.Array
     evader_mass_scale: jax.Array
     chaser_motor_balance: jax.Array

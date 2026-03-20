@@ -21,13 +21,7 @@ from sysid.replay import (
 from sysid.stats import summarize_run
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
-LATENT_DIM = 13
-CONSOLE_PARAM_NAMES = (
-    "motor_strength_scale",
-    "wheel_damping_scale",
-    "wheel_frictionloss_scale",
-    "floor_friction_scale",
-)
+LATENT_DIM = 10
 
 
 def _replace_std_init(params: Any, std_init: float) -> Any:
@@ -116,11 +110,11 @@ def _bound_proximity(
     }
 
 
-def _console_param_summary(params: Any) -> str:
+def _console_all_params(params: Any) -> str:
     parts = []
-    for name in CONSOLE_PARAM_NAMES:
-        parts.append(f"{name.split('_')[0]}={getattr(params, name):.3f}")
-    return " ".join(parts)
+    for name, value in asdict(params).items():
+        parts.append(f"  {name}={value:.4f}" if isinstance(value, float) else f"  {name}={value}")
+    return "\n".join(parts)
 
 
 def _params_bound_summary(
@@ -360,17 +354,16 @@ def run_search(
         elapsed = time.perf_counter() - started_at
         completed = generation + 1
         eta = (elapsed / completed) * (generations - completed) if completed else 0.0
+        gen_time = time.perf_counter() - generation_started_at
+        bound_hits = _console_bound_hits(param_bound_summary)
         _log(
             (
-                f"gen={completed}/{generations} best_train={train_metrics.score:.4f} "
-                f"best_val={validation_metrics.score:.4f} "
-                f"delay={params.action_delay_substeps}/{params.observation_delay_substeps} "
-                f"sigma={float(state.std):.3f} gap={train_val_gap:+.4f} "
-                f"best={best_so_far:.4f}/{best_in_generation:.4f} "
-                f"{_console_param_summary(params)} "
-                f"{_console_bound_hits(param_bound_summary)} "
-                f"gen_time={_format_duration(time.perf_counter() - generation_started_at)} "
-                f"eta={_format_duration(eta)}"
+                f"--- gen {completed}/{generations} "
+                f"train={train_metrics.score:.4f} val={validation_metrics.score:.4f} "
+                f"gap={train_val_gap:+.4f} sigma={float(state.std):.3f} "
+                f"{bound_hits} "
+                f"time={_format_duration(gen_time)} eta={_format_duration(eta)}\n"
+                f"{_console_all_params(params)}"
             ),
             quiet,
         )
@@ -414,10 +407,10 @@ def run_search(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("run_dirs", nargs="+")
-    parser.add_argument("--generations", type=int, default=20)
-    parser.add_argument("--population-size", type=int, default=64)
+    parser.add_argument("--generations", type=int, default=80)
+    parser.add_argument("--population-size", type=int, default=48)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--std-init", type=float, default=0.75)
+    parser.add_argument("--std-init", type=float, default=1.0)
     parser.add_argument("--max-segment-steps", type=int, default=160)
     parser.add_argument("--min-segment-steps", type=int, default=12)
     parser.add_argument("--min-segment-duration-s", type=float, default=0.6)

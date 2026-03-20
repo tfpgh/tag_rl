@@ -45,16 +45,10 @@ class DynamicsRandomizationConfig:
     chassis_mass_scale_max: float = 1.1
     com_offset_x_max: float = 0.003
     com_offset_y_max: float = 0.003
-    inertia_scale_min: float = 0.93
-    inertia_scale_max: float = 1.08
-    floor_friction_scale_min: float = 0.92
-    floor_friction_scale_max: float = 1.08
     wheel_friction_scale_min: float = 0.9
     wheel_friction_scale_max: float = 1.12
     caster_friction_scale_min: float = 0.9
     caster_friction_scale_max: float = 1.12
-    wheel_damping_scale_min: float = 0.92
-    wheel_damping_scale_max: float = 1.1
     wheel_frictionloss_scale_min: float = 0.92
     wheel_frictionloss_scale_max: float = 1.1
     motor_strength_scale_min: float = 0.88
@@ -241,16 +235,10 @@ class EnvironmentConfig:
         dyn = self.dynamics_randomization
         if dyn.chassis_mass_scale_min <= 0 or dyn.chassis_mass_scale_max <= 0:
             raise ValueError("mass scales must be positive")
-        if dyn.inertia_scale_min <= 0 or dyn.inertia_scale_max <= 0:
-            raise ValueError("inertia scales must be positive")
-        if dyn.floor_friction_scale_min <= 0 or dyn.floor_friction_scale_max <= 0:
-            raise ValueError("floor friction scales must be positive")
         if dyn.wheel_friction_scale_min <= 0 or dyn.wheel_friction_scale_max <= 0:
             raise ValueError("wheel friction scales must be positive")
         if dyn.caster_friction_scale_min <= 0 or dyn.caster_friction_scale_max <= 0:
             raise ValueError("caster friction scales must be positive")
-        if dyn.wheel_damping_scale_min <= 0 or dyn.wheel_damping_scale_max <= 0:
-            raise ValueError("wheel damping scales must be positive")
         if (
             dyn.wheel_frictionloss_scale_min <= 0
             or dyn.wheel_frictionloss_scale_max <= 0

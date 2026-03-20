@@ -701,7 +701,6 @@ class TagEnvironment:
             stale_observation_probability=state.pipeline_params.stale_observation_probability,
             position_noise_std=state.pipeline_params.position_noise_std,
             yaw_noise_std=state.pipeline_params.yaw_noise_std,
-            floor_friction_scale=state.domain_params.floor_friction_scale,
             chaser_mass_scale=state.domain_params.chaser.mass_scale,
             evader_mass_scale=state.domain_params.evader.mass_scale,
             chaser_motor_balance=state.domain_params.chaser.motor_balance,

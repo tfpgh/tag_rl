@@ -80,8 +80,8 @@ def _agent_mjcf(
                 name="{name}_left_wheel_joint"
                 type="hinge"
                 axis="0 1 0"
-                damping="0.0023"
-                frictionloss="0.019"
+                damping="0.0001"
+                frictionloss="0.025"
             />
             <geom
                 name="{name}_left_wheel_geom"
@@ -101,8 +101,8 @@ def _agent_mjcf(
                 name="{name}_right_wheel_joint"
                 type="hinge"
                 axis="0 1 0"
-                damping="0.0023"
-                frictionloss="0.019"
+                damping="0.0001"
+                frictionloss="0.025"
             />
             <geom
                 name="{name}_right_wheel_geom"
@@ -152,17 +152,25 @@ def _agent_mjcf(
     """
 
     actuator_xml = f"""
-    <motor
+    <general
         name="{name}_left_motor"
         joint="{name}_left_wheel_joint"
-        gear="0.19"
+        gainprm="0.126"
+        biasprm="0 0 -0.0015"
+        gaintype="fixed"
+        biastype="affine"
+        dyntype="none"
         ctrlrange="-1 1"
         ctrllimited="true"
     />
-    <motor
+    <general
         name="{name}_right_motor"
         joint="{name}_right_wheel_joint"
-        gear="0.19"
+        gainprm="0.126"
+        biasprm="0 0 -0.0015"
+        gaintype="fixed"
+        biastype="affine"
+        dyntype="none"
         ctrlrange="-1 1"
         ctrllimited="true"
     />
@@ -182,7 +190,7 @@ def _floor_xml(config: EnvironmentConfig) -> str:
         size="{arena_half_width + WALL_THICKNESS} {arena_half_height + WALL_THICKNESS} 0.04"
         group="{GEOM_GROUP_FLOOR}"
         rgba="0.2 0.2 0.25 1"
-        friction="1.1 0.005 0.0001"
+        friction="0.1 0.005 0.0001"
         contype="{CONTACTS["floor"][0]}"
         conaffinity="{CONTACTS["floor"][1]}"
     />

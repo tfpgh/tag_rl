@@ -52,14 +52,12 @@ def _sample_agent_dynamics(
         mass_rng,
         com_x_rng,
         com_y_rng,
-        inertia_rng,
         wheel_friction_rng,
         caster_friction_rng,
-        damping_rng,
         frictionloss_rng,
         strength_rng,
         balance_rng,
-    ) = random.split(rng, 10)
+    ) = random.split(rng, 8)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -71,9 +69,6 @@ def _sample_agent_dynamics(
                 _sample_centered(com_y_rng, dyn.com_offset_y_max, scale),
             ]
         ),
-        inertia_scale=_sample_scale(
-            inertia_rng, dyn.inertia_scale_min, dyn.inertia_scale_max, scale
-        ),
         wheel_friction_scale=_sample_scale(
             wheel_friction_rng,
             dyn.wheel_friction_scale_min,
@@ -84,12 +79,6 @@ def _sample_agent_dynamics(
             caster_friction_rng,
             dyn.caster_friction_scale_min,
             dyn.caster_friction_scale_max,
-            scale,
-        ),
-        wheel_damping_scale=_sample_scale(
-            damping_rng,
-            dyn.wheel_damping_scale_min,
-            dyn.wheel_damping_scale_max,
             scale,
         ),
         wheel_frictionloss_scale=_sample_scale(
@@ -120,14 +109,8 @@ def sample_domain_params(
             config.curriculum.full_progress,
             config.curriculum.exponent,
         )
-    floor_rng, chaser_rng, evader_rng = random.split(rng, 3)
+    chaser_rng, evader_rng = random.split(rng, 2)
     return DomainParams(
-        floor_friction_scale=_sample_scale(
-            floor_rng,
-            config.dynamics_randomization.floor_friction_scale_min,
-            config.dynamics_randomization.floor_friction_scale_max,
-            scale,
-        ),
         chaser=_sample_agent_dynamics(chaser_rng, config, scale),
         evader=_sample_agent_dynamics(evader_rng, config, scale),
     )
@@ -427,18 +410,12 @@ def _apply_agent_dynamics(
     body_mass: jax.Array,
     body_ipos: jax.Array,
     body_inertia: jax.Array,
-    dof_damping: jax.Array,
     dof_frictionloss: jax.Array,
-    actuator_gear: jax.Array,
+    actuator_gainprm: jax.Array,
+    actuator_biasprm: jax.Array,
     agent_params: AgentDynamicsParams,
     agent_indices,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
-    wheel_scale_left = agent_params.wheel_friction_scale * (
-        1.0 + agent_params.motor_balance
-    )
-    wheel_scale_right = agent_params.wheel_friction_scale * (
-        1.0 - agent_params.motor_balance
-    )
     left_motor_scale = agent_params.motor_strength_scale * (
         1.0 + agent_params.motor_balance
     )
@@ -446,20 +423,17 @@ def _apply_agent_dynamics(
         1.0 - agent_params.motor_balance
     )
 
-    geom_friction = geom_friction.at[agent_indices.left_wheel_geom_id].set(
-        jnp.maximum(
-            1e-6,
-            base_model.geom_friction[agent_indices.left_wheel_geom_id]
-            * wheel_scale_left,
+    for wheel_geom_id in (
+        agent_indices.left_wheel_geom_id,
+        agent_indices.right_wheel_geom_id,
+    ):
+        geom_friction = geom_friction.at[wheel_geom_id].set(
+            jnp.maximum(
+                1e-6,
+                base_model.geom_friction[wheel_geom_id]
+                * agent_params.wheel_friction_scale,
+            )
         )
-    )
-    geom_friction = geom_friction.at[agent_indices.right_wheel_geom_id].set(
-        jnp.maximum(
-            1e-6,
-            base_model.geom_friction[agent_indices.right_wheel_geom_id]
-            * wheel_scale_right,
-        )
-    )
     geom_friction = geom_friction.at[agent_indices.caster_geom_id].set(
         jnp.maximum(
             1e-6,
@@ -485,17 +459,11 @@ def _apply_agent_dynamics(
         jnp.maximum(
             1e-7,
             base_model.body_inertia[agent_indices.body_id]
-            * agent_params.mass_scale
-            * agent_params.inertia_scale,
+            * agent_params.mass_scale,
         )
     )
 
     for dof_id in (agent_indices.left_wheel_dof_id, agent_indices.right_wheel_dof_id):
-        dof_damping = dof_damping.at[dof_id].set(
-            jnp.maximum(
-                1e-7, base_model.dof_damping[dof_id] * agent_params.wheel_damping_scale
-            )
-        )
         dof_frictionloss = dof_frictionloss.at[dof_id].set(
             jnp.maximum(
                 1e-7,
@@ -504,11 +472,17 @@ def _apply_agent_dynamics(
             )
         )
 
-    actuator_gear = actuator_gear.at[agent_indices.left_actuator_id, 0].set(
-        base_model.actuator_gear[agent_indices.left_actuator_id, 0] * left_motor_scale
+    actuator_gainprm = actuator_gainprm.at[agent_indices.left_actuator_id, 0].set(
+        base_model.actuator_gainprm[agent_indices.left_actuator_id, 0] * left_motor_scale
     )
-    actuator_gear = actuator_gear.at[agent_indices.right_actuator_id, 0].set(
-        base_model.actuator_gear[agent_indices.right_actuator_id, 0] * right_motor_scale
+    actuator_gainprm = actuator_gainprm.at[agent_indices.right_actuator_id, 0].set(
+        base_model.actuator_gainprm[agent_indices.right_actuator_id, 0] * right_motor_scale
+    )
+    actuator_biasprm = actuator_biasprm.at[agent_indices.left_actuator_id, 2].set(
+        base_model.actuator_biasprm[agent_indices.left_actuator_id, 2] * left_motor_scale
+    )
+    actuator_biasprm = actuator_biasprm.at[agent_indices.right_actuator_id, 2].set(
+        base_model.actuator_biasprm[agent_indices.right_actuator_id, 2] * right_motor_scale
     )
 
     return (
@@ -516,9 +490,9 @@ def _apply_agent_dynamics(
         body_mass,
         body_ipos,
         body_inertia,
-        dof_damping,
         dof_frictionloss,
-        actuator_gear,
+        actuator_gainprm,
+        actuator_biasprm,
     )
 
 
@@ -529,26 +503,18 @@ def randomize_model(
     body_mass = base_model.body_mass
     body_ipos = base_model.body_ipos
     body_inertia = base_model.body_inertia
-    dof_damping = base_model.dof_damping
     dof_frictionloss = base_model.dof_frictionloss
-    actuator_gear = base_model.actuator_gear
-
-    geom_friction = geom_friction.at[model_indices.floor_geom_id].set(
-        jnp.maximum(
-            1e-6,
-            base_model.geom_friction[model_indices.floor_geom_id]
-            * domain_params.floor_friction_scale,
-        )
-    )
+    actuator_gainprm = base_model.actuator_gainprm
+    actuator_biasprm = base_model.actuator_biasprm
 
     (
         geom_friction,
         body_mass,
         body_ipos,
         body_inertia,
-        dof_damping,
         dof_frictionloss,
-        actuator_gear,
+        actuator_gainprm,
+        actuator_biasprm,
     ) = _apply_agent_dynamics(
         base_model,
         model_indices,
@@ -556,9 +522,9 @@ def randomize_model(
         body_mass,
         body_ipos,
         body_inertia,
-        dof_damping,
         dof_frictionloss,
-        actuator_gear,
+        actuator_gainprm,
+        actuator_biasprm,
         domain_params.chaser,
         model_indices.chaser,
     )
@@ -567,9 +533,9 @@ def randomize_model(
         body_mass,
         body_ipos,
         body_inertia,
-        dof_damping,
         dof_frictionloss,
-        actuator_gear,
+        actuator_gainprm,
+        actuator_biasprm,
     ) = _apply_agent_dynamics(
         base_model,
         model_indices,
@@ -577,9 +543,9 @@ def randomize_model(
         body_mass,
         body_ipos,
         body_inertia,
-        dof_damping,
         dof_frictionloss,
-        actuator_gear,
+        actuator_gainprm,
+        actuator_biasprm,
         domain_params.evader,
         model_indices.evader,
     )
@@ -592,9 +558,9 @@ def randomize_model(
                 "body_mass": body_mass,
                 "body_ipos": body_ipos,
                 "body_inertia": body_inertia,
-                "dof_damping": dof_damping,
                 "dof_frictionloss": dof_frictionloss,
-                "actuator_gear": actuator_gear,
+                "actuator_gainprm": actuator_gainprm,
+                "actuator_biasprm": actuator_biasprm,
             }
         ),
     )

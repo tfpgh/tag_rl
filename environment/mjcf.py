@@ -42,8 +42,8 @@ def _agent_mjcf(
         <freejoint name="{name}_root" />
         <inertial
             pos="-0.0148 0 -0.009"
-            diaginertia="0.000112 0.000112 0.000188"
-            mass="0.15"
+            diaginertia="0.000101 0.000101 0.000170"
+            mass="0.135"
         />
         <geom
             name="{name}_chassis_base"

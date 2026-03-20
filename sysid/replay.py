@@ -28,6 +28,7 @@ class NominalParameters:
     caster_friction_scale: float = 1.0
     wheel_frictionloss_scale: float = 1.0
     motor_strength_scale: float = 1.0
+    back_emf_scale: float = 1.0
     motor_balance: float = 0.0
 
 
@@ -74,6 +75,7 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
             params.caster_friction_scale,
             params.wheel_frictionloss_scale,
             params.motor_strength_scale,
+            params.back_emf_scale,
             params.motor_balance,
         ],
         dtype=jnp.float32,
@@ -95,7 +97,8 @@ def decoded_values_to_params(
         caster_friction_scale=float(values[4]),
         wheel_frictionloss_scale=float(values[5]),
         motor_strength_scale=float(values[6]),
-        motor_balance=float(values[7]),
+        back_emf_scale=float(values[7]),
+        motor_balance=float(values[8]),
     )
 
 
@@ -150,6 +153,7 @@ def make_dataset_evaluator(
             0.3,
             0.3,
             0.5,
+            0.3,
             -0.25,
         ],
         dtype=jnp.float32,
@@ -165,6 +169,7 @@ def make_dataset_evaluator(
             2.5,
             3.0,
             1.6,
+            2.0,
             0.25,
         ],
         dtype=jnp.float32,
@@ -194,6 +199,7 @@ def make_dataset_evaluator(
             caster_friction_scale=one,
             wheel_frictionloss_scale=one,
             motor_strength_scale=one,
+            back_emf_scale=one,
             motor_balance=jnp.asarray(0.0, dtype=jnp.float32),
         )
 
@@ -207,7 +213,8 @@ def make_dataset_evaluator(
             caster_friction_scale=values[4],
             wheel_frictionloss_scale=values[5],
             motor_strength_scale=values[6],
-            motor_balance=values[7],
+            back_emf_scale=values[7],
+            motor_balance=values[8],
         )
         if is_chaser:
             return DomainParams(
@@ -434,6 +441,7 @@ def make_dataset_evaluator(
         "caster_friction_scale": (0.3, 2.5),
         "wheel_frictionloss_scale": (0.3, 3.0),
         "motor_strength_scale": (0.5, 1.6),
+        "back_emf_scale": (0.3, 2.0),
         "motor_balance": (-0.25, 0.25),
     }
 

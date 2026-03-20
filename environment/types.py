@@ -24,6 +24,7 @@ class AgentDynamicsParams(NamedTuple):
     caster_friction_scale: jax.Array
     wheel_frictionloss_scale: jax.Array
     motor_strength_scale: jax.Array
+    back_emf_scale: jax.Array
     motor_balance: jax.Array
 
 

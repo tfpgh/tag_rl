@@ -53,6 +53,8 @@ class DynamicsRandomizationConfig:
     wheel_frictionloss_scale_max: float = 1.1
     motor_strength_scale_min: float = 0.88
     motor_strength_scale_max: float = 1.12
+    back_emf_scale_min: float = 0.9
+    back_emf_scale_max: float = 1.1
     motor_balance_delta_max: float = 0.06
 
 
@@ -246,6 +248,8 @@ class EnvironmentConfig:
             raise ValueError("wheel frictionloss scales must be positive")
         if dyn.motor_strength_scale_min <= 0 or dyn.motor_strength_scale_max <= 0:
             raise ValueError("motor strength scales must be positive")
+        if dyn.back_emf_scale_min <= 0 or dyn.back_emf_scale_max <= 0:
+            raise ValueError("back-EMF scales must be positive")
         if dyn.motor_balance_delta_max < 0 or dyn.motor_balance_delta_max >= 1.0:
             raise ValueError("motor_balance_delta_max must be in [0, 1)")
         if dyn.com_offset_x_max < 0 or dyn.com_offset_y_max < 0:

@@ -56,8 +56,9 @@ def _sample_agent_dynamics(
         caster_friction_rng,
         frictionloss_rng,
         strength_rng,
+        back_emf_rng,
         balance_rng,
-    ) = random.split(rng, 8)
+    ) = random.split(rng, 9)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -91,6 +92,12 @@ def _sample_agent_dynamics(
             strength_rng,
             dyn.motor_strength_scale_min,
             dyn.motor_strength_scale_max,
+            scale,
+        ),
+        back_emf_scale=_sample_scale(
+            back_emf_rng,
+            dyn.back_emf_scale_min,
+            dyn.back_emf_scale_max,
             scale,
         ),
         motor_balance=_sample_centered(balance_rng, dyn.motor_balance_delta_max, scale),
@@ -422,6 +429,12 @@ def _apply_agent_dynamics(
     right_motor_scale = agent_params.motor_strength_scale * (
         1.0 - agent_params.motor_balance
     )
+    left_emf_scale = agent_params.back_emf_scale * (
+        1.0 + agent_params.motor_balance
+    )
+    right_emf_scale = agent_params.back_emf_scale * (
+        1.0 - agent_params.motor_balance
+    )
 
     for wheel_geom_id in (
         agent_indices.left_wheel_geom_id,
@@ -479,10 +492,10 @@ def _apply_agent_dynamics(
         base_model.actuator_gainprm[agent_indices.right_actuator_id, 0] * right_motor_scale
     )
     actuator_biasprm = actuator_biasprm.at[agent_indices.left_actuator_id, 2].set(
-        base_model.actuator_biasprm[agent_indices.left_actuator_id, 2] * left_motor_scale
+        base_model.actuator_biasprm[agent_indices.left_actuator_id, 2] * left_emf_scale
     )
     actuator_biasprm = actuator_biasprm.at[agent_indices.right_actuator_id, 2].set(
-        base_model.actuator_biasprm[agent_indices.right_actuator_id, 2] * right_motor_scale
+        base_model.actuator_biasprm[agent_indices.right_actuator_id, 2] * right_emf_scale
     )
 
     return (

@@ -77,10 +77,6 @@ def _decode_solution(evaluator, solution: jax.Array):
     return decoded_values_to_params(values[0], action_delays[0], observation_delays[0])
 
 
-def _decode_mean(evaluator, mean: jax.Array):
-    return _decode_solution(evaluator, mean)
-
-
 def _normalized_param_position(value: float, bounds: tuple[float, float]) -> float:
     lower, upper = bounds
     if upper <= lower:
@@ -141,53 +137,21 @@ def _console_bound_hits(bound_summary: dict[str, dict[str, float | bool]]) -> st
     return "bounds=" + ",".join(hits)
 
 
-def _parameter_summary(
-    history: list[dict[str, object]],
+def _bound_warnings(
     best_params: Any,
-    mean_params: Any,
     search_bounds: dict[str, tuple[float, float]],
-    best_generation: int,
-) -> dict[str, object]:
-    param_names = list(asdict(best_params).keys())
-    summary: dict[str, object] = {}
-    tail_count = max(1, len(history) // 5)
-    tail_history = history[-tail_count:]
-    for name in param_names:
-        best_value = float(getattr(best_params, name))
-        mean_value = float(getattr(mean_params, name))
-        trajectory = [
-            float(cast(dict[str, Any], record["params"])[name]) for record in history
-        ]
-        tail_trajectory = [
-            float(cast(dict[str, Any], record["params"])[name])
-            for record in tail_history
-        ]
+) -> list[str]:
+    warnings: list[str] = []
+    for name, value in asdict(best_params).items():
         bounds = search_bounds.get(name)
-        proximity = (
-            _bound_proximity(best_value, bounds)
-            if bounds is not None
-            else {"normalized": None}
-        )
-        late_span = (
-            max(tail_trajectory) - min(tail_trajectory) if tail_trajectory else 0.0
-        )
-        total_span = max(trajectory) - min(trajectory) if trajectory else 0.0
-        summary[name] = {
-            "best_value": best_value,
-            "mean_value": mean_value,
-            "initial_value": trajectory[0],
-            "final_value": trajectory[-1],
-            "min_visited": min(trajectory),
-            "max_visited": max(trajectory),
-            "total_span": total_span,
-            "late_span": late_span,
-            "best_generation": best_generation,
-            "stability": "stable"
-            if late_span <= 0.02 * max(total_span, 1e-6)
-            else "moving",
-            "bound_info": proximity,
-        }
-    return summary
+        if bounds is None:
+            continue
+        info = _bound_proximity(float(value), bounds)
+        if info["near_lower"]:
+            warnings.append(f"{name} at lower bound ({value:.4f}, min={bounds[0]})")
+        elif info["near_upper"]:
+            warnings.append(f"{name} at upper bound ({value:.4f}, max={bounds[1]})")
+    return warnings
 
 
 def _recommend_config_update(
@@ -306,35 +270,18 @@ def run_search(
 
         best_solution = cast(jax.Array, metrics["best_solution"])
         params = _decode_solution(train_evaluator, best_solution)
-        mean_params = _decode_mean(train_evaluator, cast(jax.Array, state.mean))
-        param_bound_summary = _params_bound_summary(
-            params, train_evaluator.search_bounds
-        )
-        mean_param_bound_summary = _params_bound_summary(
-            mean_params, train_evaluator.search_bounds
-        )
         train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
         validation_metrics = validation_evaluator.evaluate_population(
             best_solution[None, :]
         )[0]
-        best_so_far = float(metrics["best_fitness"])
-        best_in_generation = float(metrics["best_fitness_in_generation"])
         train_val_gap = validation_metrics.score - train_metrics.score
 
-        record = {
+        history.append({
             "generation": generation,
-            "params": asdict(params),
-            "params_bound_summary": param_bound_summary,
-            "mean_params": asdict(mean_params),
-            "mean_params_bound_summary": mean_param_bound_summary,
             "train": summarize_metrics(train_metrics),
             "validation": summarize_metrics(validation_metrics),
-            "best_fitness": best_so_far,
-            "best_fitness_in_generation": best_in_generation,
-            "train_val_gap": train_val_gap,
             "sigma": float(state.std),
-        }
-        history.append(record)
+        })
 
         if (
             best_record is None
@@ -346,16 +293,16 @@ def run_search(
                 "train_metrics": train_metrics,
                 "validation_metrics": validation_metrics,
                 "best_solution": best_solution,
-                "mean_params": mean_params,
                 "best_generation": generation,
-                "params_bound_summary": param_bound_summary,
             }
 
         elapsed = time.perf_counter() - started_at
         completed = generation + 1
         eta = (elapsed / completed) * (generations - completed) if completed else 0.0
         gen_time = time.perf_counter() - generation_started_at
-        bound_hits = _console_bound_hits(param_bound_summary)
+        bound_hits = _console_bound_hits(
+            _params_bound_summary(params, train_evaluator.search_bounds)
+        )
         _log(
             (
                 f"--- gen {completed}/{generations} "
@@ -369,15 +316,18 @@ def run_search(
         )
 
     assert best_record is not None
+    score_history = [
+        {
+            "generation": cast(int, record["generation"]),
+            "train_score": cast(dict, record["train"])["score"],
+            "val_score": cast(dict, record["validation"])["score"],
+            "sigma": cast(float, record["sigma"]),
+        }
+        for record in history
+    ]
     return {
-        "search_bounds": train_evaluator.search_bounds,
-        "device_count": train_evaluator.device_count,
-        "train_dataset": _dataset_summary(train_dataset),
-        "validation_dataset": _dataset_summary(validation_dataset),
         "best_params": asdict(cast(Any, best_record["params"])),
         "best_generation": int(best_record["best_generation"]),
-        "best_mean_params": asdict(cast(Any, best_record["mean_params"])),
-        "best_params_bound_summary": cast(Any, best_record["params_bound_summary"]),
         "train_metrics": summarize_metrics(
             cast(ReplayMetrics, best_record["train_metrics"])
         ),
@@ -390,16 +340,15 @@ def run_search(
         "validation_metrics_by_label": _per_label_metrics(
             validation_dataset, cast(jax.Array, best_record["best_solution"])
         ),
-        "history": history,
+        "bound_warnings": _bound_warnings(
+            cast(Any, best_record["params"]), train_evaluator.search_bounds
+        ),
+        "score_history": score_history,
+        "search_bounds": train_evaluator.search_bounds,
+        "train_dataset": _dataset_summary(train_dataset),
+        "validation_dataset": _dataset_summary(validation_dataset),
         "recommended_config_update": _recommend_config_update(
             cast(Any, best_record["params"]), train_runs
-        ),
-        "parameter_summary": _parameter_summary(
-            history,
-            cast(Any, best_record["params"]),
-            cast(Any, best_record["mean_params"]),
-            train_evaluator.search_bounds,
-            int(best_record["best_generation"]),
         ),
     }
 

@@ -30,6 +30,9 @@ CHASSIS_TOP_HEIGHT = 0.003
 
 OBSTACLE_COLOR = "0.6 0.6 0.65 1"
 
+WHEEL_LATERAL_OFFSET = 0.037123
+CASTER_FRICTION = "0.12 0.0005 0.00002"
+
 CHASER_COLOR = "1 0.545 0.545 1"
 EVADER_COLOR = "0.435 0.702 0.722 1"
 
@@ -75,7 +78,7 @@ def _agent_mjcf(
             contype="{CONTACTS["chassis"][0]}"
             conaffinity="{CONTACTS["chassis"][1]}"
         />
-        <body name="{name}_left_wheel" pos="0 0.037123 -0.0099">
+        <body name="{name}_left_wheel" pos="0 {WHEEL_LATERAL_OFFSET} -0.0099">
             <joint
                 name="{name}_left_wheel_joint"
                 type="hinge"
@@ -96,7 +99,7 @@ def _agent_mjcf(
                 conaffinity="{CONTACTS["wheel"][1]}"
             />
         </body>
-        <body name="{name}_right_wheel" pos="0 -0.037123 -0.0099">
+        <body name="{name}_right_wheel" pos="0 {-WHEEL_LATERAL_OFFSET} -0.0099">
             <joint
                 name="{name}_right_wheel_joint"
                 type="hinge"
@@ -142,7 +145,7 @@ def _agent_mjcf(
                     mass="0.002"
                     group="{GEOM_GROUP_AGENT}"
                     rgba="0.6 0.6 0.6 1"
-                    friction="0.7 0.005 0.0001"
+                    friction="{CASTER_FRICTION}"
                     contype="{CONTACTS["caster_ball"][0]}"
                     conaffinity="{CONTACTS["caster_ball"][1]}"
                 />

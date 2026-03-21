@@ -45,6 +45,8 @@ class DynamicsRandomizationConfig:
     chassis_mass_scale_max: float = 1.1
     com_offset_x_max: float = 0.003
     com_offset_y_max: float = 0.003
+    track_width_scale_min: float = 0.96
+    track_width_scale_max: float = 1.04
     wheel_friction_scale_min: float = 0.9
     wheel_friction_scale_max: float = 1.12
     caster_friction_scale_min: float = 0.9
@@ -239,6 +241,8 @@ class EnvironmentConfig:
             raise ValueError("mass scales must be positive")
         if dyn.wheel_friction_scale_min <= 0 or dyn.wheel_friction_scale_max <= 0:
             raise ValueError("wheel friction scales must be positive")
+        if dyn.track_width_scale_min <= 0 or dyn.track_width_scale_max <= 0:
+            raise ValueError("track width scales must be positive")
         if dyn.caster_friction_scale_min <= 0 or dyn.caster_friction_scale_max <= 0:
             raise ValueError("caster friction scales must be positive")
         if (

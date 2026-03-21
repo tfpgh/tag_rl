@@ -21,7 +21,7 @@ from sysid.replay import (
 from sysid.stats import summarize_run
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
-LATENT_DIM = 11
+LATENT_DIM = 12
 
 
 def _replace_std_init(params: Any, std_init: float) -> Any:

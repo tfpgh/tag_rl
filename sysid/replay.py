@@ -30,6 +30,7 @@ class NominalParameters:
     mass_scale: float = 1.0
     com_offset_x: float = 0.0
     com_offset_y: float = 0.0
+    track_width_scale: float = 1.0
     wheel_friction_scale: float = 1.0
     caster_friction_scale: float = 1.0
     wheel_frictionloss_scale: float = 1.0
@@ -78,6 +79,7 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
             params.mass_scale,
             params.com_offset_x,
             params.com_offset_y,
+            params.track_width_scale,
             params.wheel_friction_scale,
             params.caster_friction_scale,
             params.wheel_frictionloss_scale,
@@ -109,12 +111,13 @@ def decoded_values_to_params(
         mass_scale=float(values[0]),
         com_offset_x=float(values[1]),
         com_offset_y=float(values[2]),
-        wheel_friction_scale=float(values[3]),
-        caster_friction_scale=float(values[4]),
-        wheel_frictionloss_scale=float(values[5]),
-        motor_strength_scale=float(values[6]),
-        back_emf_scale=float(values[7]),
-        motor_balance=float(values[8]),
+        track_width_scale=float(values[3]),
+        wheel_friction_scale=float(values[4]),
+        caster_friction_scale=float(values[5]),
+        wheel_frictionloss_scale=float(values[6]),
+        motor_strength_scale=float(values[7]),
+        back_emf_scale=float(values[8]),
+        motor_balance=float(values[9]),
     )
 
 
@@ -173,8 +176,9 @@ def make_dataset_evaluator(
             0.97,
             -0.005,
             -0.005,
+            0.94,
             0.85,
-            0.75,
+            0.3,
             0.8,
             0.8,
             0.85,
@@ -189,8 +193,9 @@ def make_dataset_evaluator(
             1.03,
             0.005,
             0.005,
+            1.06,
             1.15,
-            1.25,
+            1.0,
             1.4,
             1.25,
             1.15,
@@ -219,6 +224,7 @@ def make_dataset_evaluator(
         return AgentDynamicsParams(
             mass_scale=one,
             com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
+            track_width_scale=one,
             wheel_friction_scale=one,
             caster_friction_scale=one,
             wheel_frictionloss_scale=one,
@@ -233,12 +239,13 @@ def make_dataset_evaluator(
         agent = AgentDynamicsParams(
             mass_scale=values[0],
             com_offset_xy=jnp.asarray([values[1], values[2]], dtype=jnp.float32),
-            wheel_friction_scale=values[3],
-            caster_friction_scale=values[4],
-            wheel_frictionloss_scale=values[5],
-            motor_strength_scale=values[6],
-            back_emf_scale=values[7],
-            motor_balance=values[8],
+            track_width_scale=values[3],
+            wheel_friction_scale=values[4],
+            caster_friction_scale=values[5],
+            wheel_frictionloss_scale=values[6],
+            motor_strength_scale=values[7],
+            back_emf_scale=values[8],
+            motor_balance=values[9],
         )
         if is_chaser:
             return DomainParams(
@@ -511,8 +518,9 @@ def make_dataset_evaluator(
         "mass_scale": (0.97, 1.03),
         "com_offset_x": (-0.005, 0.005),
         "com_offset_y": (-0.005, 0.005),
+        "track_width_scale": (0.94, 1.06),
         "wheel_friction_scale": (0.85, 1.15),
-        "caster_friction_scale": (0.75, 1.25),
+        "caster_friction_scale": (0.3, 1.0),
         "wheel_frictionloss_scale": (0.8, 1.4),
         "motor_strength_scale": (0.8, 1.25),
         "back_emf_scale": (0.85, 1.15),

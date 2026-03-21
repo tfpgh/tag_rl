@@ -52,13 +52,14 @@ def _sample_agent_dynamics(
         mass_rng,
         com_x_rng,
         com_y_rng,
+        track_rng,
         wheel_friction_rng,
         caster_friction_rng,
         frictionloss_rng,
         strength_rng,
         back_emf_rng,
         balance_rng,
-    ) = random.split(rng, 9)
+    ) = random.split(rng, 10)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -69,6 +70,12 @@ def _sample_agent_dynamics(
                 _sample_centered(com_x_rng, dyn.com_offset_x_max, scale),
                 _sample_centered(com_y_rng, dyn.com_offset_y_max, scale),
             ]
+        ),
+        track_width_scale=_sample_scale(
+            track_rng,
+            dyn.track_width_scale_min,
+            dyn.track_width_scale_max,
+            scale,
         ),
         wheel_friction_scale=_sample_scale(
             wheel_friction_rng,
@@ -415,6 +422,7 @@ def _apply_agent_dynamics(
     model_indices: ModelIndices,
     geom_friction: jax.Array,
     body_mass: jax.Array,
+    body_pos: jax.Array,
     body_ipos: jax.Array,
     body_inertia: jax.Array,
     dof_frictionloss: jax.Array,
@@ -422,19 +430,24 @@ def _apply_agent_dynamics(
     actuator_biasprm: jax.Array,
     agent_params: AgentDynamicsParams,
     agent_indices,
-) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
+) -> tuple[
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+    jax.Array,
+]:
     left_motor_scale = agent_params.motor_strength_scale * (
         1.0 + agent_params.motor_balance
     )
     right_motor_scale = agent_params.motor_strength_scale * (
         1.0 - agent_params.motor_balance
     )
-    left_emf_scale = agent_params.back_emf_scale * (
-        1.0 + agent_params.motor_balance
-    )
-    right_emf_scale = agent_params.back_emf_scale * (
-        1.0 - agent_params.motor_balance
-    )
+    left_emf_scale = agent_params.back_emf_scale * (1.0 + agent_params.motor_balance)
+    right_emf_scale = agent_params.back_emf_scale * (1.0 - agent_params.motor_balance)
 
     for wheel_geom_id in (
         agent_indices.left_wheel_geom_id,
@@ -455,6 +468,15 @@ def _apply_agent_dynamics(
         )
     )
 
+    left_body_pos = base_model.body_pos[agent_indices.left_wheel_body_id]
+    right_body_pos = base_model.body_pos[agent_indices.right_wheel_body_id]
+    body_pos = body_pos.at[agent_indices.left_wheel_body_id].set(
+        left_body_pos.at[1].set(left_body_pos[1] * agent_params.track_width_scale)
+    )
+    body_pos = body_pos.at[agent_indices.right_wheel_body_id].set(
+        right_body_pos.at[1].set(right_body_pos[1] * agent_params.track_width_scale)
+    )
+
     body_mass = body_mass.at[agent_indices.body_id].set(
         jnp.maximum(
             1e-6, base_model.body_mass[agent_indices.body_id] * agent_params.mass_scale
@@ -471,8 +493,7 @@ def _apply_agent_dynamics(
     body_inertia = body_inertia.at[agent_indices.body_id].set(
         jnp.maximum(
             1e-7,
-            base_model.body_inertia[agent_indices.body_id]
-            * agent_params.mass_scale,
+            base_model.body_inertia[agent_indices.body_id] * agent_params.mass_scale,
         )
     )
 
@@ -486,21 +507,25 @@ def _apply_agent_dynamics(
         )
 
     actuator_gainprm = actuator_gainprm.at[agent_indices.left_actuator_id, 0].set(
-        base_model.actuator_gainprm[agent_indices.left_actuator_id, 0] * left_motor_scale
+        base_model.actuator_gainprm[agent_indices.left_actuator_id, 0]
+        * left_motor_scale
     )
     actuator_gainprm = actuator_gainprm.at[agent_indices.right_actuator_id, 0].set(
-        base_model.actuator_gainprm[agent_indices.right_actuator_id, 0] * right_motor_scale
+        base_model.actuator_gainprm[agent_indices.right_actuator_id, 0]
+        * right_motor_scale
     )
     actuator_biasprm = actuator_biasprm.at[agent_indices.left_actuator_id, 2].set(
         base_model.actuator_biasprm[agent_indices.left_actuator_id, 2] * left_emf_scale
     )
     actuator_biasprm = actuator_biasprm.at[agent_indices.right_actuator_id, 2].set(
-        base_model.actuator_biasprm[agent_indices.right_actuator_id, 2] * right_emf_scale
+        base_model.actuator_biasprm[agent_indices.right_actuator_id, 2]
+        * right_emf_scale
     )
 
     return (
         geom_friction,
         body_mass,
+        body_pos,
         body_ipos,
         body_inertia,
         dof_frictionloss,
@@ -514,6 +539,7 @@ def randomize_model(
 ) -> mjx.Model:
     geom_friction = base_model.geom_friction
     body_mass = base_model.body_mass
+    body_pos = base_model.body_pos
     body_ipos = base_model.body_ipos
     body_inertia = base_model.body_inertia
     dof_frictionloss = base_model.dof_frictionloss
@@ -523,6 +549,7 @@ def randomize_model(
     (
         geom_friction,
         body_mass,
+        body_pos,
         body_ipos,
         body_inertia,
         dof_frictionloss,
@@ -533,6 +560,7 @@ def randomize_model(
         model_indices,
         geom_friction,
         body_mass,
+        body_pos,
         body_ipos,
         body_inertia,
         dof_frictionloss,
@@ -544,6 +572,7 @@ def randomize_model(
     (
         geom_friction,
         body_mass,
+        body_pos,
         body_ipos,
         body_inertia,
         dof_frictionloss,
@@ -554,6 +583,7 @@ def randomize_model(
         model_indices,
         geom_friction,
         body_mass,
+        body_pos,
         body_ipos,
         body_inertia,
         dof_frictionloss,
@@ -569,6 +599,7 @@ def randomize_model(
             {
                 "geom_friction": geom_friction,
                 "body_mass": body_mass,
+                "body_pos": body_pos,
                 "body_ipos": body_ipos,
                 "body_inertia": body_inertia,
                 "dof_frictionloss": dof_frictionloss,

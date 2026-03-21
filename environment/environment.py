@@ -72,6 +72,12 @@ class TagEnvironment:
 
     def _build_agent_model_indices(self, prefix: str) -> AgentModelIndices:
         body_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, prefix)
+        left_wheel_body_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_left_wheel"
+        )
+        right_wheel_body_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_right_wheel"
+        )
         left_wheel_geom_id = mujoco.mj_name2id(
             self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_left_wheel_geom"
         )
@@ -95,6 +101,8 @@ class TagEnvironment:
         )
         return AgentModelIndices(
             body_id=body_id,
+            left_wheel_body_id=left_wheel_body_id,
+            right_wheel_body_id=right_wheel_body_id,
             left_wheel_geom_id=left_wheel_geom_id,
             right_wheel_geom_id=right_wheel_geom_id,
             caster_geom_id=caster_geom_id,

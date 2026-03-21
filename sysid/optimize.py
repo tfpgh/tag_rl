@@ -53,11 +53,13 @@ def _split_runs(run_dirs: list[str]) -> tuple[list[RunData], list[RunData]]:
 
 def _mean_metrics(metrics_list: list[ReplayMetrics]) -> ReplayMetrics:
     if not metrics_list:
-        return ReplayMetrics(0.0, 0.0, 0.0, 0.0, float("inf"), 0)
+        return ReplayMetrics(0.0, 0.0, 0.0, 0.0, 0.0, float("inf"), 0)
     return ReplayMetrics(
         position_rmse_m=sum(item.position_rmse_m for item in metrics_list)
         / len(metrics_list),
         yaw_rmse_rad=sum(item.yaw_rmse_rad for item in metrics_list)
+        / len(metrics_list),
+        yaw_rate_rmse_rad_s=sum(item.yaw_rate_rmse_rad_s for item in metrics_list)
         / len(metrics_list),
         endpoint_position_error_m=sum(
             item.endpoint_position_error_m for item in metrics_list
@@ -109,7 +111,9 @@ def _bound_proximity(
 def _console_all_params(params: Any) -> str:
     parts = []
     for name, value in asdict(params).items():
-        parts.append(f"  {name}={value:.4f}" if isinstance(value, float) else f"  {name}={value}")
+        parts.append(
+            f"  {name}={value:.4f}" if isinstance(value, float) else f"  {name}={value}"
+        )
     return "\n".join(parts)
 
 
@@ -276,12 +280,14 @@ def run_search(
         )[0]
         train_val_gap = validation_metrics.score - train_metrics.score
 
-        history.append({
-            "generation": generation,
-            "train": summarize_metrics(train_metrics),
-            "validation": summarize_metrics(validation_metrics),
-            "sigma": float(state.std),
-        })
+        history.append(
+            {
+                "generation": generation,
+                "train": summarize_metrics(train_metrics),
+                "validation": summarize_metrics(validation_metrics),
+                "sigma": float(state.std),
+            }
+        )
 
         if (
             best_record is None

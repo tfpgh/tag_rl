@@ -16,6 +16,12 @@ from environment.types import AgentDynamicsParams, DomainParams
 from sysid.dataset import build_prepared_dataset
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
+SEGMENT_WEIGHTS = {
+    "arc": 0.6,
+    "straight": 0.3,
+    "spin": 0.1,
+}
+
 
 @dataclass(frozen=True, slots=True)
 class NominalParameters:
@@ -42,6 +48,7 @@ def summarize_metrics(metrics: ReplayMetrics) -> dict[str, float]:
     return {
         "position_rmse_m": metrics.position_rmse_m,
         "yaw_rmse_rad": metrics.yaw_rmse_rad,
+        "yaw_rate_rmse_rad_s": metrics.yaw_rate_rmse_rad_s,
         "endpoint_position_error_m": metrics.endpoint_position_error_m,
         "endpoint_yaw_error_rad": metrics.endpoint_yaw_error_rad,
         "score": metrics.score,
@@ -80,6 +87,15 @@ def encode_params(params: NominalParameters) -> jnp.ndarray:
         ],
         dtype=jnp.float32,
     )
+
+
+def _segment_family(label: str) -> str | None:
+    if label in SEGMENT_WEIGHTS:
+        return label
+    for family in SEGMENT_WEIGHTS:
+        if label.endswith(family):
+            return family
+    return None
 
 
 def decoded_values_to_params(
@@ -130,8 +146,16 @@ def make_dataset_evaluator(
     zero_ctrl = jnp.zeros((num_segments, env.mj_model.nu), dtype=jnp.float32)
     mask = dataset.mask
     references = dataset.references
+    initial_poses = dataset.initial_poses
     controls_left = dataset.controls[..., 0]
     controls_right = dataset.controls[..., 1]
+    segment_weights = jnp.asarray(
+        [
+            SEGMENT_WEIGHTS.get(_segment_family(label) or "", 0.0)
+            for label in dataset.segment_labels
+        ],
+        dtype=jnp.float32,
+    )
     parked_xy = jnp.asarray(
         [
             0.5 * env.config.arena_width - 2.0 * env.config.agent_radius,
@@ -146,31 +170,31 @@ def make_dataset_evaluator(
         [
             0.0,
             0.0,
-            0.95,
-            -0.015,
-            -0.015,
-            0.5,
-            0.1,
-            0.3,
-            0.5,
-            0.3,
-            -0.25,
+            0.97,
+            -0.005,
+            -0.005,
+            0.85,
+            0.75,
+            0.8,
+            0.8,
+            0.85,
+            -0.1,
         ],
         dtype=jnp.float32,
     )
     upper_bounds = jnp.asarray(
         [
-            float(max_action_delay),
-            float(max_observation_delay),
-            1.05,
-            0.015,
-            0.015,
-            1.5,
-            2.5,
-            5.0,
-            3.0,
-            2.0,
-            0.25,
+            float(min(max_action_delay, 10)),
+            float(min(max_observation_delay, 10)),
+            1.03,
+            0.005,
+            0.005,
+            1.15,
+            1.25,
+            1.4,
+            1.25,
+            1.15,
+            0.1,
         ],
         dtype=jnp.float32,
     )
@@ -349,9 +373,57 @@ def make_dataset_evaluator(
             jnp.sin(predicted[..., 2] - references[..., 2]),
             jnp.cos(predicted[..., 2] - references[..., 2]),
         )
+        yaw_sq = jnp.square(yaw_delta)
+        predicted_yaw = jnp.concatenate(
+            [initial_poses[:, 2:3], predicted[..., 2]], axis=1
+        )
+        reference_yaw = jnp.concatenate(
+            [initial_poses[:, 2:3], references[..., 2]], axis=1
+        )
+        predicted_yaw_rate = env.config.action_frequency * jnp.arctan2(
+            jnp.sin(predicted_yaw[:, 1:] - predicted_yaw[:, :-1]),
+            jnp.cos(predicted_yaw[:, 1:] - predicted_yaw[:, :-1]),
+        )
+        reference_yaw_rate = env.config.action_frequency * jnp.arctan2(
+            jnp.sin(reference_yaw[:, 1:] - reference_yaw[:, :-1]),
+            jnp.cos(reference_yaw[:, 1:] - reference_yaw[:, :-1]),
+        )
+        yaw_rate_sq = jnp.square(predicted_yaw_rate - reference_yaw_rate)
         valid_steps = jnp.maximum(jnp.sum(mask), 1.0)
         position_rmse = jnp.sqrt(jnp.sum(position_sq * mask) / valid_steps)
-        yaw_rmse = jnp.sqrt(jnp.sum(jnp.square(yaw_delta) * mask) / valid_steps)
+        yaw_rmse = jnp.sqrt(jnp.sum(yaw_sq * mask) / valid_steps)
+        yaw_rate_rmse = jnp.sqrt(jnp.sum(yaw_rate_sq * mask) / valid_steps)
+
+        def family_rmse(
+            squared_error: jax.Array, family_weight: float
+        ) -> tuple[jax.Array, jax.Array]:
+            segment_mask = jnp.asarray(
+                segment_weights == family_weight, dtype=jnp.float32
+            )[:, None]
+            family_steps = jnp.sum(mask * segment_mask)
+            rmse = jnp.sqrt(
+                jnp.sum(squared_error * mask * segment_mask)
+                / jnp.maximum(family_steps, 1.0)
+            )
+            return rmse, family_steps
+
+        weighted_score = jnp.asarray(0.0, dtype=jnp.float32)
+        active_weight = jnp.asarray(0.0, dtype=jnp.float32)
+        for family_weight in SEGMENT_WEIGHTS.values():
+            family_position_rmse, family_steps = family_rmse(position_sq, family_weight)
+            family_yaw_rmse, _ = family_rmse(yaw_sq, family_weight)
+            family_yaw_rate_rmse, _ = family_rmse(yaw_rate_sq, family_weight)
+            family_normalized_yaw_rate_rmse = (
+                family_yaw_rate_rmse / env.config.action_frequency
+            )
+            family_score = (
+                0.5 * family_position_rmse
+                + 0.3 * family_yaw_rmse
+                + 0.2 * family_normalized_yaw_rate_rmse
+            )
+            is_active = jnp.asarray(family_steps > 0.0, dtype=jnp.float32)
+            weighted_score = weighted_score + is_active * family_weight * family_score
+            active_weight = active_weight + is_active * family_weight
 
         segment_counts = jnp.maximum(jnp.sum(mask, axis=1).astype(jnp.int32), 1)
         last_indices = segment_counts - 1
@@ -363,11 +435,12 @@ def make_dataset_evaluator(
         )
         endpoint_position = jnp.mean(jnp.sqrt(endpoint_position_sq))
         endpoint_yaw_mean = jnp.mean(endpoint_yaw)
-        score = position_rmse + 0.3 * yaw_rmse
+        score = weighted_score / jnp.maximum(active_weight, 1e-6)
         raw_metrics = jnp.asarray(
             [
                 position_rmse,
                 yaw_rmse,
+                yaw_rate_rmse,
                 endpoint_position,
                 endpoint_yaw_mean,
                 score,
@@ -376,7 +449,7 @@ def make_dataset_evaluator(
             dtype=jnp.float32,
         )
         safe_metrics = jnp.asarray(
-            [10.0, 10.0, 10.0, 10.0, 1e6, valid_steps], dtype=jnp.float32
+            [10.0, 10.0, 50.0, 10.0, 10.0, 1e6, valid_steps], dtype=jnp.float32
         )
         finite_metrics = jnp.all(jnp.isfinite(raw_metrics))
         return jnp.where(valid_prediction & finite_metrics, raw_metrics, safe_metrics)
@@ -420,29 +493,30 @@ def make_dataset_evaluator(
             ReplayMetrics(
                 position_rmse_m=float(item[0]),
                 yaw_rmse_rad=float(item[1]),
-                endpoint_position_error_m=float(item[2]),
-                endpoint_yaw_error_rad=float(item[3]),
-                score=float(item[4]),
-                sample_count=int(item[5]),
+                yaw_rate_rmse_rad_s=float(item[2]),
+                endpoint_position_error_m=float(item[3]),
+                endpoint_yaw_error_rad=float(item[4]),
+                score=float(item[5]),
+                sample_count=int(item[6]),
             )
             for item in raw
         ]
 
     def evaluate_population_fitness(population: jax.Array) -> jax.Array:
-        return evaluate_population_raw(population)[:, 4]
+        return evaluate_population_raw(population)[:, 5]
 
     search_bounds = {
-        "action_delay_substeps": (0.0, float(max_action_delay)),
-        "observation_delay_substeps": (0.0, float(max_observation_delay)),
-        "mass_scale": (0.95, 1.05),
-        "com_offset_x": (-0.015, 0.015),
-        "com_offset_y": (-0.015, 0.015),
-        "wheel_friction_scale": (0.5, 1.5),
-        "caster_friction_scale": (0.1, 2.5),
-        "wheel_frictionloss_scale": (0.3, 5.0),
-        "motor_strength_scale": (0.5, 3.0),
-        "back_emf_scale": (0.3, 2.0),
-        "motor_balance": (-0.25, 0.25),
+        "action_delay_substeps": (0.0, float(min(max_action_delay, 10))),
+        "observation_delay_substeps": (0.0, float(min(max_observation_delay, 10))),
+        "mass_scale": (0.97, 1.03),
+        "com_offset_x": (-0.005, 0.005),
+        "com_offset_y": (-0.005, 0.005),
+        "wheel_friction_scale": (0.85, 1.15),
+        "caster_friction_scale": (0.75, 1.25),
+        "wheel_frictionloss_scale": (0.8, 1.4),
+        "motor_strength_scale": (0.8, 1.25),
+        "back_emf_scale": (0.85, 1.15),
+        "motor_balance": (-0.1, 0.1),
     }
 
     return DatasetEvaluator(

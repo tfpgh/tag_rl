@@ -69,6 +69,7 @@ class AlignedTrajectory:
 class ReplayMetrics:
     position_rmse_m: float
     yaw_rmse_rad: float
+    yaw_rate_rmse_rad_s: float
     endpoint_position_error_m: float
     endpoint_yaw_error_rad: float
     score: float

@@ -114,6 +114,8 @@ def _load_params(args: argparse.Namespace) -> NominalParameters:
         payload = json.loads(Path(args.params_json).read_text(encoding="utf-8"))
         if "best_params" in payload:
             payload = payload["best_params"]
+        payload.setdefault("track_width_scale", 1.0)
+        payload.setdefault("wheel_scrub_scale", 1.0)
         return NominalParameters(**payload)
     return NominalParameters(
         action_delay_substeps=args.action_delay_substeps,
@@ -123,6 +125,7 @@ def _load_params(args: argparse.Namespace) -> NominalParameters:
         com_offset_y=args.com_offset_y,
         track_width_scale=args.track_width_scale,
         wheel_friction_scale=args.wheel_friction_scale,
+        wheel_scrub_scale=args.wheel_scrub_scale,
         caster_friction_scale=args.caster_friction_scale,
         wheel_frictionloss_scale=args.wheel_frictionloss_scale,
         motor_strength_scale=args.motor_strength_scale,
@@ -158,6 +161,7 @@ def replay_dataset(
             com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
             track_width_scale=one,
             wheel_friction_scale=one,
+            wheel_scrub_scale=one,
             caster_friction_scale=one,
             wheel_frictionloss_scale=one,
             motor_strength_scale=one,
@@ -175,6 +179,7 @@ def replay_dataset(
         wheel_friction_scale=jnp.asarray(
             params.wheel_friction_scale, dtype=jnp.float32
         ),
+        wheel_scrub_scale=jnp.asarray(params.wheel_scrub_scale, dtype=jnp.float32),
         caster_friction_scale=jnp.asarray(
             params.caster_friction_scale, dtype=jnp.float32
         ),
@@ -606,6 +611,7 @@ def _bound_proximity_report(
         "com_offset_y": (-0.005, 0.005),
         "track_width_scale": (0.94, 1.06),
         "wheel_friction_scale": (0.85, 1.15),
+        "wheel_scrub_scale": (0.6, 1.4),
         "caster_friction_scale": (0.3, 1.0),
         "wheel_frictionloss_scale": (0.8, 1.4),
         "motor_strength_scale": (0.8, 1.25),
@@ -825,6 +831,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--com-offset-y", type=float, default=0.0)
     parser.add_argument("--track-width-scale", type=float, default=1.0)
     parser.add_argument("--wheel-friction-scale", type=float, default=1.0)
+    parser.add_argument("--wheel-scrub-scale", type=float, default=1.0)
     parser.add_argument("--caster-friction-scale", type=float, default=1.0)
     parser.add_argument("--wheel-frictionloss-scale", type=float, default=1.0)
     parser.add_argument("--motor-strength-scale", type=float, default=1.0)

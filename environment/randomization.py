@@ -54,12 +54,13 @@ def _sample_agent_dynamics(
         com_y_rng,
         track_rng,
         wheel_friction_rng,
+        wheel_scrub_rng,
         caster_friction_rng,
         frictionloss_rng,
         strength_rng,
         back_emf_rng,
         balance_rng,
-    ) = random.split(rng, 10)
+    ) = random.split(rng, 11)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -81,6 +82,12 @@ def _sample_agent_dynamics(
             wheel_friction_rng,
             dyn.wheel_friction_scale_min,
             dyn.wheel_friction_scale_max,
+            scale,
+        ),
+        wheel_scrub_scale=_sample_scale(
+            wheel_scrub_rng,
+            dyn.wheel_scrub_scale_min,
+            dyn.wheel_scrub_scale_max,
             scale,
         ),
         caster_friction_scale=_sample_scale(
@@ -453,11 +460,18 @@ def _apply_agent_dynamics(
         agent_indices.left_wheel_geom_id,
         agent_indices.right_wheel_geom_id,
     ):
+        base_friction = base_model.geom_friction[wheel_geom_id]
         geom_friction = geom_friction.at[wheel_geom_id].set(
             jnp.maximum(
                 1e-6,
-                base_model.geom_friction[wheel_geom_id]
-                * agent_params.wheel_friction_scale,
+                jnp.asarray(
+                    [
+                        base_friction[0] * agent_params.wheel_friction_scale,
+                        base_friction[1] * agent_params.wheel_scrub_scale,
+                        base_friction[2] * agent_params.wheel_scrub_scale,
+                    ],
+                    dtype=jnp.float32,
+                ),
             )
         )
     geom_friction = geom_friction.at[agent_indices.caster_geom_id].set(

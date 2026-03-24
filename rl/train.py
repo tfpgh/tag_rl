@@ -13,6 +13,12 @@ from tqdm import tqdm
 from environment.config import EnvironmentConfig
 from environment.curriculum import curriculum_progress as compute_curriculum_progress
 from environment.environment import TagEnvironment, observation_size
+from environment.model_build import (
+    build_mjx_model,
+    nominal_domain_params,
+    stack_mjx_models,
+)
+from environment.randomization import domain_params_distance, sample_domain_params
 from rl.checkpoints import (
     load_checkpoint,
     load_checkpoint_configs,
@@ -35,6 +41,30 @@ AXIS_NAME = "devices"
 TrainMetrics = dict[str, jax.Array]
 TrainInitFn = Callable[[jax.Array], RunnerState]
 TrainStepFn = Callable[[RunnerState, jax.Array], tuple[RunnerState, TrainMetrics]]
+
+
+def build_model_pool(env: TagEnvironment, rl_config: RLConfig):
+    nominal = nominal_domain_params()
+    rng = jax.random.PRNGKey(rl_config.seed)
+    sampled: list[tuple[float, Any]] = []
+    for index in range(max(rl_config.model_pool_size - 1, 0)):
+        rng, sample_rng = jax.random.split(rng)
+        params = sample_domain_params(
+            sample_rng, env.config, jnp.asarray(1.0, dtype=jnp.float32)
+        )
+        distance = float(jax.device_get(domain_params_distance(params, env.config)))
+        sampled.append((distance, params))
+    sampled.sort(key=lambda item: item[0])
+    domain_params_list = [nominal, *[params for _, params in sampled]]
+    model_list = [
+        build_mjx_model(env.mj_model, params, env.model_indices)
+        for params in domain_params_list
+    ]
+    model_pool = stack_mjx_models(model_list)
+    domain_param_pool = jax.tree.map(
+        lambda *xs: jnp.stack(xs, axis=0), *domain_params_list
+    )
+    return model_pool, domain_param_pool
 
 
 def learning_rate_for_update(
@@ -71,6 +101,7 @@ def make_train(
     local_num_envs = num_envs // num_devices
 
     env = TagEnvironment(env_config)
+    model_pool, domain_param_pool = build_model_pool(env, rl_config)
     obs_size = observation_size(env_config)
     chaser_network, evader_network = build_policies(rl_config.hidden_size, env_config)
 
@@ -114,8 +145,19 @@ def make_train(
 
         device_env_rng = jax.random.fold_in(env_rng, axis_index)
         reset_rngs = jax.random.split(device_env_rng, local_num_envs)
-        env_states, chaser_obs, evader_obs = jax.vmap(env.reset, in_axes=(0, None))(
-            reset_rngs, jnp.asarray(0.0, dtype=jnp.float32)
+        initial_model_indices = jnp.zeros(local_num_envs, dtype=jnp.int32)
+        initial_models = jax.tree.map(lambda x: x[initial_model_indices], model_pool)
+        initial_domain_params = jax.tree.map(
+            lambda x: x[initial_model_indices], domain_param_pool
+        )
+        env_states, chaser_obs, evader_obs = jax.vmap(
+            env.reset, in_axes=(0, None, 0, 0, 0)
+        )(
+            reset_rngs,
+            jnp.asarray(0.0, dtype=jnp.float32),
+            initial_models,
+            initial_domain_params,
+            initial_model_indices,
         )
 
         chaser_hstate = ScannedRNN.initialize_carry(
@@ -146,6 +188,8 @@ def make_train(
         runner_state, traj_batch = collect_trajectories(
             runner_state,
             env,
+            model_pool,
+            domain_param_pool,
             rl_config,
             chaser_network,
             evader_network,
@@ -292,6 +336,7 @@ def main() -> None:
         f"devices={len(devices)}, "
         f"global_envs={rl_config.num_envs}, "
         f"local_envs={rl_config.num_envs // len(devices)}, "
+        f"model_pool_size={rl_config.model_pool_size}, "
         f"num_steps={rl_config.num_steps}, "
         f"num_minibatches={rl_config.num_minibatches}, "
         f"timesteps_per_update={rl_config.timesteps_per_update}"

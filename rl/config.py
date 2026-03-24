@@ -9,6 +9,7 @@ class RLConfig:
     total_timesteps: int = int(5e9)
 
     hidden_size: int = 256
+    model_pool_size: int = 1024
 
     lr: float = 3e-4
     anneal_lr: bool = True
@@ -54,6 +55,8 @@ class RLConfig:
             raise ValueError("timesteps_per_update must be positive")
         if self.lr <= 0:
             raise ValueError("lr must be positive")
+        if self.model_pool_size <= 0:
+            raise ValueError("model_pool_size must be positive")
         if self.lr_decay_start_fraction < 0 or self.lr_decay_start_fraction > 1:
             raise ValueError("lr_decay_start_fraction must be in [0, 1]")
         if self.final_lr_scale < 0 or self.final_lr_scale > 1:

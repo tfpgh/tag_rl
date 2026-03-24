@@ -10,8 +10,11 @@ from mujoco import mjx
 
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
+from environment.model_build import (
+    build_mjx_model,
+    nominal_agent_dynamics_params,
+)
 from environment.mujoco_data import yaw_to_quaternion
-from environment.randomization import randomize_model
 from environment.types import AgentDynamicsParams, DomainParams
 from sysid.dataset import build_prepared_dataset
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
@@ -124,6 +127,35 @@ def decoded_values_to_params(
     )
 
 
+def params_to_domain_params(params: NominalParameters, role: str) -> DomainParams:
+    parked_agent = nominal_agent_dynamics_params()
+    agent = AgentDynamicsParams(
+        mass_scale=jnp.asarray(params.mass_scale, dtype=jnp.float32),
+        com_offset_xy=jnp.asarray(
+            [params.com_offset_x, params.com_offset_y], dtype=jnp.float32
+        ),
+        track_width_scale=jnp.asarray(params.track_width_scale, dtype=jnp.float32),
+        wheel_friction_scale=jnp.asarray(
+            params.wheel_friction_scale, dtype=jnp.float32
+        ),
+        wheel_scrub_scale=jnp.asarray(params.wheel_scrub_scale, dtype=jnp.float32),
+        caster_friction_scale=jnp.asarray(
+            params.caster_friction_scale, dtype=jnp.float32
+        ),
+        wheel_frictionloss_scale=jnp.asarray(
+            params.wheel_frictionloss_scale, dtype=jnp.float32
+        ),
+        motor_strength_scale=jnp.asarray(
+            params.motor_strength_scale, dtype=jnp.float32
+        ),
+        back_emf_scale=jnp.asarray(params.back_emf_scale, dtype=jnp.float32),
+        motor_balance=jnp.asarray(params.motor_balance, dtype=jnp.float32),
+    )
+    if role == "chaser":
+        return DomainParams(chaser=agent, evader=parked_agent)
+    return DomainParams(chaser=parked_agent, evader=agent)
+
+
 @dataclass(slots=True)
 class DatasetEvaluator:
     decode_population: Callable
@@ -224,43 +256,6 @@ def make_dataset_evaluator(
         continuous = bounded[:, 2:]
         return continuous, action_delay, observation_delay
 
-    def default_agent() -> AgentDynamicsParams:
-        one = jnp.asarray(1.0, dtype=jnp.float32)
-        return AgentDynamicsParams(
-            mass_scale=one,
-            com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
-            track_width_scale=one,
-            wheel_friction_scale=one,
-            wheel_scrub_scale=one,
-            caster_friction_scale=one,
-            wheel_frictionloss_scale=one,
-            motor_strength_scale=one,
-            back_emf_scale=one,
-            motor_balance=jnp.asarray(0.0, dtype=jnp.float32),
-        )
-
-    parked_agent = default_agent()
-
-    def domain_params(values: jax.Array) -> DomainParams:
-        agent = AgentDynamicsParams(
-            mass_scale=values[0],
-            com_offset_xy=jnp.asarray([values[1], values[2]], dtype=jnp.float32),
-            track_width_scale=values[3],
-            wheel_friction_scale=values[4],
-            wheel_scrub_scale=values[5],
-            caster_friction_scale=values[6],
-            wheel_frictionloss_scale=values[7],
-            motor_strength_scale=values[8],
-            back_emf_scale=values[9],
-            motor_balance=values[10],
-        )
-        if is_chaser:
-            return DomainParams(
-                chaser=agent,
-                evader=parked_agent,
-            )
-        return DomainParams(chaser=parked_agent, evader=agent)
-
     def make_initial_qpos(initial_pose: jax.Array) -> jax.Array:
         qpos = jnp.zeros(env.mj_model.nq, dtype=jnp.float32)
         target_xy = initial_pose[:2]
@@ -327,15 +322,15 @@ def make_dataset_evaluator(
             [agent.position_xy[0], agent.position_xy[1], agent.yaw], dtype=jnp.float32
         )
 
-    def evaluate_one(
-        values: jax.Array,
+    def evaluate_single_model(
+        model: mjx.Model,
         action_delay_substeps: jax.Array,
         observation_delay_substeps: jax.Array,
     ) -> jax.Array:
-        model = randomize_model(env.mjx_model, domain_params(values), env.model_indices)
         batched_data = init_data(model)
         action_buffer = jnp.zeros(
-            (num_segments, max_action_delay + 1, env.mj_model.nu), dtype=jnp.float32
+            (num_segments, max_action_delay + 1, env.mj_model.nu),
+            dtype=jnp.float32,
         )
         observation_buffer = jnp.tile(
             dataset.initial_poses[:, None, :], (1, max_observation_delay + 1, 1)
@@ -468,38 +463,42 @@ def make_dataset_evaluator(
         finite_metrics = jnp.all(jnp.isfinite(raw_metrics))
         return jnp.where(valid_prediction & finite_metrics, raw_metrics, safe_metrics)
 
-    evaluate_population_raw_single = jax.jit(jax.vmap(evaluate_one, in_axes=(0, 0, 0)))
-    evaluate_population_raw_sharded = jax.pmap(
-        lambda values, action_delays, observation_delays: jax.vmap(
-            evaluate_one, in_axes=(0, 0, 0)
-        )(values, action_delays, observation_delays)
-    )
+    evaluate_population_raw_single = jax.jit(evaluate_single_model)
 
     def evaluate_population_raw(population: jax.Array) -> jax.Array:
-        population = jnp.asarray(
-            np.asarray(jax.device_get(population)), dtype=jnp.float32
+        population_host = np.asarray(jax.device_get(population), dtype=np.float32)
+        values, action_delays, observation_delays = decode_population(
+            jnp.asarray(population_host)
         )
-        values, action_delays, observation_delays = decode_population(population)
-        population_size = int(population.shape[0])
-        if device_count == 1:
-            return evaluate_population_raw_single(
-                values, action_delays, observation_delays
+        values = np.asarray(jax.device_get(values), dtype=np.float32)
+        action_delays = np.asarray(jax.device_get(action_delays), dtype=np.int32)
+        observation_delays = np.asarray(
+            jax.device_get(observation_delays), dtype=np.int32
+        )
+        params = [
+            decoded_values_to_params(values[i], action_delays[i], observation_delays[i])
+            for i in range(population_host.shape[0])
+        ]
+        models = [
+            build_mjx_model(
+                env.mj_model,
+                params_to_domain_params(param, dataset.role),
+                env.model_indices,
             )
-
-        remainder = population_size % device_count
-        pad = (device_count - remainder) % device_count
-        if pad > 0:
-            values = jnp.pad(values, ((0, pad), (0, 0)))
-            action_delays = jnp.pad(action_delays, ((0, pad),))
-            observation_delays = jnp.pad(observation_delays, ((0, pad),))
-
-        shard_size = values.shape[0] // device_count
-        values = values.reshape(device_count, shard_size, values.shape[-1])
-        action_delays = action_delays.reshape(device_count, shard_size)
-        observation_delays = observation_delays.reshape(device_count, shard_size)
-        raw = evaluate_population_raw_sharded(values, action_delays, observation_delays)
-        raw = raw.reshape(device_count * shard_size, raw.shape[-1])
-        return raw[:population_size]
+            for param in params
+        ]
+        raw = [
+            evaluate_population_raw_single(
+                model,
+                jnp.asarray(action_delays[i], dtype=jnp.int32),
+                jnp.asarray(observation_delays[i], dtype=jnp.int32),
+            )
+            for i, model in enumerate(models)
+        ]
+        return jnp.stack(
+            raw,
+            axis=0,
+        )
 
     def evaluate_population(population: jax.Array) -> list[ReplayMetrics]:
         raw = evaluate_population_raw(population)

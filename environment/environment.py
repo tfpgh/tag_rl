@@ -14,8 +14,6 @@ from environment.geometry import (
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import JointDofSlices, JointQposSlices, quaternion_to_yaw
 from environment.randomization import (
-    randomize_model,
-    sample_domain_params,
     sample_layout_state,
     sample_pipeline_params,
     sample_spawn_state,
@@ -23,6 +21,7 @@ from environment.randomization import (
 from environment.types import (
     AgentKinematics,
     AgentModelIndices,
+    DomainParams,
     ModelIndices,
     TagEnvironmentState,
     TagEnvironmentStepInfo,
@@ -377,16 +376,16 @@ class TagEnvironment:
         return delayed_observations[0], delayed_observations[1]
 
     def _make_reset_state(
-        self, rng: jax.Array, curriculum_progress: jax.Array
+        self,
+        rng: jax.Array,
+        curriculum_progress: jax.Array,
+        randomized_model: mjx.Model,
+        domain_params: DomainParams,
+        model_index: jax.Array,
     ) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        layout_rng, domain_rng, pipeline_rng, spawn_rng, measurement_rng = (
-            jax.random.split(rng, 5)
-        )
+        layout_rng, pipeline_rng, spawn_rng, measurement_rng = jax.random.split(rng, 4)
         obstacle_state = sample_layout_state(
             layout_rng, self.config, curriculum_progress
-        )
-        domain_params = sample_domain_params(
-            domain_rng, self.config, curriculum_progress
         )
         pipeline_params = sample_pipeline_params(
             pipeline_rng, self.config, curriculum_progress
@@ -402,9 +401,6 @@ class TagEnvironment:
             self.joint_qpos_slices.chaser_caster_ball_joint,
             self.joint_qpos_slices.evader_caster_ball_joint,
         )
-        randomized_model = randomize_model(
-            self.mjx_model, domain_params, self.model_indices
-        )
         mjx_data = self.forward(
             randomized_model, self._template_mjx_data.replace(qpos=qpos, qvel=qvel)
         )
@@ -416,6 +412,7 @@ class TagEnvironment:
 
         zero_state = TagEnvironmentState(
             mjx_data=mjx_data,
+            model_index=model_index,
             domain_params=domain_params,
             pipeline_params=pipeline_params,
             obstacle_positions_xy=obstacle_state.positions_xy,
@@ -467,6 +464,7 @@ class TagEnvironment:
         chaser_action: jax.Array,
         evader_action: jax.Array,
         rng: jax.Array,
+        mjx_model: mjx.Model,
     ) -> tuple[
         TagEnvironmentState,
         jax.Array,
@@ -494,9 +492,6 @@ class TagEnvironment:
             action_rng, state.pipeline_params.action_drop_probability
         )
 
-        randomized_model = randomize_model(
-            self.mjx_model, state.domain_params, self.model_indices
-        )
         measurement_substep_rngs = jax.random.split(
             measurement_rng, self.substeps_per_action
         )
@@ -556,7 +551,7 @@ class TagEnvironment:
             )
             control_actions = jnp.concatenate([applied_actions[0], applied_actions[1]])
             data = data.replace(ctrl=control_actions)
-            data = mjx.step(randomized_model, data)
+            data = mjx.step(mjx_model, data)
 
             chaser, evader = self._agent_pair_kinematics(data)
             true_agent_positions_xy = jnp.stack(
@@ -728,14 +723,22 @@ class TagEnvironment:
 
     @partial(jax.jit, static_argnums=(0,))
     def reset(
-        self, rng: jax.Array, curriculum_progress: jax.Array
+        self,
+        rng: jax.Array,
+        curriculum_progress: jax.Array,
+        randomized_model: mjx.Model,
+        domain_params: DomainParams,
+        model_index: jax.Array,
     ) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        return self._make_reset_state(rng, curriculum_progress)
+        return self._make_reset_state(
+            rng, curriculum_progress, randomized_model, domain_params, model_index
+        )
 
     @partial(jax.jit, static_argnums=(0,))
     def step(
         self,
         state: TagEnvironmentState,
+        mjx_model: mjx.Model,
         chaser_action: jax.Array,
         evader_action: jax.Array,
         rng: jax.Array,
@@ -748,4 +751,4 @@ class TagEnvironment:
         jax.Array,
         TagEnvironmentStepInfo,
     ]:
-        return self.step_physics(state, chaser_action, evader_action, rng)
+        return self.step_physics(state, chaser_action, evader_action, rng, mjx_model)

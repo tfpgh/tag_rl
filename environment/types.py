@@ -67,6 +67,7 @@ class ModelIndices(NamedTuple):
 
 class TagEnvironmentState(NamedTuple):
     mjx_data: mjx.Data
+    model_index: jax.Array
     domain_params: DomainParams
     pipeline_params: PipelineParams
     obstacle_positions_xy: jax.Array

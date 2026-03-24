@@ -14,9 +14,8 @@ from mujoco import mjx
 
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
+from environment.model_build import build_mjx_model
 from environment.mujoco_data import yaw_to_quaternion
-from environment.randomization import randomize_model
-from environment.types import AgentDynamicsParams, DomainParams
 from sysid.dataset import DatasetConfig, build_prepared_dataset
 from sysid.load_runs import discover_run_dirs, load_run
 from sysid.replay import (
@@ -24,6 +23,7 @@ from sysid.replay import (
     _segment_family,
     encode_params,
     make_dataset_evaluator,
+    params_to_domain_params,
     summarize_metrics,
 )
 from sysid.types import PreparedDataset
@@ -154,50 +154,11 @@ def replay_dataset(
     parked_quat = yaw_to_quaternion(jnp.asarray(0.0, dtype=jnp.float32))
     identity_quaternion = jnp.asarray([1.0, 0.0, 0.0, 0.0], dtype=jnp.float32)
 
-    def default_agent() -> AgentDynamicsParams:
-        one = jnp.asarray(1.0, dtype=jnp.float32)
-        return AgentDynamicsParams(
-            mass_scale=one,
-            com_offset_xy=jnp.zeros(2, dtype=jnp.float32),
-            track_width_scale=one,
-            wheel_friction_scale=one,
-            wheel_scrub_scale=one,
-            caster_friction_scale=one,
-            wheel_frictionloss_scale=one,
-            motor_strength_scale=one,
-            back_emf_scale=one,
-            motor_balance=jnp.asarray(0.0, dtype=jnp.float32),
-        )
-
-    parked_agent = default_agent()
-    agent = AgentDynamicsParams(
-        mass_scale=jnp.asarray(params.mass_scale, dtype=jnp.float32),
-        com_offset_xy=jnp.asarray(
-            [params.com_offset_x, params.com_offset_y], dtype=jnp.float32
-        ),
-        track_width_scale=jnp.asarray(params.track_width_scale, dtype=jnp.float32),
-        wheel_friction_scale=jnp.asarray(
-            params.wheel_friction_scale, dtype=jnp.float32
-        ),
-        wheel_scrub_scale=jnp.asarray(params.wheel_scrub_scale, dtype=jnp.float32),
-        caster_friction_scale=jnp.asarray(
-            params.caster_friction_scale, dtype=jnp.float32
-        ),
-        wheel_frictionloss_scale=jnp.asarray(
-            params.wheel_frictionloss_scale, dtype=jnp.float32
-        ),
-        motor_strength_scale=jnp.asarray(
-            params.motor_strength_scale, dtype=jnp.float32
-        ),
-        back_emf_scale=jnp.asarray(params.back_emf_scale, dtype=jnp.float32),
-        motor_balance=jnp.asarray(params.motor_balance, dtype=jnp.float32),
+    model = build_mjx_model(
+        env.mj_model,
+        params_to_domain_params(params, dataset.role),
+        env.model_indices,
     )
-    domain_params = (
-        DomainParams(chaser=agent, evader=parked_agent)
-        if is_chaser
-        else DomainParams(chaser=parked_agent, evader=agent)
-    )
-    model = randomize_model(env.mjx_model, domain_params, env.model_indices)
 
     def make_initial_qpos(initial_pose: jax.Array) -> jax.Array:
         qpos = jnp.zeros(env.mj_model.nq, dtype=jnp.float32)

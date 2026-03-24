@@ -4,11 +4,14 @@ import jax
 import jax.numpy as jnp
 from flax.training.train_state import TrainState
 
+from environment.curriculum import curriculum_scale
+from environment.model_build import gather_batched_mjx_model
 from environment.environment import (
     TagEnvironment,
     TagEnvironmentState,
     TagEnvironmentStepInfo,
 )
+from environment.types import DomainParams
 from rl.config import RLConfig
 from rl.policy import PolicyModule
 
@@ -65,6 +68,9 @@ class RolloutCarry(NamedTuple):
 
 def auto_reset_step(
     env: TagEnvironment,
+    model_pool,
+    domain_param_pool: DomainParams,
+    rl_config: RLConfig,
     state: TagEnvironmentState,
     chaser_action: jax.Array,
     evader_action: jax.Array,
@@ -79,6 +85,26 @@ def auto_reset_step(
     jax.Array,
     TagEnvironmentStepInfo,
 ]:
+    def unlocked_pool_size(progress: jax.Array) -> jax.Array:
+        cur = env.config.curriculum
+        scale = curriculum_scale(
+            progress,
+            cur.dynamics_start,
+            cur.full_progress,
+            cur.exponent,
+        )
+        return jnp.maximum(
+            1,
+            1 + jnp.int32(jnp.floor(scale * (rl_config.model_pool_size - 1))),
+        )
+
+    def sample_model(rng_key: jax.Array, progress: jax.Array):
+        unlocked = unlocked_pool_size(progress)
+        model_index = jax.random.randint(rng_key, (), 0, unlocked)
+        randomized_model = gather_batched_mjx_model(model_pool, model_index)
+        domain_params = jax.tree.map(lambda x: x[model_index], domain_param_pool)
+        return randomized_model, domain_params, model_index
+
     step_rng, reset_rng = jax.random.split(rng)
     (
         stepped,
@@ -88,10 +114,25 @@ def auto_reset_step(
         evader_reward,
         done,
         info,
-    ) = env.step(state, chaser_action, evader_action, step_rng)
+    ) = env.step(
+        state,
+        gather_batched_mjx_model(model_pool, state.model_index),
+        chaser_action,
+        evader_action,
+        step_rng,
+    )
 
     def reset_branch(_: None) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
-        return env.reset(reset_rng, curriculum_progress)
+        randomized_model, domain_params, model_index = sample_model(
+            reset_rng, curriculum_progress
+        )
+        return env.reset(
+            reset_rng,
+            curriculum_progress,
+            randomized_model,
+            domain_params,
+            model_index,
+        )
 
     def continue_branch(_: None) -> tuple[TagEnvironmentState, jax.Array, jax.Array]:
         return stepped, chaser_obs, evader_obs
@@ -105,6 +146,8 @@ def auto_reset_step(
 def collect_trajectories(
     runner_state: RunnerState,
     env: TagEnvironment,
+    model_pool,
+    domain_param_pool: DomainParams,
     rl_config: RLConfig,
     chaser_network: PolicyModule,
     evader_network: PolicyModule,
@@ -163,8 +206,13 @@ def collect_trajectories(
             evader_reward,
             next_prev_done,
             info,
-        ) = jax.vmap(auto_reset_step, in_axes=(None, 0, 0, 0, 0, None))(
+        ) = jax.vmap(
+            auto_reset_step, in_axes=(None, None, None, None, 0, 0, 0, 0, None)
+        )(
             env,
+            model_pool,
+            domain_param_pool,
+            rl_config,
             env_state,
             chaser_action,
             evader_action,

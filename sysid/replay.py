@@ -14,13 +14,14 @@ from environment.model_build import (
     build_mjx_models_parallel,
     device_put_sharded_mjx_models,
     mjx_model_in_axes,
-    nominal_agent_dynamics_params,
+    nominal_host_agent_dynamics_params,
     pad_stacked_mjx_models,
     reshape_stacked_mjx_models_for_devices,
     stack_mjx_models,
+    HostAgentDynamicsParams,
+    HostDomainParams,
 )
 from environment.mujoco_data import yaw_to_quaternion
-from environment.types import AgentDynamicsParams, DomainParams
 from sysid.dataset import build_prepared_dataset
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
@@ -135,33 +136,24 @@ def decoded_values_to_params(
     )
 
 
-def params_to_domain_params(params: NominalParameters, role: str) -> DomainParams:
-    parked_agent = nominal_agent_dynamics_params()
-    agent = AgentDynamicsParams(
-        mass_scale=jnp.asarray(params.mass_scale, dtype=jnp.float32),
-        com_offset_xy=jnp.asarray(
-            [params.com_offset_x, params.com_offset_y], dtype=jnp.float32
-        ),
-        track_width_scale=jnp.asarray(params.track_width_scale, dtype=jnp.float32),
-        wheel_friction_scale=jnp.asarray(
-            params.wheel_friction_scale, dtype=jnp.float32
-        ),
-        wheel_scrub_scale=jnp.asarray(params.wheel_scrub_scale, dtype=jnp.float32),
-        caster_friction_scale=jnp.asarray(
-            params.caster_friction_scale, dtype=jnp.float32
-        ),
-        wheel_frictionloss_scale=jnp.asarray(
-            params.wheel_frictionloss_scale, dtype=jnp.float32
-        ),
-        motor_strength_scale=jnp.asarray(
-            params.motor_strength_scale, dtype=jnp.float32
-        ),
-        back_emf_scale=jnp.asarray(params.back_emf_scale, dtype=jnp.float32),
-        motor_balance=jnp.asarray(params.motor_balance, dtype=jnp.float32),
+def params_to_domain_params(params: NominalParameters, role: str) -> HostDomainParams:
+    parked_agent = nominal_host_agent_dynamics_params()
+    agent = HostAgentDynamicsParams(
+        mass_scale=params.mass_scale,
+        com_offset_x=params.com_offset_x,
+        com_offset_y=params.com_offset_y,
+        track_width_scale=params.track_width_scale,
+        wheel_friction_scale=params.wheel_friction_scale,
+        wheel_scrub_scale=params.wheel_scrub_scale,
+        caster_friction_scale=params.caster_friction_scale,
+        wheel_frictionloss_scale=params.wheel_frictionloss_scale,
+        motor_strength_scale=params.motor_strength_scale,
+        back_emf_scale=params.back_emf_scale,
+        motor_balance=params.motor_balance,
     )
     if role == "chaser":
-        return DomainParams(chaser=agent, evader=parked_agent)
-    return DomainParams(chaser=parked_agent, evader=agent)
+        return HostDomainParams(chaser=agent, evader=parked_agent)
+    return HostDomainParams(chaser=parked_agent, evader=agent)
 
 
 @dataclass(slots=True)
@@ -499,7 +491,7 @@ def make_dataset_evaluator(
             decoded_values_to_params(values[i], action_delays[i], observation_delays[i])
             for i in range(population_host.shape[0])
         ]
-        domain_params_list = [
+        domain_params_list: list[HostDomainParams] = [
             params_to_domain_params(param, dataset.role) for param in params
         ]
         models = build_mjx_models_parallel(

@@ -16,6 +16,27 @@ from mujoco import mjx
 from environment.types import AgentDynamicsParams, DomainParams, ModelIndices
 
 
+@dataclass(frozen=True, slots=True)
+class HostAgentDynamicsParams:
+    mass_scale: float
+    com_offset_x: float
+    com_offset_y: float
+    track_width_scale: float
+    wheel_friction_scale: float
+    wheel_scrub_scale: float
+    caster_friction_scale: float
+    wheel_frictionloss_scale: float
+    motor_strength_scale: float
+    back_emf_scale: float
+    motor_balance: float
+
+
+@dataclass(frozen=True, slots=True)
+class HostDomainParams:
+    chaser: HostAgentDynamicsParams
+    evader: HostAgentDynamicsParams
+
+
 def nominal_agent_dynamics_params() -> AgentDynamicsParams:
     one = jnp.asarray(1.0, dtype=jnp.float32)
     zero = jnp.asarray(0.0, dtype=jnp.float32)
@@ -36,6 +57,39 @@ def nominal_agent_dynamics_params() -> AgentDynamicsParams:
 def nominal_domain_params() -> DomainParams:
     nominal = nominal_agent_dynamics_params()
     return DomainParams(chaser=nominal, evader=nominal)
+
+
+def nominal_host_agent_dynamics_params() -> HostAgentDynamicsParams:
+    return HostAgentDynamicsParams(
+        1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0
+    )
+
+
+def nominal_host_domain_params() -> HostDomainParams:
+    nominal = nominal_host_agent_dynamics_params()
+    return HostDomainParams(chaser=nominal, evader=nominal)
+
+
+def to_host_domain_params(domain_params: DomainParams) -> HostDomainParams:
+    def convert(agent: AgentDynamicsParams) -> HostAgentDynamicsParams:
+        com = np.asarray(agent.com_offset_xy, dtype=np.float64)
+        return HostAgentDynamicsParams(
+            mass_scale=float(agent.mass_scale),
+            com_offset_x=float(com[0]),
+            com_offset_y=float(com[1]),
+            track_width_scale=float(agent.track_width_scale),
+            wheel_friction_scale=float(agent.wheel_friction_scale),
+            wheel_scrub_scale=float(agent.wheel_scrub_scale),
+            caster_friction_scale=float(agent.caster_friction_scale),
+            wheel_frictionloss_scale=float(agent.wheel_frictionloss_scale),
+            motor_strength_scale=float(agent.motor_strength_scale),
+            back_emf_scale=float(agent.back_emf_scale),
+            motor_balance=float(agent.motor_balance),
+        )
+
+    return HostDomainParams(
+        chaser=convert(domain_params.chaser), evader=convert(domain_params.evader)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,16 +131,15 @@ class ModelBuilder:
         self.model.actuator_biasprm[:] = self.base.actuator_biasprm
 
     def _apply_agent_dynamics(
-        self, agent_indices, agent_params: AgentDynamicsParams
+        self, agent_indices, agent_params: HostAgentDynamicsParams
     ) -> None:
-        mass_scale = float(agent_params.mass_scale)
+        mass_scale = agent_params.mass_scale
         self.model.body_mass[agent_indices.body_id] *= mass_scale
         self.model.body_inertia[agent_indices.body_id] *= mass_scale
-        self.model.body_ipos[agent_indices.body_id, :2] += np.asarray(
-            jax.device_get(agent_params.com_offset_xy), dtype=np.float64
-        )
+        self.model.body_ipos[agent_indices.body_id, 0] += agent_params.com_offset_x
+        self.model.body_ipos[agent_indices.body_id, 1] += agent_params.com_offset_y
 
-        track_width_scale = float(agent_params.track_width_scale)
+        track_width_scale = agent_params.track_width_scale
         self.model.body_pos[agent_indices.left_wheel_body_id, 1] *= track_width_scale
         self.model.body_pos[agent_indices.right_wheel_body_id, 1] *= track_width_scale
 
@@ -94,17 +147,13 @@ class ModelBuilder:
             agent_indices.left_wheel_geom_id,
             agent_indices.right_wheel_geom_id,
         ):
-            self.model.geom_friction[wheel_geom_id, 0] *= float(
+            self.model.geom_friction[wheel_geom_id, 0] *= (
                 agent_params.wheel_friction_scale
             )
-            self.model.geom_friction[wheel_geom_id, 1] *= float(
-                agent_params.wheel_scrub_scale
-            )
-            self.model.geom_friction[wheel_geom_id, 2] *= float(
-                agent_params.wheel_scrub_scale
-            )
+            self.model.geom_friction[wheel_geom_id, 1] *= agent_params.wheel_scrub_scale
+            self.model.geom_friction[wheel_geom_id, 2] *= agent_params.wheel_scrub_scale
 
-        self.model.geom_friction[agent_indices.caster_geom_id] *= float(
+        self.model.geom_friction[agent_indices.caster_geom_id] *= (
             agent_params.caster_friction_scale
         )
 
@@ -112,13 +161,11 @@ class ModelBuilder:
             agent_indices.left_wheel_dof_id,
             agent_indices.right_wheel_dof_id,
         ):
-            self.model.dof_frictionloss[dof_id] *= float(
-                agent_params.wheel_frictionloss_scale
-            )
+            self.model.dof_frictionloss[dof_id] *= agent_params.wheel_frictionloss_scale
 
-        strength_scale = float(agent_params.motor_strength_scale)
-        back_emf_scale = float(agent_params.back_emf_scale)
-        motor_balance = float(agent_params.motor_balance)
+        strength_scale = agent_params.motor_strength_scale
+        back_emf_scale = agent_params.back_emf_scale
+        motor_balance = agent_params.motor_balance
         left_scale = strength_scale * (1.0 - motor_balance)
         right_scale = strength_scale * (1.0 + motor_balance)
         left_back_emf = back_emf_scale * (1.0 - motor_balance)
@@ -130,20 +177,20 @@ class ModelBuilder:
             right_back_emf
         )
 
-    def build_cpu_model(self, domain_params: DomainParams) -> mujoco.MjModel:
+    def build_cpu_model(self, domain_params: HostDomainParams) -> mujoco.MjModel:
         self.restore()
         self._apply_agent_dynamics(self.model_indices.chaser, domain_params.chaser)
         self._apply_agent_dynamics(self.model_indices.evader, domain_params.evader)
         mujoco.mj_setConst(self.model, self.data)
         return self.model
 
-    def build_mjx_model(self, domain_params: DomainParams) -> mjx.Model:
+    def build_mjx_model(self, domain_params: HostDomainParams) -> mjx.Model:
         return mjx.put_model(self.build_cpu_model(domain_params))
 
 
 def build_cpu_model(
     base_model: mujoco.MjModel,
-    domain_params: DomainParams,
+    domain_params: HostDomainParams,
     model_indices: ModelIndices,
 ) -> mujoco.MjModel:
     return ModelBuilder(base_model, model_indices).build_cpu_model(domain_params)
@@ -151,7 +198,7 @@ def build_cpu_model(
 
 def build_mjx_model(
     base_model: mujoco.MjModel,
-    domain_params: DomainParams,
+    domain_params: HostDomainParams,
     model_indices: ModelIndices,
 ) -> mjx.Model:
     return ModelBuilder(base_model, model_indices).build_mjx_model(domain_params)
@@ -165,7 +212,7 @@ def _default_build_workers() -> int:
 def build_mjx_models_parallel(
     base_model: mujoco.MjModel,
     model_indices: ModelIndices,
-    domain_params_list: Sequence[DomainParams],
+    domain_params_list: Sequence[HostDomainParams],
     max_workers: int | None = None,
 ) -> list[mjx.Model]:
     if not domain_params_list:
@@ -183,7 +230,7 @@ def build_mjx_models_parallel(
 
     local = threading.local()
 
-    def build_one(params: DomainParams) -> mjx.Model:
+    def build_one(params: HostDomainParams) -> mjx.Model:
         builder = getattr(local, "builder", None)
         if builder is None:
             builder = ModelBuilder(base_model, model_indices)

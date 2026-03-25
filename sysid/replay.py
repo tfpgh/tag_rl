@@ -11,7 +11,7 @@ from mujoco import mjx
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.model_build import (
-    build_mjx_model,
+    build_mjx_models_parallel,
     nominal_agent_dynamics_params,
 )
 from environment.mujoco_data import yaw_to_quaternion
@@ -66,9 +66,12 @@ def evaluate_run(
     params: NominalParameters,
     target_hz: float | None = None,
     env_config: EnvironmentConfig | None = None,
+    build_workers: int | None = None,
 ) -> ReplayMetrics:
     dataset = build_prepared_dataset([run], target_hz=target_hz)
-    evaluator = make_dataset_evaluator(dataset, env_config=env_config)
+    evaluator = make_dataset_evaluator(
+        dataset, env_config=env_config, build_workers=build_workers
+    )
     metrics = evaluator.evaluate_population(
         jnp.asarray([encode_params(params)], dtype=jnp.float32)
     )
@@ -169,6 +172,7 @@ class DatasetEvaluator:
 def make_dataset_evaluator(
     dataset: PreparedDataset,
     env_config: EnvironmentConfig | None = None,
+    build_workers: int | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
     device_count = max(1, jax.local_device_count())
@@ -479,14 +483,15 @@ def make_dataset_evaluator(
             decoded_values_to_params(values[i], action_delays[i], observation_delays[i])
             for i in range(population_host.shape[0])
         ]
-        models = [
-            build_mjx_model(
-                env.mj_model,
-                params_to_domain_params(param, dataset.role),
-                env.model_indices,
-            )
-            for param in params
+        domain_params_list = [
+            params_to_domain_params(param, dataset.role) for param in params
         ]
+        models = build_mjx_models_parallel(
+            env.mj_model,
+            env.model_indices,
+            domain_params_list,
+            max_workers=build_workers,
+        )
         raw = [
             evaluate_population_raw_single(
                 model,

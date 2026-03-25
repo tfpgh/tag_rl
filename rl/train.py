@@ -14,7 +14,7 @@ from environment.config import EnvironmentConfig
 from environment.curriculum import curriculum_progress as compute_curriculum_progress
 from environment.environment import TagEnvironment, observation_size
 from environment.model_build import (
-    build_mjx_model,
+    build_mjx_models_parallel,
     nominal_domain_params,
     stack_mjx_models,
 )
@@ -56,10 +56,12 @@ def build_model_pool(env: TagEnvironment, rl_config: RLConfig):
         sampled.append((distance, params))
     sampled.sort(key=lambda item: item[0])
     domain_params_list = [nominal, *[params for _, params in sampled]]
-    model_list = [
-        build_mjx_model(env.mj_model, params, env.model_indices)
-        for params in domain_params_list
-    ]
+    model_list = build_mjx_models_parallel(
+        env.mj_model,
+        env.model_indices,
+        domain_params_list,
+        max_workers=rl_config.model_pool_build_workers,
+    )
     model_pool = stack_mjx_models(model_list)
     domain_param_pool = jax.tree.map(
         lambda *xs: jnp.stack(xs, axis=0), *domain_params_list
@@ -337,6 +339,7 @@ def main() -> None:
         f"global_envs={rl_config.num_envs}, "
         f"local_envs={rl_config.num_envs // len(devices)}, "
         f"model_pool_size={rl_config.model_pool_size}, "
+        f"model_pool_build_workers={rl_config.model_pool_build_workers}, "
         f"num_steps={rl_config.num_steps}, "
         f"num_minibatches={rl_config.num_minibatches}, "
         f"timesteps_per_update={rl_config.timesteps_per_update}"

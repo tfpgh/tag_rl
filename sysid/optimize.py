@@ -222,14 +222,14 @@ def _subset_dataset(dataset: PreparedDataset, label: str) -> PreparedDataset | N
 
 
 def _per_label_metrics(
-    dataset: PreparedDataset, best_solution: jax.Array
+    dataset: PreparedDataset, best_solution: jax.Array, build_workers: int | None
 ) -> dict[str, dict[str, float]]:
     results: dict[str, dict[str, float]] = {}
     for label in sorted(set(dataset.segment_labels)):
         subset = _subset_dataset(dataset, label)
         if subset is None:
             continue
-        evaluator = make_dataset_evaluator(subset)
+        evaluator = make_dataset_evaluator(subset, build_workers=build_workers)
         metrics = evaluator.evaluate_population(best_solution[None, :])[0]
         results[label] = summarize_metrics(metrics)
     return results
@@ -243,12 +243,15 @@ def run_search(
     generations: int,
     seed: int,
     std_init: float,
+    build_workers: int | None,
     quiet: bool,
 ) -> dict[str, object]:
     train_dataset = build_prepared_dataset(train_runs, config=dataset_config)
     validation_dataset = build_prepared_dataset(validation_runs, config=dataset_config)
-    train_evaluator = make_dataset_evaluator(train_dataset)
-    validation_evaluator = make_dataset_evaluator(validation_dataset)
+    train_evaluator = make_dataset_evaluator(train_dataset, build_workers=build_workers)
+    validation_evaluator = make_dataset_evaluator(
+        validation_dataset, build_workers=build_workers
+    )
 
     strategy = CMA_ES(
         population_size=population_size,
@@ -341,10 +344,14 @@ def run_search(
             cast(ReplayMetrics, best_record["validation_metrics"])
         ),
         "train_metrics_by_label": _per_label_metrics(
-            train_dataset, cast(jax.Array, best_record["best_solution"])
+            train_dataset,
+            cast(jax.Array, best_record["best_solution"]),
+            build_workers,
         ),
         "validation_metrics_by_label": _per_label_metrics(
-            validation_dataset, cast(jax.Array, best_record["best_solution"])
+            validation_dataset,
+            cast(jax.Array, best_record["best_solution"]),
+            build_workers,
         ),
         "bound_warnings": _bound_warnings(
             cast(Any, best_record["params"]), train_evaluator.search_bounds
@@ -371,6 +378,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-segment-duration-s", type=float, default=0.6)
     parser.add_argument("--transition-duration-s", type=float, default=0.25)
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument("--build-workers", type=int, default=8)
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
@@ -392,6 +400,7 @@ def main() -> None:
         generations=args.generations,
         seed=args.seed,
         std_init=args.std_init,
+        build_workers=args.build_workers,
         quiet=args.quiet,
     )
     payload = json.dumps(output, indent=2, sort_keys=True)

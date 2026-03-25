@@ -312,13 +312,22 @@ def run_search(
         bound_hits = _console_bound_hits(
             _params_bound_summary(params, train_evaluator.search_bounds)
         )
+        timing_info = train_evaluator.last_timing()
+        timing_suffix = ""
+        if timing_info is not None:
+            timing_suffix = (
+                f" decode={timing_info['decode_s']:.1f}s"
+                f" build={timing_info['build_s']:.1f}s"
+                f" eval={timing_info['eval_s']:.1f}s"
+            )
         _log(
             (
                 f"--- gen {completed}/{generations} "
                 f"train={train_metrics.score:.4f} val={validation_metrics.score:.4f} "
                 f"gap={train_val_gap:+.4f} sigma={float(state.std):.3f} "
                 f"{bound_hits} "
-                f"time={_format_duration(gen_time)} eta={_format_duration(eta)}\n"
+                f"time={_format_duration(gen_time)} eta={_format_duration(eta)}"
+                f"{timing_suffix}\n"
                 f"{_console_all_params(params)}"
             ),
             quiet,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+import time
 from typing import Callable
 
 import jax
@@ -12,8 +12,7 @@ from mujoco import mjx
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.model_build import (
-    build_mjx_models_process_parallel,
-    create_process_model_pool,
+    build_mjx_models_parallel,
     device_put_sharded_mjx_models,
     mjx_model_in_axes,
     nominal_host_agent_dynamics_params,
@@ -166,6 +165,7 @@ class DatasetEvaluator:
     population_size_hint: int
     search_bounds: dict[str, tuple[float, float]]
     device_count: int
+    last_timing: Callable[[], dict[str, float] | None]
 
 
 def make_dataset_evaluator(
@@ -174,9 +174,7 @@ def make_dataset_evaluator(
     build_workers: int | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
-    process_pool: ProcessPoolExecutor | None = None
-    if build_workers is not None and build_workers > 1:
-        process_pool = create_process_model_pool(env.model_xml, build_workers)
+    last_timing_info: dict[str, float] | None = None
     device_count = max(1, jax.local_device_count())
     max_action_delay = max(
         env.config.pipeline_randomization.max_action_delay_substeps, 40
@@ -483,6 +481,8 @@ def make_dataset_evaluator(
         )
 
     def evaluate_population_raw(population: jax.Array) -> jax.Array:
+        nonlocal last_timing_info
+        timing_started = time.perf_counter()
         population_host = np.asarray(jax.device_get(population), dtype=np.float32)
         values, action_delays, observation_delays = decode_population(
             jnp.asarray(population_host)
@@ -499,22 +499,33 @@ def make_dataset_evaluator(
         domain_params_list: list[HostDomainParams] = [
             params_to_domain_params(param, dataset.role) for param in params
         ]
-        models = build_mjx_models_process_parallel(
-            env.model_xml,
+        build_started = time.perf_counter()
+        models = build_mjx_models_parallel(
+            env.mj_model,
+            env.model_indices,
             domain_params_list,
             max_workers=build_workers,
-            executor=process_pool,
         )
+        build_done = time.perf_counter()
         model_batch = stack_mjx_models(models)
         population_size = len(models)
         action_delays_jax = jnp.asarray(action_delays, dtype=jnp.int32)
         observation_delays_jax = jnp.asarray(observation_delays, dtype=jnp.int32)
         if device_count == 1:
-            return evaluate_population_raw_batched(
+            raw = evaluate_population_raw_batched(
                 model_batch,
                 action_delays_jax,
                 observation_delays_jax,
             )
+            eval_done = time.perf_counter()
+            last_timing_info = {
+                "decode_s": build_started - timing_started,
+                "build_s": build_done - build_started,
+                "eval_s": eval_done - build_done,
+                "total_s": eval_done - timing_started,
+                "population": float(population_size),
+            }
+            return raw
 
         remainder = population_size % device_count
         pad = (device_count - remainder) % device_count
@@ -544,6 +555,14 @@ def make_dataset_evaluator(
             sharded_action_delays,
             sharded_observation_delays,
         )
+        eval_done = time.perf_counter()
+        last_timing_info = {
+            "decode_s": build_started - timing_started,
+            "build_s": build_done - build_started,
+            "eval_s": eval_done - build_done,
+            "total_s": eval_done - timing_started,
+            "population": float(population_size),
+        }
         raw = raw.reshape(device_count * shard_size, raw.shape[-1])
         return raw[:population_size]
 
@@ -588,4 +607,5 @@ def make_dataset_evaluator(
         population_size_hint=num_segments,
         search_bounds=search_bounds,
         device_count=device_count,
+        last_timing=lambda: last_timing_info,
     )

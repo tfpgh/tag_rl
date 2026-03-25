@@ -12,6 +12,7 @@ from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.model_build import (
     build_mjx_models_parallel,
+    device_put_sharded_mjx_models,
     mjx_model_in_axes,
     nominal_agent_dynamics_params,
     pad_stacked_mjx_models,
@@ -532,6 +533,14 @@ def make_dataset_evaluator(
         sharded_action_delays = action_delays_jax.reshape(device_count, shard_size)
         sharded_observation_delays = observation_delays_jax.reshape(
             device_count, shard_size
+        )
+        devices = jax.local_devices()[:device_count]
+        sharded_models = device_put_sharded_mjx_models(sharded_models, devices)
+        sharded_action_delays = jax.device_put_sharded(
+            [sharded_action_delays[i] for i in range(device_count)], devices
+        )
+        sharded_observation_delays = jax.device_put_sharded(
+            [sharded_observation_delays[i] for i in range(device_count)], devices
         )
         raw = _make_sharded_eval(sharded_models)(
             sharded_models,

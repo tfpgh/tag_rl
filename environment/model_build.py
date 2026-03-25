@@ -237,6 +237,20 @@ def reshape_stacked_mjx_models_for_devices(
     return jax.tree.map(reshape_leaf, model_batch)
 
 
+def device_put_sharded_mjx_models(model_batch: mjx.Model, devices) -> mjx.Model:
+    device_count = len(devices)
+
+    def put_leaf(leaf):
+        if isinstance(leaf, np.ndarray):
+            return leaf
+        if hasattr(leaf, "shape") and leaf.ndim > 0 and leaf.shape[0] == device_count:
+            shards = [leaf[i] for i in range(device_count)]
+            return jax.device_put_sharded(shards, devices)
+        return leaf
+
+    return jax.tree.map(put_leaf, model_batch)
+
+
 def mjx_model_in_axes(model_tree: mjx.Model):
     def in_axis_leaf(leaf):
         if isinstance(leaf, np.ndarray):

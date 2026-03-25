@@ -42,6 +42,7 @@ class TagEnvironment:
         self.config = config
 
         xml = generate_mjcf(config, mode="training")
+        self.model_xml = xml
         self.mj_model = mujoco.MjModel.from_xml_string(xml)
         self.mjx_model = mjx.put_model(self.mj_model)
 

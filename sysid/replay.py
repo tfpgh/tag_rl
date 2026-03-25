@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import Callable
 
@@ -11,7 +12,8 @@ from mujoco import mjx
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.model_build import (
-    build_mjx_models_parallel,
+    build_mjx_models_process_parallel,
+    create_process_model_pool,
     device_put_sharded_mjx_models,
     mjx_model_in_axes,
     nominal_host_agent_dynamics_params,
@@ -172,6 +174,9 @@ def make_dataset_evaluator(
     build_workers: int | None = None,
 ) -> DatasetEvaluator:
     env = TagEnvironment(env_config or EnvironmentConfig())
+    process_pool: ProcessPoolExecutor | None = None
+    if build_workers is not None and build_workers > 1:
+        process_pool = create_process_model_pool(env.model_xml, build_workers)
     device_count = max(1, jax.local_device_count())
     max_action_delay = max(
         env.config.pipeline_randomization.max_action_delay_substeps, 40
@@ -494,11 +499,11 @@ def make_dataset_evaluator(
         domain_params_list: list[HostDomainParams] = [
             params_to_domain_params(param, dataset.role) for param in params
         ]
-        models = build_mjx_models_parallel(
-            env.mj_model,
-            env.model_indices,
+        models = build_mjx_models_process_parallel(
+            env.model_xml,
             domain_params_list,
             max_workers=build_workers,
+            executor=process_pool,
         )
         model_batch = stack_mjx_models(models)
         population_size = len(models)

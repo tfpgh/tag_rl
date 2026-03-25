@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import copy
+import multiprocessing as mp
 import os
 import threading
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 
 import jax
@@ -35,6 +36,9 @@ class HostAgentDynamicsParams:
 class HostDomainParams:
     chaser: HostAgentDynamicsParams
     evader: HostAgentDynamicsParams
+
+
+_PROCESS_LOCAL_BUILDER = None
 
 
 def nominal_agent_dynamics_params() -> AgentDynamicsParams:
@@ -188,6 +192,86 @@ class ModelBuilder:
         return mjx.put_model(self.build_cpu_model(domain_params))
 
 
+def _build_agent_model_indices(model: mujoco.MjModel, prefix: str):
+    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, prefix)
+    left_wheel_body_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_left_wheel"
+    )
+    right_wheel_body_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_right_wheel"
+    )
+    left_wheel_geom_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_left_wheel_geom"
+    )
+    right_wheel_geom_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_right_wheel_geom"
+    )
+    caster_geom_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_caster_ball_geom"
+    )
+    left_joint_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}_left_wheel_joint"
+    )
+    right_joint_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}_right_wheel_joint"
+    )
+    left_actuator_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}_left_motor"
+    )
+    right_actuator_id = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{prefix}_right_motor"
+    )
+    from environment.types import AgentModelIndices
+
+    return AgentModelIndices(
+        body_id=body_id,
+        left_wheel_body_id=left_wheel_body_id,
+        right_wheel_body_id=right_wheel_body_id,
+        left_wheel_geom_id=left_wheel_geom_id,
+        right_wheel_geom_id=right_wheel_geom_id,
+        caster_geom_id=caster_geom_id,
+        left_wheel_dof_id=int(model.jnt_dofadr[left_joint_id]),
+        right_wheel_dof_id=int(model.jnt_dofadr[right_joint_id]),
+        left_actuator_id=left_actuator_id,
+        right_actuator_id=right_actuator_id,
+    )
+
+
+def build_model_indices(model: mujoco.MjModel) -> ModelIndices:
+    floor_geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+    return ModelIndices(
+        floor_geom_id=floor_geom_id,
+        chaser=_build_agent_model_indices(model, "chaser"),
+        evader=_build_agent_model_indices(model, "evader"),
+    )
+
+
+def _init_process_builder(model_xml: str) -> None:
+    global _PROCESS_LOCAL_BUILDER
+    model = mujoco.MjModel.from_xml_string(model_xml)
+    _PROCESS_LOCAL_BUILDER = ModelBuilder(model, build_model_indices(model))
+
+
+def _process_build_one(params: HostDomainParams) -> mjx.Model:
+    if _PROCESS_LOCAL_BUILDER is None:
+        raise RuntimeError("process-local model builder not initialized")
+    return _PROCESS_LOCAL_BUILDER.build_mjx_model(params)
+
+
+def create_process_model_pool(model_xml: str, max_workers: int | None = None):
+    worker_count = max_workers or _default_build_workers()
+    if "spawn" in mp.get_all_start_methods():
+        ctx = mp.get_context("spawn")
+    else:
+        ctx = None
+    return ProcessPoolExecutor(
+        max_workers=worker_count,
+        mp_context=ctx,
+        initializer=_init_process_builder,
+        initargs=(model_xml,),
+    )
+
+
 def build_cpu_model(
     base_model: mujoco.MjModel,
     domain_params: HostDomainParams,
@@ -239,6 +323,25 @@ def build_mjx_models_parallel(
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         return list(executor.map(build_one, domain_params_list))
+
+
+def build_mjx_models_process_parallel(
+    model_xml: str,
+    domain_params_list: Sequence[HostDomainParams],
+    max_workers: int | None = None,
+    executor: ProcessPoolExecutor | None = None,
+) -> list[mjx.Model]:
+    if not domain_params_list:
+        return []
+    if executor is not None:
+        return list(executor.map(_process_build_one, domain_params_list))
+    worker_count = max_workers or _default_build_workers()
+    if worker_count <= 1 or len(domain_params_list) == 1:
+        local_model = mujoco.MjModel.from_xml_string(model_xml)
+        local_builder = ModelBuilder(local_model, build_model_indices(local_model))
+        return [local_builder.build_mjx_model(params) for params in domain_params_list]
+    with create_process_model_pool(model_xml, worker_count) as pool:
+        return list(pool.map(_process_build_one, domain_params_list))
 
 
 def stack_mjx_models(models: Sequence[mjx.Model]) -> mjx.Model:

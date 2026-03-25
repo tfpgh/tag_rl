@@ -14,7 +14,7 @@ from environment.config import EnvironmentConfig
 from environment.curriculum import curriculum_progress as compute_curriculum_progress
 from environment.environment import TagEnvironment, observation_size
 from environment.model_build import (
-    build_mjx_models_parallel,
+    build_mjx_models_process_parallel,
     nominal_domain_params,
     stack_mjx_models,
     to_host_domain_params,
@@ -57,9 +57,8 @@ def build_model_pool(env: TagEnvironment, rl_config: RLConfig):
         sampled.append((distance, params))
     sampled.sort(key=lambda item: item[0])
     domain_params_list = [nominal, *[params for _, params in sampled]]
-    model_list = build_mjx_models_parallel(
-        env.mj_model,
-        env.model_indices,
+    model_list = build_mjx_models_process_parallel(
+        env.model_xml,
         [to_host_domain_params(params) for params in domain_params_list],
         max_workers=rl_config.model_pool_build_workers,
     )

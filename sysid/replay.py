@@ -12,7 +12,11 @@ from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.model_build import (
     build_mjx_models_parallel,
+    mjx_model_in_axes,
     nominal_agent_dynamics_params,
+    pad_stacked_mjx_models,
+    reshape_stacked_mjx_models_for_devices,
+    stack_mjx_models,
 )
 from environment.mujoco_data import yaw_to_quaternion
 from environment.types import AgentDynamicsParams, DomainParams
@@ -468,6 +472,17 @@ def make_dataset_evaluator(
         return jnp.where(valid_prediction & finite_metrics, raw_metrics, safe_metrics)
 
     evaluate_population_raw_single = jax.jit(evaluate_single_model)
+    evaluate_population_raw_batched = jax.jit(
+        jax.vmap(evaluate_single_model, in_axes=(0, 0, 0))
+    )
+
+    def _make_sharded_eval(model_tree):
+        return jax.pmap(
+            lambda models, action_delays, observation_delays: jax.vmap(
+                evaluate_single_model, in_axes=(0, 0, 0)
+            )(models, action_delays, observation_delays),
+            in_axes=(mjx_model_in_axes(model_tree), 0, 0),
+        )
 
     def evaluate_population_raw(population: jax.Array) -> jax.Array:
         population_host = np.asarray(jax.device_get(population), dtype=np.float32)
@@ -492,18 +507,39 @@ def make_dataset_evaluator(
             domain_params_list,
             max_workers=build_workers,
         )
-        raw = [
-            evaluate_population_raw_single(
-                model,
-                jnp.asarray(action_delays[i], dtype=jnp.int32),
-                jnp.asarray(observation_delays[i], dtype=jnp.int32),
+        model_batch = stack_mjx_models(models)
+        population_size = len(models)
+        action_delays_jax = jnp.asarray(action_delays, dtype=jnp.int32)
+        observation_delays_jax = jnp.asarray(observation_delays, dtype=jnp.int32)
+        if device_count == 1:
+            return evaluate_population_raw_batched(
+                model_batch,
+                action_delays_jax,
+                observation_delays_jax,
             )
-            for i, model in enumerate(models)
-        ]
-        return jnp.stack(
-            raw,
-            axis=0,
+
+        remainder = population_size % device_count
+        pad = (device_count - remainder) % device_count
+        if pad > 0:
+            model_batch = pad_stacked_mjx_models(model_batch, pad)
+            action_delays_jax = jnp.pad(action_delays_jax, ((0, pad),))
+            observation_delays_jax = jnp.pad(observation_delays_jax, ((0, pad),))
+
+        sharded_models = reshape_stacked_mjx_models_for_devices(
+            model_batch, device_count
         )
+        shard_size = action_delays_jax.shape[0] // device_count
+        sharded_action_delays = action_delays_jax.reshape(device_count, shard_size)
+        sharded_observation_delays = observation_delays_jax.reshape(
+            device_count, shard_size
+        )
+        raw = _make_sharded_eval(sharded_models)(
+            sharded_models,
+            sharded_action_delays,
+            sharded_observation_delays,
+        )
+        raw = raw.reshape(device_count * shard_size, raw.shape[-1])
+        return raw[:population_size]
 
     def evaluate_population(population: jax.Array) -> list[ReplayMetrics]:
         raw = evaluate_population_raw(population)

@@ -208,6 +208,46 @@ def stack_mjx_models(models: Sequence[mjx.Model]) -> mjx.Model:
     return jax.tree.map(stack_leaf, models[0], *models[1:])
 
 
+def pad_stacked_mjx_models(model_batch: mjx.Model, pad: int) -> mjx.Model:
+    if pad <= 0:
+        return model_batch
+
+    def pad_leaf(leaf):
+        if isinstance(leaf, np.ndarray):
+            return leaf
+        if hasattr(leaf, "shape") and leaf.ndim > 0:
+            pad_width = [(0, pad)] + [(0, 0)] * (leaf.ndim - 1)
+            return jnp.pad(leaf, pad_width)
+        return leaf
+
+    return jax.tree.map(pad_leaf, model_batch)
+
+
+def reshape_stacked_mjx_models_for_devices(
+    model_batch: mjx.Model, device_count: int
+) -> mjx.Model:
+    def reshape_leaf(leaf):
+        if isinstance(leaf, np.ndarray):
+            return leaf
+        if hasattr(leaf, "shape") and leaf.ndim > 0:
+            shard_size = leaf.shape[0] // device_count
+            return leaf.reshape((device_count, shard_size) + leaf.shape[1:])
+        return leaf
+
+    return jax.tree.map(reshape_leaf, model_batch)
+
+
+def mjx_model_in_axes(model_tree: mjx.Model):
+    def in_axis_leaf(leaf):
+        if isinstance(leaf, np.ndarray):
+            return None
+        if hasattr(leaf, "shape") and leaf.ndim > 0:
+            return 0
+        return None
+
+    return jax.tree.map(in_axis_leaf, model_tree)
+
+
 def gather_batched_mjx_model(model_pool: mjx.Model, indices: jax.Array) -> mjx.Model:
     def gather_leaf(leaf):
         if isinstance(leaf, np.ndarray):

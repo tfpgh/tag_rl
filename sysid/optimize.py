@@ -271,16 +271,28 @@ def run_search(
     for generation in range(generations):
         generation_started_at = time.perf_counter()
         ask_key, tell_key, key = jax.random.split(key, 3)
+        ask_started_at = time.perf_counter()
         population, state = strategy.ask(ask_key, state, es_params)
+        ask_done_at = time.perf_counter()
+        fitness_started_at = time.perf_counter()
         fitness = train_evaluator.evaluate_population_fitness(population)
+        fitness_done_at = time.perf_counter()
+        tell_started_at = time.perf_counter()
         state, metrics = strategy.tell(tell_key, population, fitness, state, es_params)
+        tell_done_at = time.perf_counter()
 
         best_solution = cast(jax.Array, metrics["best_solution"])
+        decode_started_at = time.perf_counter()
         params = _decode_solution(train_evaluator, best_solution)
+        decode_done_at = time.perf_counter()
+        train_eval_started_at = time.perf_counter()
         train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
+        train_eval_done_at = time.perf_counter()
+        val_eval_started_at = time.perf_counter()
         validation_metrics = validation_evaluator.evaluate_population(
             best_solution[None, :]
         )[0]
+        val_eval_done_at = time.perf_counter()
         train_val_gap = validation_metrics.score - train_metrics.score
 
         history.append(
@@ -316,10 +328,23 @@ def run_search(
         timing_suffix = ""
         if timing_info is not None:
             timing_suffix = (
-                f" decode={timing_info['decode_s']:.1f}s"
-                f" build={timing_info['build_s']:.1f}s"
-                f" eval={timing_info['eval_s']:.1f}s"
+                f" fit(decode={timing_info['decode_s']:.1f}s"
+                f",map={timing_info['param_map_s']:.1f}s"
+                f",build={timing_info['build_s']:.1f}s"
+                f",stack={timing_info['stack_s']:.1f}s"
+                f",pad={timing_info['pad_s']:.1f}s"
+                f",reshape={timing_info['reshape_s']:.1f}s"
+                f",put={timing_info['device_put_s']:.1f}s"
+                f",eval={timing_info['eval_s']:.1f}s)"
             )
+        loop_timing_suffix = (
+            f"  loop(ask={ask_done_at - ask_started_at:.1f}s"
+            f",fitness={fitness_done_at - fitness_started_at:.1f}s"
+            f",tell={tell_done_at - tell_started_at:.1f}s"
+            f",decode_best={decode_done_at - decode_started_at:.1f}s"
+            f",train_eval={train_eval_done_at - train_eval_started_at:.1f}s"
+            f",val_eval={val_eval_done_at - val_eval_started_at:.1f}s)"
+        )
         _log(
             (
                 f"--- gen {completed}/{generations} "
@@ -327,7 +352,9 @@ def run_search(
                 f"gap={train_val_gap:+.4f} sigma={float(state.std):.3f} "
                 f"{bound_hits} "
                 f"time={_format_duration(gen_time)} eta={_format_duration(eta)}"
-                f"{timing_suffix}\n"
+                f"\n{loop_timing_suffix}"
+                f"{timing_suffix}"
+                f"\n"
                 f"{_console_all_params(params)}"
             ),
             quiet,

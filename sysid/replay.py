@@ -492,6 +492,7 @@ def make_dataset_evaluator(
         observation_delays = np.asarray(
             jax.device_get(observation_delays), dtype=np.int32
         )
+        decode_done = time.perf_counter()
         params = [
             decoded_values_to_params(values[i], action_delays[i], observation_delays[i])
             for i in range(population_host.shape[0])
@@ -508,10 +509,12 @@ def make_dataset_evaluator(
         )
         build_done = time.perf_counter()
         model_batch = stack_mjx_models(models)
+        stack_done = time.perf_counter()
         population_size = len(models)
         action_delays_jax = jnp.asarray(action_delays, dtype=jnp.int32)
         observation_delays_jax = jnp.asarray(observation_delays, dtype=jnp.int32)
         if device_count == 1:
+            prep_done = time.perf_counter()
             raw = evaluate_population_raw_batched(
                 model_batch,
                 action_delays_jax,
@@ -519,9 +522,15 @@ def make_dataset_evaluator(
             )
             eval_done = time.perf_counter()
             last_timing_info = {
-                "decode_s": build_started - timing_started,
+                "decode_s": decode_done - timing_started,
+                "param_map_s": build_started - decode_done,
                 "build_s": build_done - build_started,
+                "stack_s": stack_done - build_done,
+                "pad_s": 0.0,
+                "reshape_s": 0.0,
+                "device_put_s": prep_done - stack_done,
                 "eval_s": eval_done - build_done,
+                "eval_kernel_s": eval_done - prep_done,
                 "total_s": eval_done - timing_started,
                 "population": float(population_size),
             }
@@ -529,11 +538,14 @@ def make_dataset_evaluator(
 
         remainder = population_size % device_count
         pad = (device_count - remainder) % device_count
+        pad_started = time.perf_counter()
         if pad > 0:
             model_batch = pad_stacked_mjx_models(model_batch, pad)
             action_delays_jax = jnp.pad(action_delays_jax, ((0, pad),))
             observation_delays_jax = jnp.pad(observation_delays_jax, ((0, pad),))
+        pad_done = time.perf_counter()
 
+        reshape_started = time.perf_counter()
         sharded_models = reshape_stacked_mjx_models_for_devices(
             model_batch, device_count
         )
@@ -542,6 +554,8 @@ def make_dataset_evaluator(
         sharded_observation_delays = observation_delays_jax.reshape(
             device_count, shard_size
         )
+        reshape_done = time.perf_counter()
+        device_put_started = time.perf_counter()
         devices = jax.local_devices()[:device_count]
         sharded_models = device_put_sharded_mjx_models(sharded_models, devices)
         sharded_action_delays = jax.device_put_sharded(
@@ -550,6 +564,7 @@ def make_dataset_evaluator(
         sharded_observation_delays = jax.device_put_sharded(
             [sharded_observation_delays[i] for i in range(device_count)], devices
         )
+        device_put_done = time.perf_counter()
         raw = _make_sharded_eval(sharded_models)(
             sharded_models,
             sharded_action_delays,
@@ -557,11 +572,20 @@ def make_dataset_evaluator(
         )
         eval_done = time.perf_counter()
         last_timing_info = {
-            "decode_s": build_started - timing_started,
+            "decode_s": decode_done - timing_started,
+            "param_map_s": build_started - decode_done,
             "build_s": build_done - build_started,
-            "eval_s": eval_done - build_done,
+            "stack_s": stack_done - build_done,
+            "pad_s": pad_done - pad_started,
+            "reshape_s": reshape_done - reshape_started,
+            "device_put_s": device_put_done - device_put_started,
+            "eval_s": eval_done - device_put_done,
+            "eval_kernel_s": eval_done - device_put_done,
             "total_s": eval_done - timing_started,
             "population": float(population_size),
+            "pad_count": float(pad),
+            "device_count": float(device_count),
+            "shard_size": float(shard_size),
         }
         raw = raw.reshape(device_count * shard_size, raw.shape[-1])
         return raw[:population_size]

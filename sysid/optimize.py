@@ -22,6 +22,7 @@ from sysid.stats import summarize_run
 from sysid.types import PreparedDataset, ReplayMetrics, RunData
 
 LATENT_DIM = 13
+FULL_EVAL_EVERY_GENERATIONS = 5
 
 
 def _replace_std_init(params: Any, std_init: float) -> Any:
@@ -267,6 +268,8 @@ def run_search(
     best_record: dict[str, Any] | None = None
     history: list[dict[str, object]] = []
     started_at = time.perf_counter()
+    last_full_train_metrics: ReplayMetrics | None = None
+    last_full_validation_metrics: ReplayMetrics | None = None
 
     for generation in range(generations):
         generation_started_at = time.perf_counter()
@@ -285,21 +288,43 @@ def run_search(
         decode_started_at = time.perf_counter()
         params = _decode_solution(train_evaluator, best_solution)
         decode_done_at = time.perf_counter()
+        full_eval_due = (
+            generation == 0
+            or generation == generations - 1
+            or (generation + 1) % FULL_EVAL_EVERY_GENERATIONS == 0
+        )
         train_eval_started_at = time.perf_counter()
-        train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[0]
-        train_eval_done_at = time.perf_counter()
-        val_eval_started_at = time.perf_counter()
-        validation_metrics = validation_evaluator.evaluate_population(
-            best_solution[None, :]
-        )[0]
-        val_eval_done_at = time.perf_counter()
+        if (
+            full_eval_due
+            or last_full_train_metrics is None
+            or last_full_validation_metrics is None
+        ):
+            train_metrics = train_evaluator.evaluate_population(best_solution[None, :])[
+                0
+            ]
+            train_eval_done_at = time.perf_counter()
+            val_eval_started_at = time.perf_counter()
+            validation_metrics = validation_evaluator.evaluate_population(
+                best_solution[None, :]
+            )[0]
+            val_eval_done_at = time.perf_counter()
+            last_full_train_metrics = train_metrics
+            last_full_validation_metrics = validation_metrics
+        else:
+            train_metrics = last_full_train_metrics
+            validation_metrics = last_full_validation_metrics
+            train_eval_done_at = train_eval_started_at
+            val_eval_started_at = train_eval_done_at
+            val_eval_done_at = val_eval_started_at
         train_val_gap = validation_metrics.score - train_metrics.score
+        best_train_score = float(jnp.min(fitness))
 
         history.append(
             {
                 "generation": generation,
                 "train": summarize_metrics(train_metrics),
                 "validation": summarize_metrics(validation_metrics),
+                "train_fitness_score": best_train_score,
                 "sigma": float(state.std),
             }
         )
@@ -348,12 +373,13 @@ def run_search(
         _log(
             (
                 f"--- gen {completed}/{generations} "
-                f"train={train_metrics.score:.4f} val={validation_metrics.score:.4f} "
+                f"train_fit={best_train_score:.4f} train={train_metrics.score:.4f} val={validation_metrics.score:.4f} "
                 f"gap={train_val_gap:+.4f} sigma={float(state.std):.3f} "
                 f"{bound_hits} "
                 f"time={_format_duration(gen_time)} eta={_format_duration(eta)}"
                 f"\n{loop_timing_suffix}"
                 f"{timing_suffix}"
+                f" full_eval={'yes' if full_eval_due else 'no'}"
                 f"\n"
                 f"{_console_all_params(params)}"
             ),

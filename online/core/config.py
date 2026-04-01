@@ -30,7 +30,7 @@ class CameraConfig:
     frame_width: int = 1920
     frame_height: int = 1080
     fps: int = 60
-    mjpg: bool = True
+    mjpg: bool = False
     buffer_size: int = 1
     auto_exposure: float | None = 1.0
     exposure: float | None = 17.0
@@ -39,7 +39,7 @@ class CameraConfig:
 @dataclass(slots=True)
 class DetectorConfig:
     family: str = "tagStandard41h12"
-    threads: int = 24
+    threads: int = 4
     quad_decimate: float = 2.0
 
 
@@ -54,7 +54,7 @@ class ViewConfig:
 class DisplayConfig:
     show_raw_window: bool = False
     show_arena_window: bool = False
-    preview_fps: float = 15.0
+    preview_fps: float = 60.0
 
 
 @dataclass(slots=True)

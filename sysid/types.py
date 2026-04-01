@@ -54,5 +54,6 @@ class ScoreBreakdown:
 @dataclass(frozen=True, slots=True)
 class EvaluationSummary:
     score: ScoreBreakdown
+    metrics: dict[str, float]
     maneuver_scores: dict[str, float]
     windows: int

@@ -36,6 +36,9 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)
 LATENT_DIM = len(PARAM_SPECS)
+PARAM_BOUNDS = {name: bounds for name, bounds in PARAM_SPECS}
+MAX_COMMAND_DELAY_SUBSTEPS = int(PARAM_BOUNDS["command_delay_substeps"].high)
+MAX_OBSERVATION_DELAY_SUBSTEPS = int(PARAM_BOUNDS["observation_delay_substeps"].high)
 
 
 def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:

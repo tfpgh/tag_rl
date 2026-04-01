@@ -126,6 +126,18 @@ def _iter_valid_samples(samples: list[dict]) -> list[dict]:
     ]
 
 
+def _discover_run_dirs(split_dir: Path) -> list[Path]:
+    run_dirs: list[Path] = []
+    if (split_dir / "samples.jsonl").exists() and (
+        split_dir / "commands.jsonl"
+    ).exists():
+        run_dirs.append(split_dir)
+    for child in sorted(path for path in split_dir.iterdir() if path.is_dir()):
+        if (child / "samples.jsonl").exists() and (child / "commands.jsonl").exists():
+            run_dirs.append(child)
+    return run_dirs
+
+
 def _window_records(
     split: str, run_dir: Path, config: WindowConfig
 ) -> tuple[list[dict[str, np.ndarray]], list[WindowMetadata]]:
@@ -272,8 +284,18 @@ def load_dataset_splits(
     root: Path, config: WindowConfig | None = None
 ) -> DatasetSplits:
     cfg = config or WindowConfig()
-    train_records, train_metadata = _window_records("train", root / "train", cfg)
-    eval_records, eval_metadata = _window_records("eval", root / "eval", cfg)
+    train_records: list[dict[str, np.ndarray]] = []
+    train_metadata: list[WindowMetadata] = []
+    eval_records: list[dict[str, np.ndarray]] = []
+    eval_metadata: list[WindowMetadata] = []
+    for run_dir in _discover_run_dirs(root / "train"):
+        records, metadata = _window_records("train", run_dir, cfg)
+        train_records.extend(records)
+        train_metadata.extend(metadata)
+    for run_dir in _discover_run_dirs(root / "eval"):
+        records, metadata = _window_records("eval", run_dir, cfg)
+        eval_records.extend(records)
+        eval_metadata.extend(metadata)
     return DatasetSplits(
         train=_pack_windows("train", train_records, train_metadata),
         eval=_pack_windows("eval", eval_records, eval_metadata),

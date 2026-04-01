@@ -20,6 +20,7 @@ dependencies = [
     "pupil-apriltags>=1.0.4.post11",
     "jax>=0.9.1",
     "uvicorn[standard]>=0.35.0",
+    "numpy>=2.4.3",
 ]
 
 [project.optional-dependencies]

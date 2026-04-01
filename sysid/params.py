@@ -53,21 +53,30 @@ def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:
     return params
 
 
-def build_domain_and_pipeline(latent: jax.Array) -> tuple[DomainParams, PipelineParams]:
-    params = latent_to_physical(latent)
+def build_domain_and_pipeline_from_physical(
+    params: dict[str, jax.Array | float | int],
+) -> tuple[DomainParams, PipelineParams]:
     agent = AgentDynamicsParams(
-        mass_scale=params["mass_scale"],
+        mass_scale=jnp.asarray(params["mass_scale"], dtype=jnp.float32),
         com_offset_xy=jnp.array(
             [params["com_offset_x"], params["com_offset_y"]], dtype=jnp.float32
         ),
-        track_width_scale=params["track_width_scale"],
-        wheel_friction_scale=params["wheel_friction_scale"],
-        wheel_scrub_scale=params["wheel_scrub_scale"],
-        caster_friction_scale=params["caster_friction_scale"],
-        wheel_frictionloss_scale=params["wheel_frictionloss_scale"],
-        motor_strength_scale=params["motor_strength_scale"],
-        back_emf_scale=params["back_emf_scale"],
-        motor_balance=params["motor_balance"],
+        track_width_scale=jnp.asarray(params["track_width_scale"], dtype=jnp.float32),
+        wheel_friction_scale=jnp.asarray(
+            params["wheel_friction_scale"], dtype=jnp.float32
+        ),
+        wheel_scrub_scale=jnp.asarray(params["wheel_scrub_scale"], dtype=jnp.float32),
+        caster_friction_scale=jnp.asarray(
+            params["caster_friction_scale"], dtype=jnp.float32
+        ),
+        wheel_frictionloss_scale=jnp.asarray(
+            params["wheel_frictionloss_scale"], dtype=jnp.float32
+        ),
+        motor_strength_scale=jnp.asarray(
+            params["motor_strength_scale"], dtype=jnp.float32
+        ),
+        back_emf_scale=jnp.asarray(params["back_emf_scale"], dtype=jnp.float32),
+        motor_balance=jnp.asarray(params["motor_balance"], dtype=jnp.float32),
     )
     domain = DomainParams(chaser=agent, evader=agent)
     pipeline = PipelineParams(
@@ -81,6 +90,10 @@ def build_domain_and_pipeline(latent: jax.Array) -> tuple[DomainParams, Pipeline
         max_stale_steps=jnp.int32(0),
     )
     return domain, pipeline
+
+
+def build_domain_and_pipeline(latent: jax.Array) -> tuple[DomainParams, PipelineParams]:
+    return build_domain_and_pipeline_from_physical(latent_to_physical(latent))
 
 
 def default_latent_center() -> jax.Array:

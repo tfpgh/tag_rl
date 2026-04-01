@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-03-29T21:06:33.514905",
+  "created_at": "2026-04-01T13:36:25.985482",
   "teleop": {
     "robot_ip": "192.168.1.5",
     "udp_port": 8888,
@@ -14,8 +14,8 @@
   "camera": {
     "device_index": 0,
     "backend": null,
-    "frame_width": 1920,
-    "frame_height": 1080,
+    "frame_width": 1280,
+    "frame_height": 720,
     "fps": 60,
     "mjpg": false,
     "buffer_size": 1,
@@ -24,7 +24,7 @@
   },
   "detector": {
     "family": "tagStandard41h12",
-    "threads": 24,
+    "threads": 12,
     "quad_decimate": 2.0
   },
   "arena": {
@@ -46,11 +46,10 @@
   },
   "world_units": "meters",
   "tracker": {
-    "calibration_frames": 30,
+    "calibration_frames": 10,
     "use_roi_tracking": true,
-    "roi_padding_scale": 3.0,
-    "min_roi_size_px": 160,
-    "max_roi_size_px": 600,
-    "full_frame_refresh_interval": 15
+    "roi_padding_scale": 2.0,
+    "min_roi_size_px": 100,
+    "max_roi_size_px": 600
   }
 }

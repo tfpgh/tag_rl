@@ -34,7 +34,7 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("com_offset_x", ParamBounds(-0.005, 0.005)),
     ("com_offset_y", ParamBounds(-0.005, 0.005)),
     ("command_delay_substeps", ParamBounds(0.0, 3.0)),
-    ("observation_delay_substeps", ParamBounds(0.0, 12.0)),
+    ("observation_delay_substeps", ParamBounds(0.0, 30.0)),
 )
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)

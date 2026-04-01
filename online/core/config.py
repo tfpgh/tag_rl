@@ -82,5 +82,4 @@ class TrackerConfig:
     roi_padding_scale: float = 3.0
     min_roi_size_px: int = 160
     max_roi_size_px: int = 600
-    full_frame_refresh_interval: int = 15
     teleop: TeleopConfig = field(default_factory=TeleopConfig)

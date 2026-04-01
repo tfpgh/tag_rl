@@ -134,13 +134,7 @@ class BoardTracker:
         missing_corner = any(
             tag_id not in roi_detections for tag_id in self.config.arena.corner_tag_ids
         )
-        needs_refresh = self._frame_index % self.config.full_frame_refresh_interval == 0
-
-        if (
-            missing_robot
-            or (not self.calibrator.is_calibrated and missing_corner)
-            or needs_refresh
-        ):
+        if missing_robot or (not self.calibrator.is_calibrated and missing_corner):
             return self._full_frame_detect(gray)
 
         self._last_detections.update(roi_detections)

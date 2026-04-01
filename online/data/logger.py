@@ -119,7 +119,6 @@ class RunLogger:
                 "roi_padding_scale": config.roi_padding_scale,
                 "min_roi_size_px": config.min_roi_size_px,
                 "max_roi_size_px": config.max_roi_size_px,
-                "full_frame_refresh_interval": config.full_frame_refresh_interval,
             },
         }
         (self.run_dir / "metadata.json").write_text(

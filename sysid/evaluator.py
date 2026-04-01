@@ -12,7 +12,11 @@ from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.mujoco_data import JointDofSlices, JointQposSlices, yaw_to_quaternion
 from environment.randomization import randomize_model
-from sysid.params import MAX_COMMAND_DELAY_SUBSTEPS, build_domain_and_pipeline
+from sysid.params import (
+    MAX_COMMAND_DELAY_SUBSTEPS,
+    MAX_OBSERVATION_DELAY_SUBSTEPS,
+    build_domain_and_pipeline,
+)
 from sysid.types import EvaluationSummary, ScoreBreakdown, WindowBatch
 
 
@@ -119,7 +123,7 @@ class SysIdEvaluator:
                 "pipeline_randomization": {
                     "enabled": False,
                     "max_action_delay_substeps": MAX_COMMAND_DELAY_SUBSTEPS,
-                    "max_observation_delay_substeps": MAX_COMMAND_DELAY_SUBSTEPS,
+                    "max_observation_delay_substeps": MAX_OBSERVATION_DELAY_SUBSTEPS,
                 },
                 "dynamics_randomization": {"enabled": False},
                 "curriculum": {"enabled": False},

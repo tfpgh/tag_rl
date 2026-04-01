@@ -54,13 +54,15 @@ def _sample_agent_dynamics(
         com_y_rng,
         track_rng,
         wheel_friction_rng,
+        wheel_friction_balance_rng,
         wheel_scrub_rng,
         caster_friction_rng,
         frictionloss_rng,
+        frictionloss_balance_rng,
         strength_rng,
         back_emf_rng,
         balance_rng,
-    ) = random.split(rng, 11)
+    ) = random.split(rng, 13)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -84,6 +86,9 @@ def _sample_agent_dynamics(
             dyn.wheel_friction_scale_max,
             scale,
         ),
+        wheel_friction_balance=_sample_centered(
+            wheel_friction_balance_rng, dyn.wheel_friction_balance_delta_max, scale
+        ),
         wheel_scrub_scale=_sample_scale(
             wheel_scrub_rng,
             dyn.wheel_scrub_scale_min,
@@ -100,6 +105,11 @@ def _sample_agent_dynamics(
             frictionloss_rng,
             dyn.wheel_frictionloss_scale_min,
             dyn.wheel_frictionloss_scale_max,
+            scale,
+        ),
+        wheel_frictionloss_balance=_sample_centered(
+            frictionloss_balance_rng,
+            dyn.wheel_frictionloss_balance_delta_max,
             scale,
         ),
         motor_strength_scale=_sample_scale(
@@ -455,10 +465,22 @@ def _apply_agent_dynamics(
     )
     left_emf_scale = agent_params.back_emf_scale * (1.0 + agent_params.motor_balance)
     right_emf_scale = agent_params.back_emf_scale * (1.0 - agent_params.motor_balance)
+    left_wheel_friction_scale = agent_params.wheel_friction_scale * (
+        1.0 + agent_params.wheel_friction_balance
+    )
+    right_wheel_friction_scale = agent_params.wheel_friction_scale * (
+        1.0 - agent_params.wheel_friction_balance
+    )
+    left_frictionloss_scale = agent_params.wheel_frictionloss_scale * (
+        1.0 + agent_params.wheel_frictionloss_balance
+    )
+    right_frictionloss_scale = agent_params.wheel_frictionloss_scale * (
+        1.0 - agent_params.wheel_frictionloss_balance
+    )
 
-    for wheel_geom_id in (
-        agent_indices.left_wheel_geom_id,
-        agent_indices.right_wheel_geom_id,
+    for wheel_geom_id, longitudinal_scale in (
+        (agent_indices.left_wheel_geom_id, left_wheel_friction_scale),
+        (agent_indices.right_wheel_geom_id, right_wheel_friction_scale),
     ):
         base_friction = base_model.geom_friction[wheel_geom_id]
         geom_friction = geom_friction.at[wheel_geom_id].set(
@@ -466,7 +488,7 @@ def _apply_agent_dynamics(
                 1e-6,
                 jnp.asarray(
                     [
-                        base_friction[0] * agent_params.wheel_friction_scale,
+                        base_friction[0] * longitudinal_scale,
                         base_friction[1] * agent_params.wheel_scrub_scale,
                         base_friction[2] * agent_params.wheel_scrub_scale,
                     ],
@@ -511,12 +533,14 @@ def _apply_agent_dynamics(
         )
     )
 
-    for dof_id in (agent_indices.left_wheel_dof_id, agent_indices.right_wheel_dof_id):
+    for dof_id, frictionloss_scale in (
+        (agent_indices.left_wheel_dof_id, left_frictionloss_scale),
+        (agent_indices.right_wheel_dof_id, right_frictionloss_scale),
+    ):
         dof_frictionloss = dof_frictionloss.at[dof_id].set(
             jnp.maximum(
                 1e-7,
-                base_model.dof_frictionloss[dof_id]
-                * agent_params.wheel_frictionloss_scale,
+                base_model.dof_frictionloss[dof_id] * frictionloss_scale,
             )
         )
 

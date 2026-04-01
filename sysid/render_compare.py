@@ -60,6 +60,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--keep-uncalibrated", action="store_true")
     parser.add_argument("--no-hold-last-pose", action="store_true")
     parser.add_argument("--trail-length", type=int, default=45)
+    parser.add_argument(
+        "--segment-seconds",
+        type=float,
+        default=5.0,
+        help="Reset the simulated ghost to the recorded pose every N seconds. Use 0 to disable.",
+    )
     return parser.parse_args()
 
 
@@ -221,6 +227,42 @@ def _simulate_target_poses(
         pose_history.shape[0] - 1,
     )
     return np.asarray(jax.device_get(pose_history[sample_indices]))
+
+
+def _segment_samples(
+    samples: list[dict[str, Any]], segment_seconds: float
+) -> list[list[dict[str, Any]]]:
+    if segment_seconds <= 0.0 or not samples:
+        return [samples]
+    segments: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = [samples[0]]
+    segment_start = float(samples[0]["monotonic_time"])
+    for sample in samples[1:]:
+        sample_time = float(sample["monotonic_time"])
+        if sample_time - segment_start >= segment_seconds:
+            segments.append(current)
+            current = [sample]
+            segment_start = sample_time
+        else:
+            current.append(sample)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _simulate_target_poses_segmented(
+    evaluator: SysIdEvaluator,
+    physical_params: dict[str, float],
+    samples: list[dict[str, Any]],
+    commands: list[dict[str, Any]],
+    segment_seconds: float,
+) -> np.ndarray:
+    segments = _segment_samples(samples, segment_seconds)
+    simulated_segments = [
+        _simulate_target_poses(evaluator, physical_params, segment, commands)
+        for segment in segments
+    ]
+    return np.concatenate(simulated_segments, axis=0)
 
 
 def _world_to_panel(
@@ -493,7 +535,9 @@ def render_compare(args: argparse.Namespace) -> None:
         )
         + 1,
     )
-    simulated = _simulate_target_poses(evaluator, params, samples, commands)
+    simulated = _simulate_target_poses_segmented(
+        evaluator, params, samples, commands, args.segment_seconds
+    )
 
     model = mujoco.MjModel.from_xml_string(generate_mjcf(env_config, mode="render"))
     data = mujoco.MjData(model)

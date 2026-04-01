@@ -49,12 +49,14 @@ class DynamicsRandomizationConfig:
     track_width_scale_max: float = 1.04
     wheel_friction_scale_min: float = 0.9
     wheel_friction_scale_max: float = 1.12
+    wheel_friction_balance_delta_max: float = 0.06
     wheel_scrub_scale_min: float = 0.75
     wheel_scrub_scale_max: float = 1.25
     caster_friction_scale_min: float = 0.9
     caster_friction_scale_max: float = 1.12
     wheel_frictionloss_scale_min: float = 0.92
     wheel_frictionloss_scale_max: float = 1.1
+    wheel_frictionloss_balance_delta_max: float = 0.06
     motor_strength_scale_min: float = 0.88
     motor_strength_scale_max: float = 1.12
     back_emf_scale_min: float = 0.9

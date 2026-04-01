@@ -19,19 +19,21 @@ class ParamBounds:
 
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(0.92, 1.08)),
-    ("motor_strength_scale", ParamBounds(0.75, 1.25)),
-    ("back_emf_scale", ParamBounds(0.75, 1.25)),
+    ("track_width_scale", ParamBounds(0.88, 1.12)),
+    ("motor_strength_scale", ParamBounds(0.75, 1.40)),
+    ("back_emf_scale", ParamBounds(0.55, 1.25)),
     ("motor_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_friction_scale", ParamBounds(0.75, 1.25)),
+    ("wheel_friction_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_scrub_scale", ParamBounds(0.50, 1.50)),
     ("wheel_frictionloss_scale", ParamBounds(0.75, 1.25)),
+    ("wheel_frictionloss_balance", ParamBounds(-0.12, 0.12)),
     ("caster_friction_scale", ParamBounds(0.75, 1.25)),
-    ("mass_scale", ParamBounds(0.85, 1.15)),
+    ("mass_scale", ParamBounds(0.98, 1.02)),
     ("com_offset_x", ParamBounds(-0.005, 0.005)),
     ("com_offset_y", ParamBounds(-0.005, 0.005)),
-    ("command_delay_substeps", ParamBounds(0.0, 8.0)),
-    ("observation_delay_substeps", ParamBounds(0.0, 8.0)),
+    ("command_delay_substeps", ParamBounds(0.0, 3.0)),
+    ("observation_delay_substeps", ParamBounds(0.0, 12.0)),
 )
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)
@@ -65,12 +67,18 @@ def build_domain_and_pipeline_from_physical(
         wheel_friction_scale=jnp.asarray(
             params["wheel_friction_scale"], dtype=jnp.float32
         ),
+        wheel_friction_balance=jnp.asarray(
+            params["wheel_friction_balance"], dtype=jnp.float32
+        ),
         wheel_scrub_scale=jnp.asarray(params["wheel_scrub_scale"], dtype=jnp.float32),
         caster_friction_scale=jnp.asarray(
             params["caster_friction_scale"], dtype=jnp.float32
         ),
         wheel_frictionloss_scale=jnp.asarray(
             params["wheel_frictionloss_scale"], dtype=jnp.float32
+        ),
+        wheel_frictionloss_balance=jnp.asarray(
+            params["wheel_frictionloss_balance"], dtype=jnp.float32
         ),
         motor_strength_scale=jnp.asarray(
             params["motor_strength_scale"], dtype=jnp.float32

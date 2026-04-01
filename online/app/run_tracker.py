@@ -13,6 +13,7 @@ def main() -> None:
     config.display.show_raw_window = True
     config.display.show_arena_window = True
     tracker = BoardTracker(config)
+    camera_info = tracker.camera.info()
 
     show_raw = config.display.show_raw_window
     show_arena = config.display.show_arena_window
@@ -25,6 +26,15 @@ def main() -> None:
         cv2.namedWindow(ARENA_WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     print("Press q or esc to quit")
+    print(
+        "Camera:",
+        f"backend={camera_info.backend}",
+        f"size={camera_info.width}x{camera_info.height}",
+        f"fps={camera_info.fps:.1f}",
+        f"fourcc={camera_info.fourcc}",
+        f"codec_pixel_format={camera_info.codec_pixel_format}",
+        f"mode={camera_info.mode:.0f}",
+    )
 
     try:
         while True:

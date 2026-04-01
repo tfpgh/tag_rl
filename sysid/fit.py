@@ -97,7 +97,9 @@ def main() -> None:
         for generation in range(args.generations):
             population = optimizer.ask().astype(np.float32)
             train_terms = evaluator.evaluate_population(
-                population, train_windows, population_eval=train_population_eval
+                jax.numpy.asarray(population, dtype=jax.numpy.float32),
+                train_windows,
+                population_eval=train_population_eval,
             )
             total_scores = np.asarray(jax.device_get(train_terms["total"]))
             optimizer.tell(population, total_scores)

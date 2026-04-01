@@ -4,7 +4,7 @@ import argparse
 import json
 from collections import deque
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import imageio
@@ -555,6 +555,7 @@ def render_compare(args: argparse.Namespace) -> None:
     params_label = f"Params: {args.params.name}"
 
     with imageio.get_writer(args.output, fps=args.fps, codec="h264") as writer:
+        writer = cast(Any, writer)
         for index, (sample, sim_pose_array) in enumerate(
             zip(samples, simulated, strict=True), start=1
         ):

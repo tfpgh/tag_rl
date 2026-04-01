@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping
 
 import jax
 import jax.numpy as jnp
@@ -56,7 +57,7 @@ def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:
 
 
 def build_domain_and_pipeline_from_physical(
-    params: dict[str, jax.Array | float | int],
+    params: Mapping[str, jax.Array | float | int],
 ) -> tuple[DomainParams, PipelineParams]:
     agent = AgentDynamicsParams(
         mass_scale=jnp.asarray(params["mass_scale"], dtype=jnp.float32),

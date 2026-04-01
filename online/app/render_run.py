@@ -4,7 +4,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import imageio
@@ -292,6 +292,7 @@ def render_run(args: argparse.Namespace) -> None:
     evader_pose: PoseState | None = None
 
     with imageio.get_writer(args.output, fps=args.fps, codec="h264") as writer:
+        writer = cast(Any, writer)
         for index, sample in enumerate(samples, start=1):
             qpos = np.zeros(model.nq, dtype=np.float64)
             qvel = np.zeros(model.nv, dtype=np.float64)

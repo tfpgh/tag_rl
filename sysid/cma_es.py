@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import jax
 import jax.numpy as jnp
@@ -24,8 +24,8 @@ class CMAES:
         if population_size < 4:
             raise ValueError("population_size must be at least 4")
         strategy = CMA_ES(population_size=population_size, solution=jnp.zeros((dim,)))
-        params = strategy.default_params.replace(
-            std_init=jnp.asarray(sigma, dtype=jnp.float32)
+        params = replace(
+            strategy.default_params, std_init=jnp.asarray(sigma, dtype=jnp.float32)
         )
         key = jax.random.PRNGKey(seed)
         key, init_key = jax.random.split(key)

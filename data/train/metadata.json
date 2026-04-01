@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-03-29T21:06:33.514905",
+  "created_at": "2026-03-19T12:12:34.407289",
   "teleop": {
     "robot_ip": "192.168.1.5",
     "udp_port": 8888,
@@ -17,7 +17,7 @@
     "frame_width": 1920,
     "frame_height": 1080,
     "fps": 60,
-    "mjpg": false,
+    "mjpg": true,
     "buffer_size": 1,
     "auto_exposure": 1.0,
     "exposure": 17.0

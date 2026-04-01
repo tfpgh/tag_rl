@@ -15,7 +15,6 @@ import numpy as np
 import numpy.typing as npt
 
 from environment.environment import TagEnvironment
-from environment.model_build import build_mjx_model, nominal_domain_params
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import yaw_to_quaternion
 from rl.checkpoints import load_checkpoint_configs, load_policy_params
@@ -42,20 +41,13 @@ def make_rollout(
 ) -> Callable[[Any, Any, jax.Array], RolloutResult]:
     """Create a JIT'd single-episode rollout function (compiles once)."""
 
-    nominal_params = nominal_domain_params()
-    nominal_model = build_mjx_model(env.mj_model, nominal_params, env.model_indices)
-
     @jax.jit
     def rollout(
         chaser_params: Any, evader_params: Any, rng: jax.Array
     ) -> RolloutResult:
         rng, reset_rng = jax.random.split(rng)
         state, chaser_obs, evader_obs = env.reset(
-            reset_rng,
-            jnp.asarray(1.0, dtype=jnp.float32),
-            nominal_model,
-            nominal_params,
-            jnp.asarray(0, dtype=jnp.int32),
+            reset_rng, jnp.asarray(1.0, dtype=jnp.float32)
         )
         chaser_hstate = ScannedRNN.initialize_carry(1, hidden_size)
         evader_hstate = ScannedRNN.initialize_carry(1, hidden_size)
@@ -120,11 +112,7 @@ def make_rollout(
 
             step_rng, next_rng = jax.random.split(rng)
             state, chaser_obs, evader_obs, _, _, step_done, _ = env.step(
-                state,
-                nominal_model,
-                chaser_action,
-                evader_action,
-                step_rng,
+                state, chaser_action, evader_action, step_rng
             )
             done = done | step_done
 

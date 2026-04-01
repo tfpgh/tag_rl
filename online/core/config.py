@@ -27,8 +27,8 @@ class ArenaConfig:
 class CameraConfig:
     device_index: int = 0
     backend: int | None = None
-    frame_width: int = 1920
-    frame_height: int = 1080
+    frame_width: int = 1280
+    frame_height: int = 720
     fps: int = 60
     mjpg: bool = False
     buffer_size: int = 1
@@ -39,7 +39,7 @@ class CameraConfig:
 @dataclass(slots=True)
 class DetectorConfig:
     family: str = "tagStandard41h12"
-    threads: int = 4
+    threads: int = 12
     quad_decimate: float = 2.0
 
 
@@ -77,9 +77,9 @@ class TrackerConfig:
     detector: DetectorConfig = field(default_factory=DetectorConfig)
     view: ViewConfig = field(default_factory=ViewConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
-    calibration_frames: int = 30
+    calibration_frames: int = 10
     use_roi_tracking: bool = True
-    roi_padding_scale: float = 3.0
-    min_roi_size_px: int = 160
+    roi_padding_scale: float = 2.0
+    min_roi_size_px: int = 100
     max_roi_size_px: int = 600
     teleop: TeleopConfig = field(default_factory=TeleopConfig)

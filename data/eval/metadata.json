@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-04-01T13:42:34.230313",
+  "created_at": "2026-04-01T20:56:16.335465",
   "teleop": {
     "robot_ip": "192.168.1.5",
     "udp_port": 8888,
@@ -20,7 +20,7 @@
     "mjpg": false,
     "buffer_size": 1,
     "auto_exposure": 1.0,
-    "exposure": 17.0
+    "exposure": 15.0
   },
   "detector": {
     "family": "tagStandard41h12",

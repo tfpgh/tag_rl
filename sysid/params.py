@@ -24,17 +24,17 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("motor_strength_scale", ParamBounds(0.75, 1.40)),
     ("back_emf_scale", ParamBounds(0.4, 1.25)),
     ("motor_balance", ParamBounds(-0.12, 0.12)),
-    ("wheel_friction_scale", ParamBounds(0.75, 1.25)),
+    ("wheel_friction_scale", ParamBounds(0.75, 2.0)),
     ("wheel_friction_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_scrub_scale", ParamBounds(0.50, 1.50)),
-    ("wheel_frictionloss_scale", ParamBounds(0.75, 4.0)),
-    ("wheel_frictionloss_balance", ParamBounds(-0.12, 0.12)),
-    ("caster_friction_scale", ParamBounds(0.2, 25.0)),
+    ("wheel_frictionloss_scale", ParamBounds(0.75, 10.0)),
+    ("wheel_frictionloss_balance", ParamBounds(-0.20, 0.20)),
+    ("caster_friction_scale", ParamBounds(0.2, 40.0)),
     ("mass_scale", ParamBounds(0.98, 1.02)),
     ("com_offset_x", ParamBounds(-0.02, 0.02)),
     ("com_offset_y", ParamBounds(-0.015, 0.015)),
     ("command_delay_substeps", ParamBounds(0.0, 15.0)),
-    ("observation_delay_substeps", ParamBounds(0.0, 15.0)),
+    ("observation_delay_substeps", ParamBounds(0.0, 30.0)),
 )
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)

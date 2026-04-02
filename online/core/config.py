@@ -33,7 +33,7 @@ class CameraConfig:
     mjpg: bool = False
     buffer_size: int = 1
     auto_exposure: float | None = 1.0
-    exposure: float | None = 17.0
+    exposure: float | None = 15.0
 
 
 @dataclass(slots=True)

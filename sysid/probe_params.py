@@ -70,12 +70,22 @@ def _build_probe_groups(
 
     sweep_params = [
         "track_width_scale",
+        "wheel_longitudinal_offset",
+        "wheel_radius_scale",
+        "wheel_slide_friction_scale",
+        "wheel_torsional_friction_scale",
+        "wheel_rolling_friction_scale",
+        "caster_radius_scale",
+        "caster_offset_x",
+        "caster_slide_friction_scale",
+        "caster_torsional_friction_scale",
+        "wheel_joint_damping_scale",
+        "wheel_joint_frictionloss_scale",
+        "wheel_armature_scale",
         "motor_strength_scale",
         "back_emf_scale",
         "motor_deadzone",
         "motor_time_constant_seconds",
-        "wheel_friction_scale",
-        "wheel_scrub_scale",
         "com_offset_x",
         "observation_delay_substeps",
         "command_delay_substeps",
@@ -99,17 +109,19 @@ def _build_probe_groups(
         for obs in obs_values
     ]
 
-    friction_values = _linspace_for_param("wheel_friction_scale", 5)
-    scrub_values = _linspace_for_param("wheel_scrub_scale", 5)
-    groups["grid:friction_vs_scrub"] = [
+    friction_values = _linspace_for_param("wheel_slide_friction_scale", 5)
+    torsional_values = _linspace_for_param("wheel_torsional_friction_scale", 5)
+    groups["grid:wheel_slide_vs_torsion"] = [
         {
-            "label": f"wheel_friction={friction} scrub={scrub}",
+            "label": f"wheel_slide={friction} torsion={torsion}",
             "params": _candidate(
-                base, wheel_friction_scale=friction, wheel_scrub_scale=scrub
+                base,
+                wheel_slide_friction_scale=friction,
+                wheel_torsional_friction_scale=torsion,
             ),
         }
         for friction in friction_values
-        for scrub in scrub_values
+        for torsion in torsional_values
     ]
 
     strength_values = _linspace_for_param("motor_strength_scale", 5)
@@ -143,8 +155,8 @@ def _build_probe_groups(
     groups["ablations"] = [
         {"label": "com_offset_x=0", "params": _candidate(base, com_offset_x=0.0)},
         {
-            "label": "wheel_scrub=1.0",
-            "params": _candidate(base, wheel_scrub_scale=1.0),
+            "label": "wheel_torsion=1.0",
+            "params": _candidate(base, wheel_torsional_friction_scale=1.0),
         },
         {
             "label": "motor_deadzone=0",

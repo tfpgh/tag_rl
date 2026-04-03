@@ -20,17 +20,30 @@ class ParamBounds:
 
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(0.80, 1.12)),
-    ("motor_strength_scale", ParamBounds(0.75, 1.80)),
-    ("back_emf_scale", ParamBounds(0.4, 1.25)),
+    ("track_width_scale", ParamBounds(0.88, 1.08)),
+    ("wheel_longitudinal_offset", ParamBounds(-0.008, 0.008)),
+    ("wheel_radius_scale", ParamBounds(0.92, 1.08)),
+    ("wheel_slide_friction_scale", ParamBounds(0.75, 1.75)),
+    ("wheel_slide_friction_balance", ParamBounds(-0.12, 0.12)),
+    ("wheel_torsional_friction_scale", ParamBounds(0.5, 1.8)),
+    ("wheel_rolling_friction_scale", ParamBounds(0.5, 1.8)),
+    ("caster_radius_scale", ParamBounds(0.85, 1.15)),
+    ("caster_offset_x", ParamBounds(-0.008, 0.008)),
+    ("caster_slide_friction_scale", ParamBounds(0.5, 2.0)),
+    ("caster_torsional_friction_scale", ParamBounds(0.5, 2.0)),
+    ("wheel_joint_damping_scale", ParamBounds(0.5, 2.0)),
+    ("wheel_joint_damping_balance", ParamBounds(-0.12, 0.12)),
+    ("wheel_joint_frictionloss_scale", ParamBounds(0.5, 2.0)),
+    ("wheel_joint_frictionloss_balance", ParamBounds(-0.12, 0.12)),
+    ("wheel_armature_scale", ParamBounds(0.5, 2.0)),
+    ("motor_strength_scale", ParamBounds(0.8, 1.5)),
+    ("back_emf_scale", ParamBounds(0.55, 1.1)),
     ("motor_balance", ParamBounds(-0.12, 0.12)),
-    ("motor_deadzone", ParamBounds(0.0, 0.18)),
-    ("motor_time_constant_seconds", ParamBounds(0.0, 0.20)),
-    ("wheel_friction_scale", ParamBounds(0.75, 2.0)),
-    ("wheel_scrub_scale", ParamBounds(0.50, 1.50)),
-    ("com_offset_x", ParamBounds(-0.02, 0.02)),
-    ("command_delay_substeps", ParamBounds(0.0, 5.0)),
-    ("observation_delay_substeps", ParamBounds(0.0, 30.0)),
+    ("motor_deadzone", ParamBounds(0.0, 0.12)),
+    ("motor_time_constant_seconds", ParamBounds(0.0, 0.12)),
+    ("com_offset_x", ParamBounds(-0.012, 0.012)),
+    ("command_delay_substeps", ParamBounds(0.0, 8.0)),
+    ("observation_delay_substeps", ParamBounds(0.0, 12.0)),
 )
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)
@@ -59,14 +72,47 @@ def build_domain_and_pipeline_from_physical(
         mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
         com_offset_xy=jnp.array([params["com_offset_x"], 0.0], dtype=jnp.float32),
         track_width_scale=jnp.asarray(params["track_width_scale"], dtype=jnp.float32),
-        wheel_friction_scale=jnp.asarray(
-            params["wheel_friction_scale"], dtype=jnp.float32
+        wheel_longitudinal_offset=jnp.asarray(
+            params["wheel_longitudinal_offset"], dtype=jnp.float32
         ),
-        wheel_friction_balance=jnp.asarray(0.0, dtype=jnp.float32),
-        wheel_scrub_scale=jnp.asarray(params["wheel_scrub_scale"], dtype=jnp.float32),
-        caster_friction_scale=jnp.asarray(1.0, dtype=jnp.float32),
-        wheel_frictionloss_scale=jnp.asarray(1.0, dtype=jnp.float32),
-        wheel_frictionloss_balance=jnp.asarray(0.0, dtype=jnp.float32),
+        wheel_radius_scale=jnp.asarray(params["wheel_radius_scale"], dtype=jnp.float32),
+        wheel_slide_friction_scale=jnp.asarray(
+            params["wheel_slide_friction_scale"], dtype=jnp.float32
+        ),
+        wheel_slide_friction_balance=jnp.asarray(
+            params["wheel_slide_friction_balance"], dtype=jnp.float32
+        ),
+        wheel_torsional_friction_scale=jnp.asarray(
+            params["wheel_torsional_friction_scale"], dtype=jnp.float32
+        ),
+        wheel_rolling_friction_scale=jnp.asarray(
+            params["wheel_rolling_friction_scale"], dtype=jnp.float32
+        ),
+        caster_radius_scale=jnp.asarray(
+            params["caster_radius_scale"], dtype=jnp.float32
+        ),
+        caster_offset_x=jnp.asarray(params["caster_offset_x"], dtype=jnp.float32),
+        caster_slide_friction_scale=jnp.asarray(
+            params["caster_slide_friction_scale"], dtype=jnp.float32
+        ),
+        caster_torsional_friction_scale=jnp.asarray(
+            params["caster_torsional_friction_scale"], dtype=jnp.float32
+        ),
+        wheel_joint_damping_scale=jnp.asarray(
+            params["wheel_joint_damping_scale"], dtype=jnp.float32
+        ),
+        wheel_joint_damping_balance=jnp.asarray(
+            params["wheel_joint_damping_balance"], dtype=jnp.float32
+        ),
+        wheel_joint_frictionloss_scale=jnp.asarray(
+            params["wheel_joint_frictionloss_scale"], dtype=jnp.float32
+        ),
+        wheel_joint_frictionloss_balance=jnp.asarray(
+            params["wheel_joint_frictionloss_balance"], dtype=jnp.float32
+        ),
+        wheel_armature_scale=jnp.asarray(
+            params["wheel_armature_scale"], dtype=jnp.float32
+        ),
         motor_strength_scale=jnp.asarray(
             params["motor_strength_scale"], dtype=jnp.float32
         ),

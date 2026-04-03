@@ -32,6 +32,14 @@ OBSTACLE_COLOR = "0.6 0.6 0.65 1"
 
 WHEEL_LATERAL_OFFSET = 0.037123
 CASTER_FRICTION = "0.12 0.0005 0.00002"
+WHEEL_RADIUS = 0.020
+WHEEL_HALF_WIDTH = 0.0020
+WHEEL_JOINT_DAMPING = 0.0001
+WHEEL_JOINT_FRICTIONLOSS = 0.025
+WHEEL_JOINT_ARMATURE = 0.000003
+MOTOR_GAIN = 0.126
+MOTOR_BACK_EMF = -0.0015
+MOTOR_TIME_CONSTANT_SECONDS = 0.04
 
 CHASER_COLOR = "1 0.545 0.545 1"
 EVADER_COLOR = "0.435 0.702 0.722 1"
@@ -83,13 +91,14 @@ def _agent_mjcf(
                 name="{name}_left_wheel_joint"
                 type="hinge"
                 axis="0 1 0"
-                damping="0.0001"
-                frictionloss="0.025"
+                damping="{WHEEL_JOINT_DAMPING}"
+                frictionloss="{WHEEL_JOINT_FRICTIONLOSS}"
+                armature="{WHEEL_JOINT_ARMATURE}"
             />
             <geom
                 name="{name}_left_wheel_geom"
                 type="cylinder"
-                size="0.020 0.0020"
+                size="{WHEEL_RADIUS} {WHEEL_HALF_WIDTH}"
                 euler="90 0 0"
                 mass="0.00425"
                 group="{GEOM_GROUP_AGENT}"
@@ -105,13 +114,14 @@ def _agent_mjcf(
                 name="{name}_right_wheel_joint"
                 type="hinge"
                 axis="0 1 0"
-                damping="0.0001"
-                frictionloss="0.025"
+                damping="{WHEEL_JOINT_DAMPING}"
+                frictionloss="{WHEEL_JOINT_FRICTIONLOSS}"
+                armature="{WHEEL_JOINT_ARMATURE}"
             />
             <geom
                 name="{name}_right_wheel_geom"
                 type="cylinder"
-                size="0.020 0.0020"
+                size="{WHEEL_RADIUS} {WHEEL_HALF_WIDTH}"
                 euler="90 0 0"
                 mass="0.00425"
                 group="{GEOM_GROUP_AGENT}"
@@ -160,22 +170,24 @@ def _agent_mjcf(
     <general
         name="{name}_left_motor"
         joint="{name}_left_wheel_joint"
-        gainprm="0.126"
-        biasprm="0 0 -0.0015"
+        gainprm="{MOTOR_GAIN}"
+        biasprm="0 0 {MOTOR_BACK_EMF}"
+        dynprm="{MOTOR_TIME_CONSTANT_SECONDS}"
         gaintype="fixed"
         biastype="affine"
-        dyntype="none"
+        dyntype="filterexact"
         ctrlrange="-1 1"
         ctrllimited="true"
     />
     <general
         name="{name}_right_motor"
         joint="{name}_right_wheel_joint"
-        gainprm="0.126"
-        biasprm="0 0 -0.0015"
+        gainprm="{MOTOR_GAIN}"
+        biasprm="0 0 {MOTOR_BACK_EMF}"
+        dynprm="{MOTOR_TIME_CONSTANT_SECONDS}"
         gaintype="fixed"
         biastype="affine"
-        dyntype="none"
+        dyntype="filterexact"
         ctrlrange="-1 1"
         ctrllimited="true"
     />

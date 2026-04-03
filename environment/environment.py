@@ -11,7 +11,7 @@ from environment.geometry import (
     point_out_of_bounds,
     raycast_scene,
 )
-from environment.motor import shape_motor_command
+from environment.motor import apply_deadzone
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import JointDofSlices, JointQposSlices, quaternion_to_yaw
 from environment.randomization import (
@@ -57,7 +57,6 @@ class TagEnvironment:
         self.substeps_per_action = round(
             1.0 / (config.action_frequency * self.mj_model.opt.timestep)
         )
-        self.physics_timestep_seconds = float(self.mj_model.opt.timestep)
         self.max_steps = config.episode_max_length * config.action_frequency
         self.freeze_steps = config.chaser_freeze_seconds * config.action_frequency
         self.tag_distance = 2 * config.agent_radius * config.tag_distance_factor
@@ -86,6 +85,9 @@ class TagEnvironment:
         right_wheel_geom_id = mujoco.mj_name2id(
             self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_right_wheel_geom"
         )
+        caster_body_id = mujoco.mj_name2id(
+            self.mj_model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_caster"
+        )
         caster_geom_id = mujoco.mj_name2id(
             self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, f"{prefix}_caster_ball_geom"
         )
@@ -107,6 +109,7 @@ class TagEnvironment:
             right_wheel_body_id=right_wheel_body_id,
             left_wheel_geom_id=left_wheel_geom_id,
             right_wheel_geom_id=right_wheel_geom_id,
+            caster_body_id=caster_body_id,
             caster_geom_id=caster_geom_id,
             left_wheel_dof_id=int(self.mj_model.jnt_dofadr[left_joint_id]),
             right_wheel_dof_id=int(self.mj_model.jnt_dofadr[right_joint_id]),
@@ -247,11 +250,8 @@ class TagEnvironment:
         expanded_fallback_actions = self._expand_actions_to_substeps(fallback_actions)
         return expanded_actions, expanded_fallback_actions
 
-    def _apply_motor_model(
-        self,
-        state: TagEnvironmentState,
-        applied_actions: jax.Array,
-        previous_motor_commands: jax.Array,
+    def _apply_motor_deadzone(
+        self, state: TagEnvironmentState, applied_actions: jax.Array
     ) -> jax.Array:
         deadzones = jnp.stack(
             [
@@ -260,20 +260,7 @@ class TagEnvironment:
             ],
             axis=0,
         )
-        time_constants = jnp.stack(
-            [
-                state.domain_params.chaser.motor_time_constant_seconds,
-                state.domain_params.evader.motor_time_constant_seconds,
-            ],
-            axis=0,
-        )
-        return jax.vmap(shape_motor_command, in_axes=(0, 0, 0, 0, None))(
-            previous_motor_commands,
-            applied_actions,
-            deadzones,
-            time_constants,
-            self.physics_timestep_seconds,
-        )
+        return jax.vmap(apply_deadzone)(applied_actions, deadzones)
 
     def _sample_measurement(
         self,
@@ -456,7 +443,6 @@ class TagEnvironment:
             ),
             action_buffer=self._empty_action_buffer(),
             last_applied_actions=jnp.zeros((2, 2), dtype=jnp.float32),
-            applied_motor_commands=jnp.zeros((2, 2), dtype=jnp.float32),
             last_measured_agent_positions_xy=true_agent_positions_xy,
             last_measured_agent_yaws=true_agent_yaws,
             last_measured_obstacle_positions_xy=obstacle_state.positions_xy,
@@ -543,13 +529,11 @@ class TagEnvironment:
                 jax.Array,
                 jax.Array,
                 jax.Array,
-                jax.Array,
             ],
             inputs: tuple[jax.Array, jax.Array, jax.Array],
         ) -> tuple[
             tuple[
                 mjx.Data,
-                jax.Array,
                 jax.Array,
                 jax.Array,
                 jax.Array,
@@ -566,7 +550,6 @@ class TagEnvironment:
                 action_buffer,
                 observation_buffer,
                 last_applied_actions,
-                applied_motor_commands,
                 last_measured_agent_positions_xy,
                 last_measured_agent_yaws,
                 last_measured_obstacle_positions_xy,
@@ -588,11 +571,8 @@ class TagEnvironment:
                 ),
                 delayed_actions,
             )
-            applied_motor_commands = self._apply_motor_model(
-                state, applied_actions, applied_motor_commands
-            )
             control_actions = jnp.concatenate(
-                [applied_motor_commands[0], applied_motor_commands[1]]
+                self._apply_motor_deadzone(state, applied_actions), axis=0
             )
             data = data.replace(ctrl=control_actions)
             data = mjx.step(randomized_model, data)
@@ -607,7 +587,6 @@ class TagEnvironment:
                 action_buffer=action_buffer,
                 observation_buffer=observation_buffer,
                 last_applied_actions=last_applied_actions,
-                applied_motor_commands=applied_motor_commands,
                 last_measured_agent_positions_xy=last_measured_agent_positions_xy,
                 last_measured_agent_yaws=last_measured_agent_yaws,
                 last_measured_obstacle_positions_xy=last_measured_obstacle_positions_xy,
@@ -639,7 +618,6 @@ class TagEnvironment:
                 action_buffer,
                 observation_buffer,
                 applied_actions,
-                applied_motor_commands,
                 measured_agent_positions_xy,
                 measured_agent_yaws,
                 measured_obstacle_positions_xy,
@@ -653,7 +631,6 @@ class TagEnvironment:
                 action_buffer,
                 observation_buffer,
                 applied_actions,
-                applied_motor_commands,
                 measured_agent_positions_xy,
                 measured_agent_yaws,
                 measured_obstacle_positions_xy,
@@ -668,7 +645,6 @@ class TagEnvironment:
                 state.action_buffer,
                 state.observation_buffer,
                 state.last_applied_actions,
-                state.applied_motor_commands,
                 state.last_measured_agent_positions_xy,
                 state.last_measured_agent_yaws,
                 state.last_measured_obstacle_positions_xy,
@@ -722,7 +698,6 @@ class TagEnvironment:
             mjx_data=mjx_data,
             action_buffer=action_buffer,
             last_applied_actions=applied_actions,
-            applied_motor_commands=applied_motor_commands,
             step_count=step_count,
             prev_distance=distance,
         )

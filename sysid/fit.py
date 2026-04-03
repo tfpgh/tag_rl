@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generations", type=int, default=100)
     parser.add_argument("--population-size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--window-seconds", type=float, default=2.0)
+    parser.add_argument("--window-seconds", type=float, default=10.0)
     parser.add_argument("--preroll-seconds", type=float, default=0.5)
     parser.add_argument("--stride-seconds", type=float, default=0.5)
     return parser.parse_args()

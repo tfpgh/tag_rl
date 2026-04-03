@@ -72,15 +72,13 @@ def _build_probe_groups(
         "track_width_scale",
         "motor_strength_scale",
         "back_emf_scale",
+        "motor_deadzone",
+        "motor_time_constant_seconds",
         "wheel_friction_scale",
         "wheel_scrub_scale",
-        "wheel_frictionloss_scale",
-        "caster_friction_scale",
         "com_offset_x",
         "observation_delay_substeps",
         "command_delay_substeps",
-        "wheel_friction_balance",
-        "wheel_frictionloss_balance",
     ]
     for name in sweep_params:
         groups[f"sweep:{name}"] = [
@@ -127,19 +125,34 @@ def _build_probe_groups(
         for emf in emf_values
     ]
 
+    deadzone_values = _linspace_for_param("motor_deadzone", 5)
+    lag_values = _linspace_for_param("motor_time_constant_seconds", 5)
+    groups["grid:deadzone_vs_lag"] = [
+        {
+            "label": f"deadzone={deadzone} lag={lag}",
+            "params": _candidate(
+                base,
+                motor_deadzone=deadzone,
+                motor_time_constant_seconds=lag,
+            ),
+        }
+        for deadzone in deadzone_values
+        for lag in lag_values
+    ]
+
     groups["ablations"] = [
         {"label": "com_offset_x=0", "params": _candidate(base, com_offset_x=0.0)},
         {
-            "label": "caster_friction=1.0",
-            "params": _candidate(base, caster_friction_scale=1.0),
-        },
-        {
-            "label": "wheel_frictionloss=1.0",
-            "params": _candidate(base, wheel_frictionloss_scale=1.0),
-        },
-        {
             "label": "wheel_scrub=1.0",
             "params": _candidate(base, wheel_scrub_scale=1.0),
+        },
+        {
+            "label": "motor_deadzone=0",
+            "params": _candidate(base, motor_deadzone=0.0),
+        },
+        {
+            "label": "motor_lag=0",
+            "params": _candidate(base, motor_time_constant_seconds=0.0),
         },
         {
             "label": "track_width=1.04",

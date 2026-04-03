@@ -30,6 +30,8 @@ class AgentDynamicsParams(NamedTuple):
     motor_strength_scale: jax.Array
     back_emf_scale: jax.Array
     motor_balance: jax.Array
+    motor_deadzone: jax.Array
+    motor_time_constant_seconds: jax.Array
 
 
 class DomainParams(NamedTuple):
@@ -77,6 +79,7 @@ class TagEnvironmentState(NamedTuple):
     observation_buffer: jax.Array
     action_buffer: jax.Array
     last_applied_actions: jax.Array
+    applied_motor_commands: jax.Array
     last_measured_agent_positions_xy: jax.Array
     last_measured_agent_yaws: jax.Array
     last_measured_obstacle_positions_xy: jax.Array

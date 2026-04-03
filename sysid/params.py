@@ -24,15 +24,11 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("motor_strength_scale", ParamBounds(0.75, 1.40)),
     ("back_emf_scale", ParamBounds(0.4, 1.25)),
     ("motor_balance", ParamBounds(-0.12, 0.12)),
+    ("motor_deadzone", ParamBounds(0.0, 0.18)),
+    ("motor_time_constant_seconds", ParamBounds(0.0, 0.20)),
     ("wheel_friction_scale", ParamBounds(0.75, 2.0)),
-    ("wheel_friction_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_scrub_scale", ParamBounds(0.50, 1.50)),
-    ("wheel_frictionloss_scale", ParamBounds(0.75, 10.0)),
-    ("wheel_frictionloss_balance", ParamBounds(-0.20, 0.20)),
-    ("caster_friction_scale", ParamBounds(0.2, 40.0)),
-    ("mass_scale", ParamBounds(0.98, 1.02)),
     ("com_offset_x", ParamBounds(-0.02, 0.02)),
-    ("com_offset_y", ParamBounds(-0.015, 0.015)),
     ("command_delay_substeps", ParamBounds(0.0, 15.0)),
     ("observation_delay_substeps", ParamBounds(0.0, 30.0)),
 )
@@ -60,32 +56,26 @@ def build_domain_and_pipeline_from_physical(
     params: Mapping[str, jax.Array | float | int],
 ) -> tuple[DomainParams, PipelineParams]:
     agent = AgentDynamicsParams(
-        mass_scale=jnp.asarray(params["mass_scale"], dtype=jnp.float32),
-        com_offset_xy=jnp.array(
-            [params["com_offset_x"], params["com_offset_y"]], dtype=jnp.float32
-        ),
+        mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
+        com_offset_xy=jnp.array([params["com_offset_x"], 0.0], dtype=jnp.float32),
         track_width_scale=jnp.asarray(params["track_width_scale"], dtype=jnp.float32),
         wheel_friction_scale=jnp.asarray(
             params["wheel_friction_scale"], dtype=jnp.float32
         ),
-        wheel_friction_balance=jnp.asarray(
-            params["wheel_friction_balance"], dtype=jnp.float32
-        ),
+        wheel_friction_balance=jnp.asarray(0.0, dtype=jnp.float32),
         wheel_scrub_scale=jnp.asarray(params["wheel_scrub_scale"], dtype=jnp.float32),
-        caster_friction_scale=jnp.asarray(
-            params["caster_friction_scale"], dtype=jnp.float32
-        ),
-        wheel_frictionloss_scale=jnp.asarray(
-            params["wheel_frictionloss_scale"], dtype=jnp.float32
-        ),
-        wheel_frictionloss_balance=jnp.asarray(
-            params["wheel_frictionloss_balance"], dtype=jnp.float32
-        ),
+        caster_friction_scale=jnp.asarray(1.0, dtype=jnp.float32),
+        wheel_frictionloss_scale=jnp.asarray(1.0, dtype=jnp.float32),
+        wheel_frictionloss_balance=jnp.asarray(0.0, dtype=jnp.float32),
         motor_strength_scale=jnp.asarray(
             params["motor_strength_scale"], dtype=jnp.float32
         ),
         back_emf_scale=jnp.asarray(params["back_emf_scale"], dtype=jnp.float32),
         motor_balance=jnp.asarray(params["motor_balance"], dtype=jnp.float32),
+        motor_deadzone=jnp.asarray(params["motor_deadzone"], dtype=jnp.float32),
+        motor_time_constant_seconds=jnp.asarray(
+            params["motor_time_constant_seconds"], dtype=jnp.float32
+        ),
     )
     domain = DomainParams(chaser=agent, evader=agent)
     pipeline = PipelineParams(

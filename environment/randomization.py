@@ -62,7 +62,9 @@ def _sample_agent_dynamics(
         strength_rng,
         back_emf_rng,
         balance_rng,
-    ) = random.split(rng, 13)
+        deadzone_rng,
+        time_constant_rng,
+    ) = random.split(rng, 15)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -125,6 +127,20 @@ def _sample_agent_dynamics(
             scale,
         ),
         motor_balance=_sample_centered(balance_rng, dyn.motor_balance_delta_max, scale),
+        motor_deadzone=random.uniform(
+            deadzone_rng,
+            (),
+            minval=dyn.motor_deadzone_min,
+            maxval=scale * dyn.motor_deadzone_max
+            + (1.0 - scale) * dyn.motor_deadzone_min,
+        ),
+        motor_time_constant_seconds=random.uniform(
+            time_constant_rng,
+            (),
+            minval=dyn.motor_time_constant_seconds_min,
+            maxval=scale * dyn.motor_time_constant_seconds_max
+            + (1.0 - scale) * dyn.motor_time_constant_seconds_min,
+        ),
     )
 
 

@@ -22,10 +22,10 @@ class WindowConfig:
     preroll_seconds: float = PREROLL_SECONDS
     stride_seconds: float = STRIDE_SECONDS
     substep_dt_seconds: float = SUBSTEP_DT_SECONDS
-    min_scored_samples: int = 24
+    min_scored_samples: int = 10
     min_command_abs: float = 0.05
-    min_motion_m: float = 0.03
-    min_yaw_change_rad: float = 0.08
+    min_motion_m: float = 0.003
+    min_yaw_change_rad: float = 0.008
 
     @property
     def total_seconds(self) -> float:

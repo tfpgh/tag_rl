@@ -30,9 +30,9 @@ def _print_split_summary(name: str, batch) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze sysid window segmentation")
     parser.add_argument("--data-root", type=Path, default=Path("data"))
-    parser.add_argument("--window-seconds", type=float, default=10.0)
+    parser.add_argument("--window-seconds", type=float, default=0.75)
     parser.add_argument("--preroll-seconds", type=float, default=0.5)
-    parser.add_argument("--stride-seconds", type=float, default=0.5)
+    parser.add_argument("--stride-seconds", type=float, default=0.25)
     args = parser.parse_args()
 
     config = WindowConfig(

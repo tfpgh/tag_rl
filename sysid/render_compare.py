@@ -15,6 +15,7 @@ import numpy as np
 from mujoco import mjx
 
 from environment.mjcf import generate_mjcf
+from environment.motor import apply_deadzone
 from environment.randomization import randomize_model
 from online.app.render_run import (
     DEFAULT_FPS,
@@ -193,8 +194,11 @@ def _simulate_target_poses(
             jnp.roll(action_buffer, shift=-1, axis=0).at[-1].set(proposed_action)
         )
         delayed_action = action_buffer[-1 - pipeline_params.action_delay_substeps]
+        motor_command = apply_deadzone(
+            delayed_action, domain_params.chaser.motor_deadzone
+        )
         data = data.replace(
-            ctrl=jnp.concatenate([delayed_action, jnp.zeros((2,), dtype=jnp.float32)])
+            ctrl=jnp.concatenate([motor_command, jnp.zeros((2,), dtype=jnp.float32)])
         )
         data = mjx.step(model, data)
         qpos = data.qpos[evaluator.qpos_slices.chaser_root]

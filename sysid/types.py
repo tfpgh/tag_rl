@@ -44,11 +44,10 @@ class DatasetSplits:
 @dataclass(frozen=True, slots=True)
 class ScoreBreakdown:
     total: float
-    position: float
-    yaw: float
-    linear_velocity: float
-    angular_velocity: float
-    endpoint: float
+    local: float
+    increment: float
+    transition: float
+    anchor: float
 
 
 @dataclass(frozen=True, slots=True)

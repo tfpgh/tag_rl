@@ -6,6 +6,7 @@ from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from mujoco import mjx
 
 from environment.config import EnvironmentConfig
@@ -21,15 +22,23 @@ from sysid.params import (
 from sysid.types import EvaluationSummary, ScoreBreakdown, WindowBatch
 
 
-POS_SCALE = 0.05
-YAW_SCALE = 0.15
-VEL_SCALE = 0.25
-YAW_RATE_SCALE = 1.0
-POS_WEIGHT = 1.0
-YAW_WEIGHT = 0.7
-VEL_WEIGHT = 0.25
-YAW_RATE_WEIGHT = 0.25
-ENDPOINT_WEIGHT = 0.5
+LOCAL_POS_SCALE = 0.05
+LOCAL_YAW_SCALE = 0.15
+INCREMENT_HORIZONS_S = (0.2, 0.5, 1.0)
+INCREMENT_POS_SCALES = (0.04, 0.06, 0.10)
+INCREMENT_YAW_SCALES = (0.10, 0.14, 0.22)
+INCREMENT_WEIGHTS = (0.45, 0.35, 0.20)
+ANCHOR_HORIZONS_S = (1.0, 2.5)
+ANCHOR_POS_SCALES = (0.10, 0.15)
+ANCHOR_YAW_SCALES = (0.20, 0.30)
+ANCHOR_WEIGHTS = (0.7, 0.3)
+TRANSITION_THRESHOLD = 0.08
+TRANSITION_RESPONSE_MIN_S = 0.05
+TRANSITION_RESPONSE_MAX_S = 0.35
+LOCAL_WEIGHT = 0.35
+INCREMENT_WEIGHT = 0.35
+TRANSITION_WEIGHT = 0.20
+ANCHOR_WEIGHT = 0.10
 PSEUDO_HUBER_DELTA = 1.0
 EVADER_PARK_POS = jnp.array([5.0, 5.0, 0.0299], dtype=jnp.float32)
 RAD_TO_DEG = 180.0 / jnp.pi
@@ -37,10 +46,17 @@ RAD_TO_DEG = 180.0 / jnp.pi
 
 class WindowArrays(NamedTuple):
     relative_sample_times_s: jax.Array
+    score_relative_times_s: jax.Array
+    time_weights: jax.Array
     target_xy: jax.Array
     target_yaw: jax.Array
     sample_mask: jax.Array
     score_mask: jax.Array
+    increment_future_indices: jax.Array
+    increment_future_mask: jax.Array
+    anchor_indices: jax.Array
+    anchor_mask: jax.Array
+    transition_sample_mask: jax.Array
     command_substeps: jax.Array
     initial_pose: jax.Array
     initial_velocity: jax.Array
@@ -49,11 +65,10 @@ class WindowArrays(NamedTuple):
 
 class ScoreTerms(NamedTuple):
     total: jax.Array
-    position: jax.Array
-    yaw: jax.Array
-    linear_velocity: jax.Array
-    angular_velocity: jax.Array
-    endpoint: jax.Array
+    local: jax.Array
+    increment: jax.Array
+    transition: jax.Array
+    anchor: jax.Array
 
 
 class WindowMetrics(NamedTuple):
@@ -83,6 +98,25 @@ def _pseudo_huber(value: jax.Array, delta: float = PSEUDO_HUBER_DELTA) -> jax.Ar
 def _safe_masked_mean(values: jax.Array, mask: jax.Array) -> jax.Array:
     weight = mask.astype(jnp.float32)
     return jnp.sum(values * weight) / jnp.maximum(weight.sum(), 1.0)
+
+
+def _piecewise_time_weights(score_relative_times_s: jax.Array) -> jax.Array:
+    return jnp.where(
+        score_relative_times_s < 0.5,
+        1.0,
+        jnp.where(
+            score_relative_times_s < 1.5,
+            0.7,
+            jnp.where(score_relative_times_s < 3.0, 0.4, 0.2),
+        ),
+    ).astype(jnp.float32)
+
+
+def _safe_weighted_mean(
+    values: jax.Array, weights: jax.Array, mask: jax.Array
+) -> jax.Array:
+    masked_weights = weights * mask.astype(jnp.float32)
+    return jnp.sum(values * masked_weights) / jnp.maximum(masked_weights.sum(), 1.0)
 
 
 def _extract_pose(root_qpos: jax.Array, root_qvel: jax.Array) -> jax.Array:
@@ -145,13 +179,149 @@ class SysIdEvaluator:
             devices=list(jax.local_devices()),
         )
 
+    def _build_future_lookup(
+        self,
+        relative_times_s,
+        score_mask,
+        horizons_s: tuple[float, ...],
+    ) -> tuple[jax.Array, jax.Array]:
+        num_windows, max_samples = relative_times_s.shape
+        future_indices = np.zeros(
+            (num_windows, max_samples, len(horizons_s)), dtype=np.int32
+        )
+        future_mask = np.zeros(
+            (num_windows, max_samples, len(horizons_s)), dtype=np.bool_
+        )
+        for window_index in range(num_windows):
+            valid_indices = [
+                idx
+                for idx, is_scored in enumerate(score_mask[window_index])
+                if is_scored
+            ]
+            valid_times = [
+                float(relative_times_s[window_index, idx]) for idx in valid_indices
+            ]
+            for source_position, source_index in enumerate(valid_indices):
+                source_time = valid_times[source_position]
+                for horizon_index, horizon_s in enumerate(horizons_s):
+                    target_time = source_time + horizon_s
+                    target_index = next(
+                        (
+                            valid_indices[pos]
+                            for pos, valid_time in enumerate(valid_times)
+                            if valid_time >= target_time
+                        ),
+                        None,
+                    )
+                    if target_index is None:
+                        continue
+                    future_indices[window_index, source_index, horizon_index] = (
+                        target_index
+                    )
+                    future_mask[window_index, source_index, horizon_index] = True
+        return jnp.asarray(future_indices), jnp.asarray(future_mask)
+
+    def _build_anchor_lookup(
+        self, relative_times_s, score_mask
+    ) -> tuple[jax.Array, jax.Array]:
+        num_windows = relative_times_s.shape[0]
+        anchor_indices = np.zeros((num_windows, len(ANCHOR_HORIZONS_S)), dtype=np.int32)
+        anchor_mask = np.zeros((num_windows, len(ANCHOR_HORIZONS_S)), dtype=np.bool_)
+        for window_index in range(num_windows):
+            valid_indices = [
+                idx
+                for idx, is_scored in enumerate(score_mask[window_index])
+                if is_scored
+            ]
+            if not valid_indices:
+                continue
+            valid_times = [
+                float(relative_times_s[window_index, idx]) for idx in valid_indices
+            ]
+            score_start_time = valid_times[0]
+            for anchor_index, anchor_s in enumerate(ANCHOR_HORIZONS_S):
+                target_index = next(
+                    (
+                        valid_indices[pos]
+                        for pos, valid_time in enumerate(valid_times)
+                        if valid_time >= score_start_time + anchor_s
+                    ),
+                    None,
+                )
+                if target_index is None:
+                    continue
+                anchor_indices[window_index, anchor_index] = target_index
+                anchor_mask[window_index, anchor_index] = True
+        return jnp.asarray(anchor_indices), jnp.asarray(anchor_mask)
+
+    def _build_transition_sample_mask(self, batch: WindowBatch) -> jax.Array:
+        num_windows, max_samples = batch.relative_sample_times_s.shape
+        transition_mask = np.zeros((num_windows, max_samples), dtype=np.bool_)
+        substep_times = (
+            np.arange(batch.command_substeps.shape[1], dtype=np.float32)
+            * self.substep_dt_seconds
+        )
+        for window_index in range(num_windows):
+            commands = batch.command_substeps[window_index]
+            deltas = np.linalg.norm(commands[1:] - commands[:-1], axis=-1)
+            transition_times = substep_times[1:][deltas > TRANSITION_THRESHOLD]
+            if len(transition_times) == 0:
+                continue
+            sample_times = batch.relative_sample_times_s[window_index]
+            sample_score_mask = batch.score_mask[window_index]
+            sample_transition = np.any(
+                (
+                    sample_times[:, None] - transition_times[None, :]
+                    >= TRANSITION_RESPONSE_MIN_S
+                )
+                & (
+                    sample_times[:, None] - transition_times[None, :]
+                    <= TRANSITION_RESPONSE_MAX_S
+                ),
+                axis=1,
+            )
+            transition_mask[window_index] = sample_transition & sample_score_mask
+        return jnp.asarray(transition_mask)
+
     def prepare_batch(self, batch: WindowBatch) -> WindowArrays:
+        relative_sample_times_s = jnp.asarray(batch.relative_sample_times_s)
+        score_mask = jnp.asarray(batch.score_mask)
+        sample_mask = jnp.asarray(batch.sample_mask)
+        score_start_time = jnp.min(
+            jnp.where(score_mask, relative_sample_times_s, jnp.inf),
+            axis=1,
+            keepdims=True,
+        )
+        score_relative_times_s = jnp.maximum(
+            relative_sample_times_s - score_start_time,
+            0.0,
+        )
+        time_weights = _piecewise_time_weights(
+            score_relative_times_s
+        ) * score_mask.astype(jnp.float32)
+        increment_future_indices, increment_future_mask = self._build_future_lookup(
+            batch.relative_sample_times_s,
+            batch.score_mask,
+            INCREMENT_HORIZONS_S,
+        )
+        anchor_indices, anchor_mask = self._build_anchor_lookup(
+            batch.relative_sample_times_s,
+            batch.score_mask,
+        )
+        transition_sample_mask = self._build_transition_sample_mask(batch)
         return WindowArrays(
-            relative_sample_times_s=jnp.asarray(batch.relative_sample_times_s),
+            relative_sample_times_s=relative_sample_times_s,
+            score_relative_times_s=score_relative_times_s,
+            time_weights=time_weights,
             target_xy=jnp.asarray(batch.target_xy),
             target_yaw=jnp.asarray(batch.target_yaw),
-            sample_mask=jnp.asarray(batch.sample_mask),
-            score_mask=jnp.asarray(batch.score_mask),
+            sample_mask=sample_mask,
+            score_mask=score_mask,
+            increment_future_indices=increment_future_indices,
+            increment_future_mask=increment_future_mask,
+            anchor_indices=anchor_indices,
+            anchor_mask=anchor_mask,
+            transition_sample_mask=transition_sample_mask,
             command_substeps=jnp.asarray(batch.command_substeps),
             initial_pose=jnp.asarray(batch.initial_pose),
             initial_velocity=jnp.asarray(batch.initial_velocity),
@@ -267,52 +437,107 @@ class SysIdEvaluator:
     ) -> ScoreTerms:
         sim_xy = sampled_pose[:, :2]
         sim_yaw = sampled_pose[:, 2]
-        sim_speed = jnp.linalg.norm(sampled_pose[:, 3:5], axis=-1)
-        sim_yaw_rate = sampled_pose[:, 5]
-
-        dt = jnp.diff(
-            window.relative_sample_times_s, prepend=window.relative_sample_times_s[:1]
-        )
-        dt = jnp.maximum(dt, self.substep_dt_seconds)
-        target_dxy = jnp.diff(window.target_xy, axis=0, prepend=window.target_xy[:1])
-        target_speed = jnp.linalg.norm(target_dxy, axis=-1) / dt
-        target_yaw_rate = (
-            _wrap_angle(window.target_yaw - jnp.roll(window.target_yaw, 1)) / dt
-        )
-
         valid_mask = window.sample_mask & window.score_mask
+        time_weights = window.time_weights
         pos_err = jnp.linalg.norm(sim_xy - window.target_xy, axis=-1)
         yaw_err = jnp.abs(_wrap_angle(sim_yaw - window.target_yaw))
-        vel_err = jnp.abs(sim_speed - target_speed)
-        yaw_rate_err = jnp.abs(sim_yaw_rate - target_yaw_rate)
 
-        position_term = _safe_masked_mean(
-            _pseudo_huber(pos_err / POS_SCALE), valid_mask
+        local_term = _safe_weighted_mean(
+            _pseudo_huber(pos_err / LOCAL_POS_SCALE)
+            + 0.7 * _pseudo_huber(yaw_err / LOCAL_YAW_SCALE),
+            time_weights,
+            valid_mask,
         )
-        yaw_term = _safe_masked_mean(_pseudo_huber(yaw_err / YAW_SCALE), valid_mask)
-        velocity_term = _safe_masked_mean(
-            _pseudo_huber(vel_err / VEL_SCALE), valid_mask
+
+        increment_weights = jnp.asarray(INCREMENT_WEIGHTS, dtype=jnp.float32)
+        increment_pos_scales = jnp.asarray(INCREMENT_POS_SCALES, dtype=jnp.float32)
+        increment_yaw_scales = jnp.asarray(INCREMENT_YAW_SCALES, dtype=jnp.float32)
+
+        increment_terms = []
+        for horizon_index in range(len(INCREMENT_HORIZONS_S)):
+            future_indices = window.increment_future_indices[:, horizon_index]
+            future_mask = valid_mask & window.increment_future_mask[:, horizon_index]
+            sim_future_xy = sim_xy[future_indices]
+            sim_future_yaw = sim_yaw[future_indices]
+            target_future_xy = window.target_xy[future_indices]
+            target_future_yaw = window.target_yaw[future_indices]
+            dpos_err = jnp.linalg.norm(
+                (sim_future_xy - sim_xy) - (target_future_xy - window.target_xy),
+                axis=-1,
+            )
+            dyaw_err = jnp.abs(
+                _wrap_angle(
+                    (sim_future_yaw - sim_yaw) - (target_future_yaw - window.target_yaw)
+                )
+            )
+            increment_terms.append(
+                _safe_weighted_mean(
+                    _pseudo_huber(dpos_err / increment_pos_scales[horizon_index])
+                    + 0.7
+                    * _pseudo_huber(dyaw_err / increment_yaw_scales[horizon_index]),
+                    time_weights,
+                    future_mask,
+                )
+            )
+        increment_term = jnp.sum(increment_weights * jnp.stack(increment_terms))
+
+        transition_local = _safe_weighted_mean(
+            _pseudo_huber(pos_err / 0.04) + 0.8 * _pseudo_huber(yaw_err / 0.12),
+            time_weights,
+            valid_mask & window.transition_sample_mask,
         )
-        yaw_rate_term = _safe_masked_mean(
-            _pseudo_huber(yaw_rate_err / YAW_RATE_SCALE), valid_mask
+        transition_horizon_index = 1
+        transition_future_indices = window.increment_future_indices[
+            :, transition_horizon_index
+        ]
+        transition_future_mask = (
+            valid_mask
+            & window.transition_sample_mask
+            & window.increment_future_mask[:, transition_horizon_index]
         )
-        last_index = jnp.maximum(jnp.sum(valid_mask.astype(jnp.int32)) - 1, 0)
-        endpoint_term = _pseudo_huber(pos_err[last_index] / POS_SCALE) + _pseudo_huber(
-            yaw_err[last_index] / YAW_SCALE
+        transition_dpos_err = jnp.linalg.norm(
+            (sim_xy[transition_future_indices] - sim_xy)
+            - (window.target_xy[transition_future_indices] - window.target_xy),
+            axis=-1,
         )
+        transition_dyaw_err = jnp.abs(
+            _wrap_angle(
+                (sim_yaw[transition_future_indices] - sim_yaw)
+                - (window.target_yaw[transition_future_indices] - window.target_yaw)
+            )
+        )
+        transition_increment = _safe_weighted_mean(
+            _pseudo_huber(transition_dpos_err / 0.06)
+            + 0.8 * _pseudo_huber(transition_dyaw_err / 0.14),
+            time_weights,
+            transition_future_mask,
+        )
+        transition_term = transition_local + 0.5 * transition_increment
+
+        anchor_weights = jnp.asarray(ANCHOR_WEIGHTS, dtype=jnp.float32)
+        anchor_pos_scales = jnp.asarray(ANCHOR_POS_SCALES, dtype=jnp.float32)
+        anchor_yaw_scales = jnp.asarray(ANCHOR_YAW_SCALES, dtype=jnp.float32)
+        anchor_pos_err = pos_err[window.anchor_indices]
+        anchor_yaw_err = yaw_err[window.anchor_indices]
+        anchor_loss = _pseudo_huber(
+            anchor_pos_err / anchor_pos_scales
+        ) + 0.7 * _pseudo_huber(anchor_yaw_err / anchor_yaw_scales)
+        anchor_mask = window.anchor_mask.astype(jnp.float32)
+        anchor_term = jnp.sum(anchor_weights * anchor_mask * anchor_loss) / jnp.maximum(
+            jnp.sum(anchor_weights * anchor_mask), 1.0
+        )
+
         return ScoreTerms(
             total=(
-                POS_WEIGHT * position_term
-                + YAW_WEIGHT * yaw_term
-                + VEL_WEIGHT * velocity_term
-                + YAW_RATE_WEIGHT * yaw_rate_term
-                + ENDPOINT_WEIGHT * endpoint_term
+                LOCAL_WEIGHT * local_term
+                + INCREMENT_WEIGHT * increment_term
+                + TRANSITION_WEIGHT * transition_term
+                + ANCHOR_WEIGHT * anchor_term
             ),
-            position=position_term,
-            yaw=yaw_term,
-            linear_velocity=velocity_term,
-            angular_velocity=yaw_rate_term,
-            endpoint=endpoint_term,
+            local=local_term,
+            increment=increment_term,
+            transition=transition_term,
+            anchor=anchor_term,
         )
 
     def _simulate_window(self, latent: jax.Array, window: WindowArrays) -> ScoreTerms:
@@ -384,11 +609,10 @@ class SysIdEvaluator:
             )
         return {
             "total": terms.total,
-            "position": terms.position,
-            "yaw": terms.yaw,
-            "linear_velocity": terms.linear_velocity,
-            "angular_velocity": terms.angular_velocity,
-            "endpoint": terms.endpoint,
+            "local": terms.local,
+            "increment": terms.increment,
+            "transition": terms.transition,
+            "anchor": terms.anchor,
         }
 
     def evaluate_summary(
@@ -402,11 +626,10 @@ class SysIdEvaluator:
         evaluate = summary_eval or self.build_summary_evaluator(prepared)
         per_window_terms = evaluate(latent, prepared)
         total = jax.device_get(per_window_terms.score.total)
-        position = jax.device_get(per_window_terms.score.position)
-        yaw = jax.device_get(per_window_terms.score.yaw)
-        linear_velocity = jax.device_get(per_window_terms.score.linear_velocity)
-        angular_velocity = jax.device_get(per_window_terms.score.angular_velocity)
-        endpoint = jax.device_get(per_window_terms.score.endpoint)
+        local = jax.device_get(per_window_terms.score.local)
+        increment = jax.device_get(per_window_terms.score.increment)
+        transition = jax.device_get(per_window_terms.score.transition)
+        anchor = jax.device_get(per_window_terms.score.anchor)
         metrics = {
             "position_mae_m": float(
                 jax.device_get(per_window_terms.metrics.position_mae_m).mean()
@@ -439,11 +662,10 @@ class SysIdEvaluator:
         return EvaluationSummary(
             score=ScoreBreakdown(
                 total=float(total.mean()),
-                position=float(position.mean()),
-                yaw=float(yaw.mean()),
-                linear_velocity=float(linear_velocity.mean()),
-                angular_velocity=float(angular_velocity.mean()),
-                endpoint=float(endpoint.mean()),
+                local=float(local.mean()),
+                increment=float(increment.mean()),
+                transition=float(transition.mean()),
+                anchor=float(anchor.mean()),
             ),
             metrics=metrics,
             maneuver_scores=maneuver_scores,

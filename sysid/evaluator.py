@@ -39,6 +39,7 @@ LOCAL_WEIGHT = 0.35
 INCREMENT_WEIGHT = 0.35
 TRANSITION_WEIGHT = 0.20
 ANCHOR_WEIGHT = 0.10
+PIVOT_STABILITY_WEIGHT = 0.20
 PSEUDO_HUBER_DELTA = 1.0
 EVADER_PARK_POS = jnp.array([5.0, 5.0, 0.0299], dtype=jnp.float32)
 RAD_TO_DEG = 180.0 / jnp.pi
@@ -61,6 +62,7 @@ class WindowArrays(NamedTuple):
     initial_pose: jax.Array
     initial_velocity: jax.Array
     initial_command: jax.Array
+    pivot_window_mask: jax.Array
 
 
 class ScoreTerms(NamedTuple):
@@ -69,6 +71,7 @@ class ScoreTerms(NamedTuple):
     increment: jax.Array
     transition: jax.Array
     anchor: jax.Array
+    pivot_stability: jax.Array
 
 
 class WindowMetrics(NamedTuple):
@@ -326,6 +329,9 @@ class SysIdEvaluator:
             initial_pose=jnp.asarray(batch.initial_pose),
             initial_velocity=jnp.asarray(batch.initial_velocity),
             initial_command=jnp.asarray(batch.initial_command),
+            pivot_window_mask=jnp.asarray(
+                [item.maneuver == "pivot" for item in batch.metadata], dtype=jnp.bool_
+            ),
         )
 
     def _initial_data(
@@ -527,17 +533,40 @@ class SysIdEvaluator:
             jnp.sum(anchor_weights * anchor_mask), 1.0
         )
 
+        target_disp_from_start = jnp.linalg.norm(
+            window.target_xy - window.target_xy[:1], axis=-1
+        )
+        sim_disp_from_start = jnp.linalg.norm(sim_xy - sim_xy[:1], axis=-1)
+        pivot_disp_err = jnp.abs(sim_disp_from_start - target_disp_from_start)
+        last_index = jnp.maximum(jnp.sum(valid_mask.astype(jnp.int32)) - 1, 0)
+        pivot_stability_term = jnp.where(
+            window.pivot_window_mask,
+            _safe_weighted_mean(
+                _pseudo_huber(pivot_disp_err / 0.025), time_weights, valid_mask
+            )
+            + 0.5
+            * _pseudo_huber(
+                jnp.abs(
+                    sim_disp_from_start[last_index] - target_disp_from_start[last_index]
+                )
+                / 0.04
+            ),
+            jnp.asarray(0.0, dtype=jnp.float32),
+        )
+
         return ScoreTerms(
             total=(
                 LOCAL_WEIGHT * local_term
                 + INCREMENT_WEIGHT * increment_term
                 + TRANSITION_WEIGHT * transition_term
                 + ANCHOR_WEIGHT * anchor_term
+                + PIVOT_STABILITY_WEIGHT * pivot_stability_term
             ),
             local=local_term,
             increment=increment_term,
             transition=transition_term,
             anchor=anchor_term,
+            pivot_stability=pivot_stability_term,
         )
 
     def _simulate_window(self, latent: jax.Array, window: WindowArrays) -> ScoreTerms:
@@ -613,6 +642,7 @@ class SysIdEvaluator:
             "increment": terms.increment,
             "transition": terms.transition,
             "anchor": terms.anchor,
+            "pivot_stability": terms.pivot_stability,
         }
 
     def evaluate_summary(
@@ -630,6 +660,7 @@ class SysIdEvaluator:
         increment = jax.device_get(per_window_terms.score.increment)
         transition = jax.device_get(per_window_terms.score.transition)
         anchor = jax.device_get(per_window_terms.score.anchor)
+        pivot_stability = jax.device_get(per_window_terms.score.pivot_stability)
         metrics = {
             "position_mae_m": float(
                 jax.device_get(per_window_terms.metrics.position_mae_m).mean()
@@ -666,6 +697,7 @@ class SysIdEvaluator:
                 increment=float(increment.mean()),
                 transition=float(transition.mean()),
                 anchor=float(anchor.mean()),
+                pivot_stability=float(pivot_stability.mean()),
             ),
             metrics=metrics,
             maneuver_scores=maneuver_scores,

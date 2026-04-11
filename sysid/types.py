@@ -48,6 +48,7 @@ class ScoreBreakdown:
     increment: float
     transition: float
     anchor: float
+    pivot_stability: float
 
 
 @dataclass(frozen=True, slots=True)

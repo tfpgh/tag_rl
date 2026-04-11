@@ -38,7 +38,7 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("wheel_armature_scale", ParamBounds(0.50, 3.50)),
     ("motor_strength_scale", ParamBounds(1.00, 3.0)),
     ("back_emf_scale", ParamBounds(0.90, 3.00)),
-    ("motor_balance", ParamBounds(-0.0001, 0.0001)),
+    ("motor_balance", ParamBounds(-0.20, 0.20)),
     ("motor_deadzone", ParamBounds(0.0, 0.03)),
     ("motor_time_constant_seconds", ParamBounds(0.0, 0.05)),
     ("com_offset_x", ParamBounds(-0.010, 0.020)),

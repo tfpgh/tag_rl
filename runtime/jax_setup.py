@@ -10,7 +10,6 @@ def configure_jax_cache() -> Path:
     os.environ.setdefault("JAX_COMPILATION_CACHE_DIR", str(cache_dir.resolve()))
     os.environ.setdefault("JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS", "0.25")
     os.environ.setdefault("JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES", "0")
-    os.environ.setdefault("JAX_PERSISTENT_CACHE_ENABLE_XLA_CACHES", "all")
     return cache_dir
 
 

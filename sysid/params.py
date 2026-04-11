@@ -21,30 +21,33 @@ class ParamBounds:
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("track_width_scale", ParamBounds(0.94, 1.10)),
-    ("wheel_longitudinal_offset", ParamBounds(-0.010, 0.010)),
     ("wheel_radius_scale", ParamBounds(0.94, 1.10)),
     ("wheel_slide_friction_scale", ParamBounds(0.70, 1.80)),
-    ("wheel_slide_friction_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_torsional_friction_scale", ParamBounds(0.35, 1.50)),
     ("wheel_rolling_friction_scale", ParamBounds(0.30, 1.30)),
-    ("caster_radius_scale", ParamBounds(0.88, 1.15)),
-    ("caster_offset_x", ParamBounds(-0.015, 0.010)),
-    ("caster_slide_friction_scale", ParamBounds(0.60, 1.40)),
-    ("caster_torsional_friction_scale", ParamBounds(0.60, 1.50)),
     ("wheel_joint_damping_scale", ParamBounds(0.50, 1.60)),
-    ("wheel_joint_damping_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_joint_frictionloss_scale", ParamBounds(0.50, 1.50)),
-    ("wheel_joint_frictionloss_balance", ParamBounds(-0.12, 0.12)),
     ("wheel_armature_scale", ParamBounds(0.50, 1.80)),
     ("motor_strength_scale", ParamBounds(0.80, 1.35)),
     ("back_emf_scale", ParamBounds(0.80, 1.20)),
     ("motor_balance", ParamBounds(-0.12, 0.12)),
     ("motor_deadzone", ParamBounds(0.0, 0.06)),
     ("motor_time_constant_seconds", ParamBounds(0.0, 0.12)),
-    ("com_offset_x", ParamBounds(-0.010, 0.010)),
     ("command_delay_substeps", ParamBounds(0.0, 12.0)),
     ("observation_delay_substeps", ParamBounds(0.0, 8.0)),
 )
+
+FROZEN_PARAMS: dict[str, float] = {
+    "wheel_longitudinal_offset": 0.0,
+    "wheel_slide_friction_balance": 0.0,
+    "caster_radius_scale": 1.0,
+    "caster_offset_x": 0.0,
+    "caster_slide_friction_scale": 1.0,
+    "caster_torsional_friction_scale": 1.0,
+    "wheel_joint_damping_balance": 0.0,
+    "wheel_joint_frictionloss_balance": 0.0,
+    "com_offset_x": 0.0,
+}
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)
 LATENT_DIM = len(PARAM_SPECS)
@@ -68,65 +71,68 @@ def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:
 def build_domain_and_pipeline_from_physical(
     params: Mapping[str, jax.Array | float | int],
 ) -> tuple[DomainParams, PipelineParams]:
+    resolved = {**FROZEN_PARAMS, **params}
     agent = AgentDynamicsParams(
         mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
-        com_offset_xy=jnp.array([params["com_offset_x"], 0.0], dtype=jnp.float32),
-        track_width_scale=jnp.asarray(params["track_width_scale"], dtype=jnp.float32),
+        com_offset_xy=jnp.array([resolved["com_offset_x"], 0.0], dtype=jnp.float32),
+        track_width_scale=jnp.asarray(resolved["track_width_scale"], dtype=jnp.float32),
         wheel_longitudinal_offset=jnp.asarray(
-            params["wheel_longitudinal_offset"], dtype=jnp.float32
+            resolved["wheel_longitudinal_offset"], dtype=jnp.float32
         ),
-        wheel_radius_scale=jnp.asarray(params["wheel_radius_scale"], dtype=jnp.float32),
+        wheel_radius_scale=jnp.asarray(
+            resolved["wheel_radius_scale"], dtype=jnp.float32
+        ),
         wheel_slide_friction_scale=jnp.asarray(
-            params["wheel_slide_friction_scale"], dtype=jnp.float32
+            resolved["wheel_slide_friction_scale"], dtype=jnp.float32
         ),
         wheel_slide_friction_balance=jnp.asarray(
-            params["wheel_slide_friction_balance"], dtype=jnp.float32
+            resolved["wheel_slide_friction_balance"], dtype=jnp.float32
         ),
         wheel_torsional_friction_scale=jnp.asarray(
-            params["wheel_torsional_friction_scale"], dtype=jnp.float32
+            resolved["wheel_torsional_friction_scale"], dtype=jnp.float32
         ),
         wheel_rolling_friction_scale=jnp.asarray(
-            params["wheel_rolling_friction_scale"], dtype=jnp.float32
+            resolved["wheel_rolling_friction_scale"], dtype=jnp.float32
         ),
         caster_radius_scale=jnp.asarray(
-            params["caster_radius_scale"], dtype=jnp.float32
+            resolved["caster_radius_scale"], dtype=jnp.float32
         ),
-        caster_offset_x=jnp.asarray(params["caster_offset_x"], dtype=jnp.float32),
+        caster_offset_x=jnp.asarray(resolved["caster_offset_x"], dtype=jnp.float32),
         caster_slide_friction_scale=jnp.asarray(
-            params["caster_slide_friction_scale"], dtype=jnp.float32
+            resolved["caster_slide_friction_scale"], dtype=jnp.float32
         ),
         caster_torsional_friction_scale=jnp.asarray(
-            params["caster_torsional_friction_scale"], dtype=jnp.float32
+            resolved["caster_torsional_friction_scale"], dtype=jnp.float32
         ),
         wheel_joint_damping_scale=jnp.asarray(
-            params["wheel_joint_damping_scale"], dtype=jnp.float32
+            resolved["wheel_joint_damping_scale"], dtype=jnp.float32
         ),
         wheel_joint_damping_balance=jnp.asarray(
-            params["wheel_joint_damping_balance"], dtype=jnp.float32
+            resolved["wheel_joint_damping_balance"], dtype=jnp.float32
         ),
         wheel_joint_frictionloss_scale=jnp.asarray(
-            params["wheel_joint_frictionloss_scale"], dtype=jnp.float32
+            resolved["wheel_joint_frictionloss_scale"], dtype=jnp.float32
         ),
         wheel_joint_frictionloss_balance=jnp.asarray(
-            params["wheel_joint_frictionloss_balance"], dtype=jnp.float32
+            resolved["wheel_joint_frictionloss_balance"], dtype=jnp.float32
         ),
         wheel_armature_scale=jnp.asarray(
-            params["wheel_armature_scale"], dtype=jnp.float32
+            resolved["wheel_armature_scale"], dtype=jnp.float32
         ),
         motor_strength_scale=jnp.asarray(
-            params["motor_strength_scale"], dtype=jnp.float32
+            resolved["motor_strength_scale"], dtype=jnp.float32
         ),
-        back_emf_scale=jnp.asarray(params["back_emf_scale"], dtype=jnp.float32),
-        motor_balance=jnp.asarray(params["motor_balance"], dtype=jnp.float32),
-        motor_deadzone=jnp.asarray(params["motor_deadzone"], dtype=jnp.float32),
+        back_emf_scale=jnp.asarray(resolved["back_emf_scale"], dtype=jnp.float32),
+        motor_balance=jnp.asarray(resolved["motor_balance"], dtype=jnp.float32),
+        motor_deadzone=jnp.asarray(resolved["motor_deadzone"], dtype=jnp.float32),
         motor_time_constant_seconds=jnp.asarray(
-            params["motor_time_constant_seconds"], dtype=jnp.float32
+            resolved["motor_time_constant_seconds"], dtype=jnp.float32
         ),
     )
     domain = DomainParams(chaser=agent, evader=agent)
     pipeline = PipelineParams(
-        action_delay_substeps=jnp.int32(params["command_delay_substeps"]),
-        observation_delay_substeps=jnp.int32(params["observation_delay_substeps"]),
+        action_delay_substeps=jnp.int32(resolved["command_delay_substeps"]),
+        observation_delay_substeps=jnp.int32(resolved["observation_delay_substeps"]),
         action_drop_probability=jnp.asarray(0.0, dtype=jnp.float32),
         frame_drop_probability=jnp.asarray(0.0, dtype=jnp.float32),
         stale_observation_probability=jnp.asarray(0.0, dtype=jnp.float32),

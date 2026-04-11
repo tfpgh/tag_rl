@@ -20,13 +20,13 @@ class ParamBounds:
 
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(1.05, 1.24)),
+    ("track_width_scale", ParamBounds(1.00, 1.35)),
     ("wheel_longitudinal_offset", ParamBounds(-0.015, 0.015)),
-    ("wheel_radius_scale", ParamBounds(1.05, 1.24)),
-    ("wheel_slide_friction_scale", ParamBounds(1.00, 3.20)),
+    ("wheel_radius_scale", ParamBounds(1.00, 1.35)),
+    ("wheel_slide_friction_scale", ParamBounds(0.80, 3.60)),
     ("wheel_slide_friction_balance", ParamBounds(-0.18, 0.18)),
-    ("wheel_torsional_friction_scale", ParamBounds(0.40, 2.30)),
-    ("wheel_rolling_friction_scale", ParamBounds(0.40, 2.00)),
+    ("wheel_torsional_friction_scale", ParamBounds(0.25, 2.60)),
+    ("wheel_rolling_friction_scale", ParamBounds(0.25, 2.40)),
     ("caster_radius_scale", ParamBounds(0.85, 1.20)),
     ("caster_offset_x", ParamBounds(-0.015, 0.015)),
     ("caster_slide_friction_scale", ParamBounds(0.30, 2.00)),
@@ -36,14 +36,14 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("wheel_joint_frictionloss_scale", ParamBounds(0.15, 1.50)),
     ("wheel_joint_frictionloss_balance", ParamBounds(-0.18, 0.18)),
     ("wheel_armature_scale", ParamBounds(0.50, 2.50)),
-    ("motor_strength_scale", ParamBounds(1.20, 2.00)),
-    ("back_emf_scale", ParamBounds(1.00, 1.70)),
-    ("motor_balance", ParamBounds(-0.30, 0.20)),
+    ("motor_strength_scale", ParamBounds(1.00, 2.40)),
+    ("back_emf_scale", ParamBounds(0.90, 2.00)),
+    ("motor_balance", ParamBounds(-0.35, 0.30)),
     ("motor_deadzone", ParamBounds(0.0, 0.03)),
     ("motor_time_constant_seconds", ParamBounds(0.0, 0.05)),
     ("com_offset_x", ParamBounds(-0.010, 0.020)),
-    ("command_delay_substeps", ParamBounds(0.0, 6.0)),
-    ("observation_delay_substeps", ParamBounds(0.0, 8.0)),
+    ("command_delay_substeps", ParamBounds(0.0, 20.0)),
+    ("observation_delay_substeps", ParamBounds(0.0, 20.0)),
 )
 
 FROZEN_PARAMS: dict[str, float] = {}
@@ -65,6 +65,17 @@ def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:
         params["observation_delay_substeps"]
     )
     return params
+
+
+def physical_to_latent(params: Mapping[str, jax.Array | float | int]) -> jax.Array:
+    latent: list[jax.Array] = []
+    for name, bounds in PARAM_SPECS:
+        value = jnp.asarray(params[name], dtype=jnp.float32)
+        span = bounds.high - bounds.low
+        fraction = (value - bounds.low) / span
+        fraction = jnp.clip(fraction, 1e-6, 1.0 - 1e-6)
+        latent.append(jnp.log(fraction / (1.0 - fraction)))
+    return jnp.stack(latent, axis=0)
 
 
 def build_domain_and_pipeline_from_physical(

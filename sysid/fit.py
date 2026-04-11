@@ -14,7 +14,13 @@ from environment.config import EnvironmentConfig
 from sysid.cma_es import CMAES
 from sysid.dataset import WindowConfig, load_dataset_splits
 from sysid.evaluator import SysIdEvaluator
-from sysid.params import LATENT_DIM, PARAM_BOUNDS, PARAM_NAMES, latent_to_physical
+from sysid.params import (
+    LATENT_DIM,
+    PARAM_BOUNDS,
+    PARAM_NAMES,
+    latent_to_physical,
+    physical_to_latent,
+)
 from sysid.types import EvaluationSummary
 
 
@@ -57,6 +63,24 @@ def _summary_record(summary: EvaluationSummary) -> dict[str, object]:
     }
 
 
+def _load_physical_params(path: Path) -> dict[str, float]:
+    text = path.read_text(encoding="utf-8")
+    if path.suffix == ".jsonl":
+        rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+        if not rows:
+            raise ValueError(f"No JSON rows found in {path}")
+        payload = rows[-1]
+    else:
+        payload = json.loads(text)
+    if "best_params" in payload:
+        payload = payload["best_params"]
+    elif "global_best" in payload and "params" in payload["global_best"]:
+        payload = payload["global_best"]["params"]
+    elif "generation_best" in payload and "params" in payload["generation_best"]:
+        payload = payload["generation_best"]["params"]
+    return {name: float(payload[name]) for name in PARAM_NAMES}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fit robot parameters with CMA-ES")
     parser.add_argument("--data-root", type=Path, default=Path("data"))
@@ -64,6 +88,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--generations", type=int, default=100)
     parser.add_argument("--population-size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--sigma", type=float, default=0.35)
+    parser.add_argument(
+        "--init-params",
+        type=Path,
+        help="Optional best_params.json or history.jsonl to initialize CMA-ES from.",
+    )
     parser.add_argument("--window-seconds", type=float, default=3.0)
     parser.add_argument("--preroll-seconds", type=float, default=0.5)
     parser.add_argument("--stride-seconds", type=float, default=0.5)
@@ -86,7 +116,19 @@ def main() -> None:
     train_population_eval = evaluator.build_population_evaluator(train_windows)
     train_summary_eval = evaluator.build_summary_evaluator(train_windows)
     eval_summary_eval = evaluator.build_summary_evaluator(eval_windows)
-    optimizer = CMAES(LATENT_DIM, args.population_size, args.seed)
+    init_mean: np.ndarray | None = None
+    if args.init_params is not None:
+        init_physical = _load_physical_params(args.init_params)
+        init_mean = np.asarray(
+            jax.device_get(physical_to_latent(init_physical)), dtype=np.float32
+        )
+    optimizer = CMAES(
+        LATENT_DIM,
+        args.population_size,
+        args.seed,
+        sigma=args.sigma,
+        init_mean=init_mean,
+    )
 
     best_latent: np.ndarray | None = None
     best_score = float("inf")

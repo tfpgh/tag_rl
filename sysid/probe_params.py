@@ -17,6 +17,36 @@ from sysid.dataset import WindowConfig, load_dataset_splits
 from sysid.evaluator import SysIdEvaluator
 from sysid.params import PARAM_BOUNDS, PARAM_NAMES, PARAM_SPECS
 
+CORE_SWEEP_PARAMS = [
+    "track_width_scale",
+    "wheel_radius_scale",
+    "wheel_slide_friction_scale",
+    "wheel_torsional_friction_scale",
+    "wheel_rolling_friction_scale",
+    "motor_strength_scale",
+    "back_emf_scale",
+    "motor_balance",
+    "motor_deadzone",
+    "motor_time_constant_seconds",
+    "command_delay_substeps",
+    "observation_delay_substeps",
+]
+
+SECONDARY_SWEEP_PARAMS = [
+    "wheel_longitudinal_offset",
+    "wheel_slide_friction_balance",
+    "caster_radius_scale",
+    "caster_offset_x",
+    "caster_slide_friction_scale",
+    "caster_torsional_friction_scale",
+    "wheel_joint_damping_scale",
+    "wheel_joint_damping_balance",
+    "wheel_joint_frictionloss_scale",
+    "wheel_joint_frictionloss_balance",
+    "wheel_armature_scale",
+    "com_offset_x",
+]
+
 
 def _load_params(path: Path) -> dict[str, float]:
     text = path.read_text(encoding="utf-8")
@@ -33,6 +63,33 @@ def _load_params(path: Path) -> dict[str, float]:
         payload = payload["global_best"]["params"]
     elif "generation_best" in payload and "params" in payload["generation_best"]:
         payload = payload["generation_best"]["params"]
+    return {name: float(payload[name]) for name in PARAM_NAMES}
+
+
+def _load_params_from_history(path: Path, source: str) -> dict[str, float]:
+    rows = [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not rows:
+        raise ValueError(f"No rows found in {path}")
+    if source == "last_generation":
+        payload = rows[-1]["generation_best"]["params"]
+    elif source == "best_train":
+        payload = min(
+            rows,
+            key=lambda row: row["generation_best"]["train_summary"]["score"]["total"],
+        )["generation_best"]["params"]
+    elif source == "best_eval_generation":
+        payload = min(
+            rows,
+            key=lambda row: row["generation_best"]["eval_summary"]["score"]["total"],
+        )["generation_best"]["params"]
+    elif source == "global_best":
+        payload = rows[-1]["global_best"]["params"]
+    else:
+        raise ValueError(f"Unsupported history source: {source}")
     return {name: float(payload[name]) for name in PARAM_NAMES}
 
 
@@ -57,6 +114,33 @@ def _linspace_for_param(name: str, points: int) -> list[float]:
     return [float(v) for v in np.linspace(bounds.low, bounds.high, points)]
 
 
+def _local_values_for_param(
+    name: str, base: dict[str, float], points: int, local_fraction: float
+) -> list[float]:
+    bounds = PARAM_BOUNDS[name]
+    base_value = float(base[name])
+    span = bounds.high - bounds.low
+    radius = 0.5 * local_fraction * span
+    low = max(bounds.low, base_value - radius)
+    high = min(bounds.high, base_value + radius)
+    if name.endswith("delay_substeps"):
+        low_i = int(round(low))
+        high_i = int(round(high))
+        base_i = int(round(base_value))
+        values = sorted(
+            set(
+                np.linspace(low_i, high_i, points).round().astype(int).tolist()
+                + [base_i]
+            )
+        )
+        return [float(v) for v in values]
+    values = np.linspace(low, high, points, dtype=np.float64)
+    values = np.unique(
+        np.concatenate([values, np.asarray([base_value], dtype=np.float64)])
+    )
+    return [float(v) for v in values.tolist()]
+
+
 def _candidate(base: dict[str, float], **updates: float) -> dict[str, float]:
     out = dict(base)
     out.update(updates)
@@ -64,42 +148,44 @@ def _candidate(base: dict[str, float], **updates: float) -> dict[str, float]:
 
 
 def _build_probe_groups(
-    base: dict[str, float], points: int
+    base: dict[str, float],
+    points: int,
+    local_fraction: float,
+    sweep_scope: str,
 ) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {
         "baseline": [{"label": "baseline", "params": dict(base)}],
     }
 
-    sweep_params = [
-        "track_width_scale",
-        "wheel_longitudinal_offset",
-        "wheel_radius_scale",
-        "wheel_slide_friction_scale",
-        "wheel_torsional_friction_scale",
-        "wheel_rolling_friction_scale",
-        "caster_radius_scale",
-        "caster_offset_x",
-        "caster_slide_friction_scale",
-        "caster_torsional_friction_scale",
-        "wheel_joint_damping_scale",
-        "wheel_joint_frictionloss_scale",
-        "wheel_armature_scale",
-        "motor_strength_scale",
-        "back_emf_scale",
-        "motor_deadzone",
-        "motor_time_constant_seconds",
-        "com_offset_x",
-        "observation_delay_substeps",
-        "command_delay_substeps",
-    ]
+    if sweep_scope == "core":
+        sweep_params = CORE_SWEEP_PARAMS
+    elif sweep_scope == "all":
+        sweep_params = CORE_SWEEP_PARAMS + SECONDARY_SWEEP_PARAMS
+    else:
+        raise ValueError(f"Unsupported sweep scope: {sweep_scope}")
+
     for name in sweep_params:
+        full_values = _linspace_for_param(name, points)
+        local_values = _local_values_for_param(name, base, points, local_fraction)
         groups[f"sweep:{name}"] = [
             {"label": f"{name}={value}", "params": _candidate(base, **{name: value})}
-            for value in _linspace_for_param(name, points)
+            for value in full_values
+        ]
+        groups[f"local:{name}"] = [
+            {"label": f"{name}={value}", "params": _candidate(base, **{name: value})}
+            for value in local_values
         ]
 
-    track_values = _linspace_for_param("track_width_scale", 5)
-    obs_values = _linspace_for_param("observation_delay_substeps", 5)
+    track_values = _local_values_for_param("track_width_scale", base, 5, local_fraction)
+    radius_values = _local_values_for_param(
+        "wheel_radius_scale", base, 5, local_fraction
+    )
+    obs_values = _local_values_for_param(
+        "observation_delay_substeps", base, 5, local_fraction
+    )
+    cmd_values = _local_values_for_param(
+        "command_delay_substeps", base, 5, local_fraction
+    )
     groups["grid:track_vs_obs_delay"] = [
         {
             "label": f"track={track} obs={obs}",
@@ -110,9 +196,35 @@ def _build_probe_groups(
         for track in track_values
         for obs in obs_values
     ]
+    groups["grid:track_vs_radius"] = [
+        {
+            "label": f"track={track} radius={radius}",
+            "params": _candidate(
+                base, track_width_scale=track, wheel_radius_scale=radius
+            ),
+        }
+        for track in track_values
+        for radius in radius_values
+    ]
+    groups["grid:cmd_vs_obs_delay"] = [
+        {
+            "label": f"cmd={cmd} obs={obs}",
+            "params": _candidate(
+                base,
+                command_delay_substeps=cmd,
+                observation_delay_substeps=obs,
+            ),
+        }
+        for cmd in cmd_values
+        for obs in obs_values
+    ]
 
-    friction_values = _linspace_for_param("wheel_slide_friction_scale", 5)
-    torsional_values = _linspace_for_param("wheel_torsional_friction_scale", 5)
+    friction_values = _local_values_for_param(
+        "wheel_slide_friction_scale", base, 5, local_fraction
+    )
+    torsional_values = _local_values_for_param(
+        "wheel_torsional_friction_scale", base, 5, local_fraction
+    )
     groups["grid:wheel_slide_vs_torsion"] = [
         {
             "label": f"wheel_slide={friction} torsion={torsion}",
@@ -126,8 +238,10 @@ def _build_probe_groups(
         for torsion in torsional_values
     ]
 
-    strength_values = _linspace_for_param("motor_strength_scale", 5)
-    emf_values = _linspace_for_param("back_emf_scale", 5)
+    strength_values = _local_values_for_param(
+        "motor_strength_scale", base, 5, local_fraction
+    )
+    emf_values = _local_values_for_param("back_emf_scale", base, 5, local_fraction)
     groups["grid:strength_vs_emf"] = [
         {
             "label": f"strength={strength} back_emf={emf}",
@@ -139,8 +253,10 @@ def _build_probe_groups(
         for emf in emf_values
     ]
 
-    deadzone_values = _linspace_for_param("motor_deadzone", 5)
-    lag_values = _linspace_for_param("motor_time_constant_seconds", 5)
+    deadzone_values = _local_values_for_param("motor_deadzone", base, 5, local_fraction)
+    lag_values = _local_values_for_param(
+        "motor_time_constant_seconds", base, 5, local_fraction
+    )
     groups["grid:deadzone_vs_lag"] = [
         {
             "label": f"deadzone={deadzone} lag={lag}",
@@ -181,6 +297,10 @@ def _build_probe_groups(
     return groups
 
 
+def _safe_score(value: float) -> float:
+    return value if np.isfinite(value) else float("inf")
+
+
 def _evaluate_group(
     evaluator: SysIdEvaluator,
     train_windows,
@@ -202,16 +322,43 @@ def _evaluate_group(
     )
     rows: list[dict[str, Any]] = []
     for idx, item in enumerate(candidates):
+        train_total = _safe_score(float(train_scores[idx]))
+        eval_total = _safe_score(float(eval_scores[idx]))
         rows.append(
             {
                 "label": item["label"],
                 "params": item["params"],
-                "train_total": float(train_scores[idx]),
-                "eval_total": float(eval_scores[idx]),
+                "train_total": train_total,
+                "eval_total": eval_total,
             }
         )
     rows.sort(key=lambda row: row["eval_total"])
     return rows
+
+
+def _sweep_diagnostics(
+    name: str, results: list[dict[str, Any]], points: int
+) -> dict[str, Any]:
+    ordered = sorted(results, key=lambda row: float(row["params"][name]))
+    values = [float(row["params"][name]) for row in ordered]
+    scores = [float(row["eval_total"]) for row in ordered]
+    best_index = int(np.argmin(scores))
+    best_value = values[best_index]
+    lower_edge = best_index == 0
+    upper_edge = best_index == len(values) - 1
+    return {
+        "param": name,
+        "best_value": best_value,
+        "best_eval_total": scores[best_index],
+        "best_index": best_index,
+        "point_count": len(values),
+        "lower_edge_best": lower_edge,
+        "upper_edge_best": upper_edge,
+        "suggests_expand_lower": lower_edge and len(values) >= max(points - 1, 3),
+        "suggests_expand_upper": upper_edge and len(values) >= max(points - 1, 3),
+        "values": values,
+        "eval_totals": scores,
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -226,6 +373,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stride-seconds", type=float, default=0.5)
     parser.add_argument("--points", type=int, default=7)
     parser.add_argument(
+        "--local-fraction",
+        type=float,
+        default=0.25,
+        help="Fraction of the full bound span to use for local sweeps around the base params.",
+    )
+    parser.add_argument(
+        "--sweep-scope",
+        choices=("core", "all"),
+        default="core",
+        help="Probe only core parameters or all parameters.",
+    )
+    parser.add_argument(
+        "--history-source",
+        choices=(
+            "global_best",
+            "best_eval_generation",
+            "best_train",
+            "last_generation",
+        ),
+        default="global_best",
+        help="When --params points to history.jsonl, choose which parameter source to probe around.",
+    )
+    parser.add_argument(
         "--full-summary-top-k",
         type=int,
         default=5,
@@ -238,7 +408,10 @@ def main() -> None:
     args = parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    base_params = _load_params(args.params)
+    if args.params.suffix == ".jsonl":
+        base_params = _load_params_from_history(args.params, args.history_source)
+    else:
+        base_params = _load_params(args.params)
     window_config = WindowConfig(
         window_seconds=args.window_seconds,
         preroll_seconds=args.preroll_seconds,
@@ -253,7 +426,12 @@ def main() -> None:
     train_summary_eval = evaluator.build_summary_evaluator(train_windows)
     eval_summary_eval = evaluator.build_summary_evaluator(eval_windows)
 
-    groups = _build_probe_groups(base_params, args.points)
+    groups = _build_probe_groups(
+        base_params,
+        args.points,
+        args.local_fraction,
+        args.sweep_scope,
+    )
     group_results: dict[str, list[dict[str, Any]]] = {}
     all_rows: list[dict[str, Any]] = []
     for group_name, candidates in groups.items():
@@ -267,6 +445,13 @@ def main() -> None:
             all_rows.append(merged)
 
     all_rows.sort(key=lambda row: row["eval_total"])
+    sweep_diagnostics = {
+        group_name: _sweep_diagnostics(
+            group_name.split(":", 1)[1], results, args.points
+        )
+        for group_name, results in group_results.items()
+        if group_name.startswith("local:") or group_name.startswith("sweep:")
+    }
     top_rows = all_rows[: max(args.full_summary_top_k, 1)]
     summaries: list[dict[str, Any]] = []
     for row in top_rows:
@@ -307,6 +492,7 @@ def main() -> None:
         "base_params": base_params,
         "baseline": baseline,
         "best_overall": all_rows[:10],
+        "sweep_diagnostics": sweep_diagnostics,
         "group_results": group_results,
         "top_summaries": summaries,
     }
@@ -328,6 +514,13 @@ def main() -> None:
         print(
             f"  eval_total={row['eval_total']:.4f} train_total={row['train_total']:.4f} group={row['group']} label={row['label']}"
         )
+    print("\nExpansion hints:")
+    for group_name, info in sorted(sweep_diagnostics.items()):
+        if info["suggests_expand_lower"] or info["suggests_expand_upper"]:
+            direction = "lower" if info["suggests_expand_lower"] else "upper"
+            print(
+                f"  {group_name}: best at {direction} edge value={info['best_value']:.6g} eval_total={info['best_eval_total']:.4f}"
+            )
     print(f"\nSaved probe report to {args.output}")
 
 

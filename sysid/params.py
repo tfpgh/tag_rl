@@ -20,34 +20,33 @@ class ParamBounds:
 
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(0.97, 1.08)),
-    ("wheel_radius_scale", ParamBounds(0.97, 1.08)),
-    ("wheel_slide_friction_scale", ParamBounds(0.85, 1.55)),
-    ("wheel_torsional_friction_scale", ParamBounds(0.50, 1.20)),
-    ("motor_strength_scale", ParamBounds(0.90, 1.25)),
-    ("back_emf_scale", ParamBounds(0.88, 1.12)),
-    ("motor_balance", ParamBounds(-0.12, 0.12)),
-    ("motor_deadzone", ParamBounds(0.0, 0.04)),
-    ("motor_time_constant_seconds", ParamBounds(0.0, 0.06)),
+    ("track_width_scale", ParamBounds(0.93, 1.12)),
+    ("wheel_longitudinal_offset", ParamBounds(-0.012, 0.012)),
+    ("wheel_radius_scale", ParamBounds(0.93, 1.12)),
+    ("wheel_slide_friction_scale", ParamBounds(0.65, 2.10)),
+    ("wheel_slide_friction_balance", ParamBounds(-0.14, 0.14)),
+    ("wheel_torsional_friction_scale", ParamBounds(0.25, 1.65)),
+    ("wheel_rolling_friction_scale", ParamBounds(0.20, 1.45)),
+    ("caster_radius_scale", ParamBounds(0.84, 1.18)),
+    ("caster_offset_x", ParamBounds(-0.016, 0.012)),
+    ("caster_slide_friction_scale", ParamBounds(0.50, 1.55)),
+    ("caster_torsional_friction_scale", ParamBounds(0.50, 1.65)),
+    ("wheel_joint_damping_scale", ParamBounds(0.40, 1.85)),
+    ("wheel_joint_damping_balance", ParamBounds(-0.14, 0.14)),
+    ("wheel_joint_frictionloss_scale", ParamBounds(0.40, 1.60)),
+    ("wheel_joint_frictionloss_balance", ParamBounds(-0.14, 0.14)),
+    ("wheel_armature_scale", ParamBounds(0.40, 1.95)),
+    ("motor_strength_scale", ParamBounds(0.78, 1.42)),
+    ("back_emf_scale", ParamBounds(0.76, 1.24)),
+    ("motor_balance", ParamBounds(-0.14, 0.14)),
+    ("motor_deadzone", ParamBounds(0.0, 0.06)),
+    ("motor_time_constant_seconds", ParamBounds(0.0, 0.10)),
+    ("com_offset_x", ParamBounds(-0.012, 0.012)),
     ("command_delay_substeps", ParamBounds(0.0, 20.0)),
     ("observation_delay_substeps", ParamBounds(0.0, 20.0)),
 )
 
-FROZEN_PARAMS: dict[str, float] = {
-    "wheel_longitudinal_offset": 0.0,
-    "wheel_slide_friction_balance": 0.0,
-    "wheel_rolling_friction_scale": 1.0,
-    "caster_radius_scale": 1.0,
-    "caster_offset_x": 0.0,
-    "caster_slide_friction_scale": 1.0,
-    "caster_torsional_friction_scale": 1.0,
-    "wheel_joint_damping_scale": 1.0,
-    "wheel_joint_damping_balance": 0.0,
-    "wheel_joint_frictionloss_scale": 1.0,
-    "wheel_joint_frictionloss_balance": 0.0,
-    "wheel_armature_scale": 1.0,
-    "com_offset_x": 0.0,
-}
+FROZEN_PARAMS: dict[str, float] = {}
 
 PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)
 LATENT_DIM = len(PARAM_SPECS)

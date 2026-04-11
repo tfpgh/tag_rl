@@ -20,12 +20,12 @@ class ParamBounds:
 
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(1.00, 1.35)),
+    ("track_width_scale", ParamBounds(0.8, 1.35)),
     ("wheel_longitudinal_offset", ParamBounds(-0.015, 0.015)),
     ("wheel_radius_scale", ParamBounds(1.00, 1.35)),
     ("wheel_slide_friction_scale", ParamBounds(0.80, 5.0)),
     ("wheel_slide_friction_balance", ParamBounds(-0.18, 0.18)),
-    ("wheel_torsional_friction_scale", ParamBounds(0.25, 2.60)),
+    ("wheel_torsional_friction_scale", ParamBounds(0.25, 4.0)),
     ("wheel_rolling_friction_scale", ParamBounds(0.10, 2.40)),
     ("caster_radius_scale", ParamBounds(0.85, 1.20)),
     ("caster_offset_x", ParamBounds(-0.015, 0.015)),
@@ -36,7 +36,7 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("wheel_joint_frictionloss_scale", ParamBounds(0.03, 0.75)),
     ("wheel_joint_frictionloss_balance", ParamBounds(-0.18, 0.18)),
     ("wheel_armature_scale", ParamBounds(0.50, 3.50)),
-    ("motor_strength_scale", ParamBounds(1.00, 2.40)),
+    ("motor_strength_scale", ParamBounds(1.00, 3.0)),
     ("back_emf_scale", ParamBounds(0.90, 3.00)),
     ("motor_balance", ParamBounds(-0.35, 0.30)),
     ("motor_deadzone", ParamBounds(0.0, 0.03)),

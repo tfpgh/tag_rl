@@ -8,7 +8,7 @@ class ArenaConfig:
     arena_height: float = 1.02
     agent_radius: float = 0.05
     agent_z: float = 0.0299
-    tag_distance_factor: float = 1.03
+    tag_distance_factor: float = 1.05
     n_rays: int = 128
     action_frequency: int = 20
     episode_max_length: int = 20
@@ -129,11 +129,11 @@ class PipelineRandomizationConfig:
     nominal_observation_delay_substeps: int = 3
     observation_delay_substeps_delta: int = 3
     max_stale_observation_steps: int = 1
-    action_drop_probability_max: float = 0.01
+    action_drop_probability_max: float = 0.002
     frame_drop_probability_max: float = 0.02
-    stale_observation_probability_max: float = 0.03
+    stale_observation_probability_max: float = 0.02
     position_noise_std_max: float = 0.004
-    yaw_noise_std_max: float = 0.02
+    yaw_noise_std_max: float = 0.05
     hold_last_action_on_drop: bool = True
 
 

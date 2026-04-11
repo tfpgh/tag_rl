@@ -6,6 +6,8 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from runtime import jax_setup as _jax_setup  # noqa: F401
+
 import jax
 import jax.numpy as jnp
 import numpy as np

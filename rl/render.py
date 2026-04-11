@@ -7,6 +7,8 @@ if __name__ == "__main__":
 from collections.abc import Callable
 from typing import Any
 
+from runtime import jax_setup as _jax_setup  # noqa: F401
+
 import imageio
 import jax
 import jax.numpy as jnp

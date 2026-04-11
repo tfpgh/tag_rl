@@ -6,6 +6,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any, cast
 
+from runtime import jax_setup as _jax_setup  # noqa: F401
+
 import cv2
 import imageio
 import jax

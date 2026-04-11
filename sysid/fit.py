@@ -5,6 +5,8 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from runtime import jax_setup as _jax_setup  # noqa: F401
+
 import jax
 import numpy as np
 

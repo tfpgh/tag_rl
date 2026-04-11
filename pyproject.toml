@@ -38,3 +38,6 @@ dev = [
 
 [tool.pyright]
 stubPath = ".typings/"
+
+[tool.tag_rl]
+jax_cache_dir = ".cache/jax"

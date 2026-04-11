@@ -103,7 +103,12 @@ def main() -> None:
                 train_windows,
                 population_eval=train_population_eval,
             )
-            total_scores = np.asarray(jax.device_get(train_terms["total"]))
+            total_scores = np.asarray(
+                jax.device_get(train_terms["total"]), dtype=np.float64
+            )
+            finite_mask = np.isfinite(total_scores)
+            if not np.all(finite_mask):
+                total_scores = np.where(finite_mask, total_scores, 1e9)
             optimizer.tell(population, total_scores)
 
             best_index = int(np.argmin(total_scores))
@@ -168,7 +173,9 @@ def main() -> None:
                 "params={params}".format(
                     gen=generation,
                     train_best=generation_best_score,
-                    train_mean=float(np.mean(total_scores)),
+                    train_mean=float(np.mean(total_scores[finite_mask]))
+                    if np.any(finite_mask)
+                    else 1e9,
                     gen_eval=generation_eval_summary.score.total,
                     global_best=best_score,
                     eval_rmse=generation_eval_summary.metrics["position_rmse_m"],

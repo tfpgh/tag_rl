@@ -112,6 +112,14 @@ class TeleopController:
                 angular, -self.config.angular_max, self.config.angular_max
             )
 
+    def set_tank_command(self, left: float, right: float) -> None:
+        left = clamp(left, -1.0, 1.0)
+        right = clamp(right, -1.0, 1.0)
+        self.set_command(
+            linear=0.5 * (left + right),
+            angular=0.5 * (right - left),
+        )
+
     def snapshot(self) -> CommandState:
         with self._lock:
             linear = self.linear

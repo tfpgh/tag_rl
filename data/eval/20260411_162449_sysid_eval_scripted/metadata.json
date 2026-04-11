@@ -1,0 +1,568 @@
+{
+  "created_at": "2026-04-11T16:24:49.613661",
+  "teleop": {
+    "robot_ip": "192.168.1.5",
+    "udp_port": 8888,
+    "send_hz": 20.0,
+    "linear_step": 0.15,
+    "angular_step": 0.015,
+    "linear_max": 1.0,
+    "angular_max": 1.0,
+    "robot_tag_id": 4,
+    "run_label": "sysid_eval_scripted"
+  },
+  "camera": {
+    "device_index": 0,
+    "backend": null,
+    "frame_width": 1280,
+    "frame_height": 720,
+    "fps": 60,
+    "mjpg": false,
+    "buffer_size": 1,
+    "auto_exposure": 1.0,
+    "exposure": 15.0
+  },
+  "detector": {
+    "family": "tagStandard41h12",
+    "threads": 12,
+    "quad_decimate": 1.0
+  },
+  "arena": {
+    "corner_tag_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "chaser_tag_id": 4,
+    "evader_tag_id": 5,
+    "obstacle_tag_ids": [
+      6
+    ],
+    "tag_size_m": 0.1,
+    "tag_center_width_m": 2.3384,
+    "tag_center_height_m": 1.1192,
+    "obstacle_size_m": 0.1
+  },
+  "world_units": "meters",
+  "tracker": {
+    "calibration_frames": 10,
+    "use_roi_tracking": true,
+    "roi_padding_scale": 2.0,
+    "min_roi_size_px": 100,
+    "max_roi_size_px": 600
+  },
+  "collection": {
+    "mode": "scripted",
+    "split": "eval",
+    "activation_count": 56,
+    "repetitions": 2,
+    "created_at": "2026-04-11T16:24:49.613974"
+  },
+  "scripted_activations": [
+    {
+      "name": "deadzone_forward_rep1",
+      "left": 0.084,
+      "right": 0.084,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "deadzone_reverse_rep1",
+      "left": -0.084,
+      "right": -0.084,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "small_forward_step_rep1",
+      "left": 0.132,
+      "right": 0.132,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "small_reverse_step_rep1",
+      "left": -0.132,
+      "right": -0.132,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_low_rep1",
+      "left": 0.20400000000000001,
+      "right": 0.20400000000000001,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_medium_rep1",
+      "left": 0.312,
+      "right": 0.312,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_high_rep1",
+      "left": 0.504,
+      "right": 0.504,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_burst_rep1",
+      "left": 0.696,
+      "right": 0.696,
+      "active_duration_s": 0.22,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_low_rep1",
+      "left": -0.20400000000000001,
+      "right": -0.20400000000000001,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_medium_rep1",
+      "left": -0.312,
+      "right": -0.312,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_high_rep1",
+      "left": -0.504,
+      "right": -0.504,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_burst_rep1",
+      "left": -0.696,
+      "right": -0.696,
+      "active_duration_s": 0.22,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_left_low_rep1",
+      "left": -0.156,
+      "right": 0.156,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_right_low_rep1",
+      "left": 0.156,
+      "right": -0.156,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_left_medium_rep1",
+      "left": -0.252,
+      "right": 0.252,
+      "active_duration_s": 0.65,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_right_medium_rep1",
+      "left": 0.252,
+      "right": -0.252,
+      "active_duration_s": 0.65,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_left_high_rep1",
+      "left": -0.40800000000000003,
+      "right": 0.40800000000000003,
+      "active_duration_s": 0.45,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_right_high_rep1",
+      "left": 0.40800000000000003,
+      "right": -0.40800000000000003,
+      "active_duration_s": 0.45,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_gentle_rep1",
+      "left": 0.168,
+      "right": 0.288,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_gentle_rep1",
+      "left": 0.288,
+      "right": 0.168,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_medium_rep1",
+      "left": 0.144,
+      "right": 0.36,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_medium_rep1",
+      "left": 0.36,
+      "right": 0.144,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_strong_rep1",
+      "left": 0.096,
+      "right": 0.396,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_strong_rep1",
+      "left": 0.396,
+      "right": 0.096,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_high_rep1",
+      "left": 0.216,
+      "right": 0.576,
+      "active_duration_s": 0.42,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_high_rep1",
+      "left": 0.576,
+      "right": 0.216,
+      "active_duration_s": 0.42,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_pulse_rep1",
+      "left": 0.24,
+      "right": 0.24,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_pulse_rep1",
+      "left": -0.24,
+      "right": -0.24,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "deadzone_forward_rep2",
+      "left": 0.084,
+      "right": 0.084,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "deadzone_reverse_rep2",
+      "left": -0.084,
+      "right": -0.084,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "small_forward_step_rep2",
+      "left": 0.132,
+      "right": 0.132,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "small_reverse_step_rep2",
+      "left": -0.132,
+      "right": -0.132,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_low_rep2",
+      "left": 0.20400000000000001,
+      "right": 0.20400000000000001,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_medium_rep2",
+      "left": 0.312,
+      "right": 0.312,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_high_rep2",
+      "left": 0.504,
+      "right": 0.504,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_burst_rep2",
+      "left": 0.696,
+      "right": 0.696,
+      "active_duration_s": 0.22,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_low_rep2",
+      "left": -0.20400000000000001,
+      "right": -0.20400000000000001,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_medium_rep2",
+      "left": -0.312,
+      "right": -0.312,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_high_rep2",
+      "left": -0.504,
+      "right": -0.504,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_burst_rep2",
+      "left": -0.696,
+      "right": -0.696,
+      "active_duration_s": 0.22,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_left_low_rep2",
+      "left": -0.156,
+      "right": 0.156,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_right_low_rep2",
+      "left": 0.156,
+      "right": -0.156,
+      "active_duration_s": 0.75,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_left_medium_rep2",
+      "left": -0.252,
+      "right": 0.252,
+      "active_duration_s": 0.65,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_right_medium_rep2",
+      "left": 0.252,
+      "right": -0.252,
+      "active_duration_s": 0.65,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_left_high_rep2",
+      "left": -0.40800000000000003,
+      "right": 0.40800000000000003,
+      "active_duration_s": 0.45,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "pivot_right_high_rep2",
+      "left": 0.40800000000000003,
+      "right": -0.40800000000000003,
+      "active_duration_s": 0.45,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_gentle_rep2",
+      "left": 0.168,
+      "right": 0.288,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_gentle_rep2",
+      "left": 0.288,
+      "right": 0.168,
+      "active_duration_s": 0.8,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_medium_rep2",
+      "left": 0.144,
+      "right": 0.36,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_medium_rep2",
+      "left": 0.36,
+      "right": 0.144,
+      "active_duration_s": 0.7,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_strong_rep2",
+      "left": 0.096,
+      "right": 0.396,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_strong_rep2",
+      "left": 0.396,
+      "right": 0.096,
+      "active_duration_s": 0.6,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_left_high_rep2",
+      "left": 0.216,
+      "right": 0.576,
+      "active_duration_s": 0.42,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "arc_right_high_rep2",
+      "left": 0.576,
+      "right": 0.216,
+      "active_duration_s": 0.42,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "forward_pulse_rep2",
+      "left": 0.24,
+      "right": 0.24,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing +x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    },
+    {
+      "name": "reverse_pulse_rep2",
+      "left": -0.24,
+      "right": -0.24,
+      "active_duration_s": 0.4,
+      "start_pose": "centered, facing -x",
+      "pre_roll_s": 0.5,
+      "post_roll_s": 0.5
+    }
+  ]
+}

@@ -45,6 +45,12 @@ def _load_jsonl(path: Path) -> list[dict]:
         return [json.loads(line) for line in file if line.strip()]
 
 
+def _load_jsonl_if_exists(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return _load_jsonl(path)
+
+
 def _command_array(record: dict) -> np.ndarray:
     return (
         np.array([record["left_int16"], record["right_int16"]], dtype=np.float32)
@@ -126,6 +132,134 @@ def _iter_valid_samples(samples: list[dict]) -> list[dict]:
     ]
 
 
+def _record_from_samples(
+    split: str,
+    run_dir: Path,
+    config: WindowConfig,
+    samples: list[dict],
+    commands: list[dict],
+    start_index: int,
+    score_start: float,
+    window_end: float,
+) -> tuple[dict[str, np.ndarray] | None, WindowMetadata | None]:
+    if start_index >= len(samples):
+        return None, None
+    window_start = float(samples[start_index]["monotonic_time"])
+    window_samples = [
+        item
+        for item in samples[start_index:]
+        if item["monotonic_time"] <= window_end + 1e-9
+    ]
+    if len(window_samples) < 2:
+        return None, None
+
+    relative_times = np.array(
+        [item["monotonic_time"] - window_start for item in window_samples],
+        dtype=np.float32,
+    )
+    target_pose = np.stack(
+        [_target_pose_array(item) for item in window_samples], axis=0
+    )
+    score_mask = relative_times >= (score_start - window_start) - 1e-6
+    sample_count = int(np.count_nonzero(score_mask))
+    if sample_count < config.min_scored_samples:
+        return None, None
+
+    command_substeps, initial_command = _build_command_substeps(
+        commands, window_start, config
+    )
+    scored_commands = command_substeps[
+        int(round(config.preroll_seconds / config.substep_dt_seconds)) :
+    ]
+    score_start_index = int(np.argmax(score_mask))
+    translation = np.linalg.norm(
+        target_pose[-1, :2] - target_pose[score_start_index, :2]
+    )
+    yaw_change = abs(
+        _wrap_angle(float(target_pose[-1, 2] - target_pose[score_start_index, 2]))
+    )
+    command_mean_abs = float(np.mean(np.abs(scored_commands)))
+    command_max_abs = float(np.max(np.abs(scored_commands)))
+    if (
+        command_max_abs < config.min_command_abs
+        and translation < config.min_motion_m
+        and yaw_change < config.min_yaw_change_rad
+    ):
+        return None, None
+
+    maneuver = _classify_window(scored_commands)
+    initial_velocity = _estimate_initial_velocity(samples, start_index)
+    record = {
+        "relative_sample_times_s": relative_times,
+        "target_xy": target_pose[:, :2],
+        "target_yaw": target_pose[:, 2],
+        "score_mask": score_mask.astype(np.bool_),
+        "command_substeps": command_substeps.astype(np.float32),
+        "initial_pose": target_pose[0].astype(np.float32),
+        "initial_velocity": initial_velocity.astype(np.float32),
+        "initial_command": initial_command.astype(np.float32),
+    }
+    metadata = WindowMetadata(
+        split=split,
+        run_name=run_dir.name,
+        start_time=window_start,
+        score_start_time=float(score_start),
+        end_time=float(window_end),
+        sample_count=sample_count,
+        command_mean_abs=command_mean_abs,
+        command_max_abs=command_max_abs,
+        translation_distance_m=float(translation),
+        yaw_change_rad=float(yaw_change),
+        maneuver=maneuver,
+    )
+    return record, metadata
+
+
+def _segment_records(
+    split: str, run_dir: Path, config: WindowConfig
+) -> tuple[list[dict[str, np.ndarray]], list[WindowMetadata]]:
+    samples = _iter_valid_samples(_load_jsonl(run_dir / "samples.jsonl"))
+    commands = _load_jsonl(run_dir / "commands.jsonl")
+    segments = _load_jsonl_if_exists(run_dir / "segments.jsonl")
+    records: list[dict[str, np.ndarray]] = []
+    metadata: list[WindowMetadata] = []
+    if not samples or not commands or not segments:
+        return records, metadata
+
+    sample_times = np.array(
+        [sample["monotonic_time"] for sample in samples], dtype=np.float64
+    )
+    for segment in segments:
+        if segment.get("status") != "completed":
+            continue
+        started_at = segment.get("started_at")
+        ended_at = segment.get("ended_at")
+        if started_at is None or ended_at is None:
+            continue
+        pre_roll_s = float(segment.get("pre_roll_s", config.preroll_seconds))
+        window_start = float(started_at)
+        score_start = window_start + pre_roll_s
+        window_end = float(ended_at)
+        start_index = int(
+            np.searchsorted(sample_times, window_start - 1e-9, side="left")
+        )
+        record, item = _record_from_samples(
+            split,
+            run_dir,
+            config,
+            samples,
+            commands,
+            start_index,
+            score_start,
+            window_end,
+        )
+        if record is None or item is None:
+            continue
+        records.append(record)
+        metadata.append(item)
+    return records, metadata
+
+
 def _discover_run_dirs(split_dir: Path) -> list[Path]:
     run_dirs: list[Path] = []
     if (split_dir / "samples.jsonl").exists() and (
@@ -158,77 +292,20 @@ def _window_records(
             continue
         score_start = window_start + config.preroll_seconds
         window_end = window_start + config.total_seconds
-        window_samples = [
-            item
-            for item in samples[start_index:]
-            if item["monotonic_time"] <= window_end + 1e-9
-        ]
-        if len(window_samples) < 2:
+        record, item = _record_from_samples(
+            split,
+            run_dir,
+            config,
+            samples,
+            commands,
+            start_index,
+            score_start,
+            window_end,
+        )
+        if record is None or item is None:
             continue
-        relative_times = np.array(
-            [item["monotonic_time"] - window_start for item in window_samples],
-            dtype=np.float32,
-        )
-        target_pose = np.stack(
-            [_target_pose_array(item) for item in window_samples], axis=0
-        )
-        score_mask = relative_times >= config.preroll_seconds - 1e-6
-        sample_count = int(np.count_nonzero(score_mask))
-        if sample_count < config.min_scored_samples:
-            continue
-
-        command_substeps, initial_command = _build_command_substeps(
-            commands, window_start, config
-        )
-        scored_commands = command_substeps[
-            int(round(config.preroll_seconds / config.substep_dt_seconds)) :
-        ]
-        translation = np.linalg.norm(
-            target_pose[-1, :2] - target_pose[int(np.argmax(score_mask)), :2]
-        )
-        yaw_change = abs(
-            _wrap_angle(
-                float(target_pose[-1, 2] - target_pose[int(np.argmax(score_mask)), 2])
-            )
-        )
-        command_mean_abs = float(np.mean(np.abs(scored_commands)))
-        command_max_abs = float(np.max(np.abs(scored_commands)))
-        if (
-            command_max_abs < config.min_command_abs
-            and translation < config.min_motion_m
-            and yaw_change < config.min_yaw_change_rad
-        ):
-            continue
-
-        maneuver = _classify_window(scored_commands)
-        initial_velocity = _estimate_initial_velocity(samples, start_index)
-        records.append(
-            {
-                "relative_sample_times_s": relative_times,
-                "target_xy": target_pose[:, :2],
-                "target_yaw": target_pose[:, 2],
-                "score_mask": score_mask.astype(np.bool_),
-                "command_substeps": command_substeps.astype(np.float32),
-                "initial_pose": target_pose[0].astype(np.float32),
-                "initial_velocity": initial_velocity.astype(np.float32),
-                "initial_command": initial_command.astype(np.float32),
-            }
-        )
-        metadata.append(
-            WindowMetadata(
-                split=split,
-                run_name=run_dir.name,
-                start_time=window_start,
-                score_start_time=score_start,
-                end_time=window_end,
-                sample_count=sample_count,
-                command_mean_abs=command_mean_abs,
-                command_max_abs=command_max_abs,
-                translation_distance_m=float(translation),
-                yaw_change_rad=float(yaw_change),
-                maneuver=maneuver,
-            )
-        )
+        records.append(record)
+        metadata.append(item)
         next_window_start = window_start + config.stride_seconds
     return records, metadata
 
@@ -289,11 +366,15 @@ def load_dataset_splits(
     eval_records: list[dict[str, np.ndarray]] = []
     eval_metadata: list[WindowMetadata] = []
     for run_dir in _discover_run_dirs(root / "train"):
-        records, metadata = _window_records("train", run_dir, cfg)
+        records, metadata = _segment_records("train", run_dir, cfg)
+        if not records:
+            records, metadata = _window_records("train", run_dir, cfg)
         train_records.extend(records)
         train_metadata.extend(metadata)
     for run_dir in _discover_run_dirs(root / "eval"):
-        records, metadata = _window_records("eval", run_dir, cfg)
+        records, metadata = _segment_records("eval", run_dir, cfg)
+        if not records:
+            records, metadata = _window_records("eval", run_dir, cfg)
         eval_records.extend(records)
         eval_metadata.extend(metadata)
     return DatasetSplits(

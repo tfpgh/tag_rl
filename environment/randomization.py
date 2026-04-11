@@ -19,28 +19,32 @@ from environment.types import (
 
 
 def _scaled_range(
-    min_value: float, max_value: float, scale: jax.Array
+    min_value: float, max_value: float, scale: jax.Array, nominal: float = 1.0
 ) -> tuple[jax.Array, jax.Array]:
-    low = 1.0 + (min_value - 1.0) * scale
-    high = 1.0 + (max_value - 1.0) * scale
+    low = nominal + (min_value - nominal) * scale
+    high = nominal + (max_value - nominal) * scale
     return low, high
 
 
 def _sample_scale(
-    rng: jax.Array, min_value: float, max_value: float, scale: jax.Array
+    rng: jax.Array,
+    min_value: float,
+    max_value: float,
+    scale: jax.Array,
+    nominal: float = 1.0,
 ) -> jax.Array:
-    low, high = _scaled_range(min_value, max_value, scale)
+    low, high = _scaled_range(min_value, max_value, scale, nominal)
     return random.uniform(rng, (), minval=low, maxval=high)
 
 
 def _sample_centered(
-    rng: jax.Array, max_abs_value: float, scale: jax.Array
+    rng: jax.Array, max_abs_value: float, scale: jax.Array, nominal: float = 0.0
 ) -> jax.Array:
     return random.uniform(
         rng,
         (),
-        minval=-max_abs_value * scale,
-        maxval=max_abs_value * scale,
+        minval=nominal - max_abs_value * scale,
+        maxval=nominal + max_abs_value * scale,
     )
 
 
@@ -81,7 +85,9 @@ def _sample_agent_dynamics(
         ),
         com_offset_xy=jnp.array(
             [
-                _sample_centered(com_x_rng, dyn.com_offset_x_max, scale),
+                _sample_centered(
+                    com_x_rng, dyn.com_offset_x_delta, scale, dyn.com_offset_x_nominal
+                ),
                 _sample_centered(com_y_rng, dyn.com_offset_y_max, scale),
             ]
         ),
@@ -90,21 +96,27 @@ def _sample_agent_dynamics(
             dyn.track_width_scale_min,
             dyn.track_width_scale_max,
             scale,
+            dyn.track_width_scale_nominal,
         ),
         wheel_longitudinal_offset=_sample_centered(
-            wheel_longitudinal_offset_rng, dyn.wheel_longitudinal_offset_max, scale
+            wheel_longitudinal_offset_rng,
+            dyn.wheel_longitudinal_offset_delta,
+            scale,
+            dyn.wheel_longitudinal_offset_nominal,
         ),
         wheel_radius_scale=_sample_scale(
             wheel_radius_rng,
             dyn.wheel_radius_scale_min,
             dyn.wheel_radius_scale_max,
             scale,
+            dyn.wheel_radius_scale_nominal,
         ),
         wheel_slide_friction_scale=_sample_scale(
             wheel_slide_friction_rng,
             dyn.wheel_slide_friction_scale_min,
             dyn.wheel_slide_friction_scale_max,
             scale,
+            dyn.wheel_slide_friction_scale_nominal,
         ),
         wheel_slide_friction_balance=_sample_centered(
             wheel_slide_friction_balance_rng,
@@ -116,39 +128,48 @@ def _sample_agent_dynamics(
             dyn.wheel_torsional_friction_scale_min,
             dyn.wheel_torsional_friction_scale_max,
             scale,
+            dyn.wheel_torsional_friction_scale_nominal,
         ),
         wheel_rolling_friction_scale=_sample_scale(
             wheel_rolling_friction_rng,
             dyn.wheel_rolling_friction_scale_min,
             dyn.wheel_rolling_friction_scale_max,
             scale,
+            dyn.wheel_rolling_friction_scale_nominal,
         ),
         caster_radius_scale=_sample_scale(
             caster_radius_rng,
             dyn.caster_radius_scale_min,
             dyn.caster_radius_scale_max,
             scale,
+            dyn.caster_radius_scale_nominal,
         ),
         caster_offset_x=_sample_centered(
-            caster_offset_rng, dyn.caster_offset_x_max, scale
+            caster_offset_rng,
+            dyn.caster_offset_x_delta,
+            scale,
+            dyn.caster_offset_x_nominal,
         ),
         caster_slide_friction_scale=_sample_scale(
             caster_slide_friction_rng,
             dyn.caster_slide_friction_scale_min,
             dyn.caster_slide_friction_scale_max,
             scale,
+            dyn.caster_slide_friction_scale_nominal,
         ),
         caster_torsional_friction_scale=_sample_scale(
             caster_torsional_friction_rng,
             dyn.caster_torsional_friction_scale_min,
             dyn.caster_torsional_friction_scale_max,
             scale,
+            dyn.caster_torsional_friction_scale_nominal,
         ),
         wheel_joint_damping_scale=_sample_scale(
             wheel_damping_rng,
             dyn.wheel_joint_damping_scale_min,
             dyn.wheel_joint_damping_scale_max,
             scale,
+            dyn.wheel_joint_damping_scale_nominal,
         ),
         wheel_joint_damping_balance=_sample_centered(
             wheel_damping_balance_rng,
@@ -160,6 +181,7 @@ def _sample_agent_dynamics(
             dyn.wheel_joint_frictionloss_scale_min,
             dyn.wheel_joint_frictionloss_scale_max,
             scale,
+            dyn.wheel_joint_frictionloss_scale_nominal,
         ),
         wheel_joint_frictionloss_balance=_sample_centered(
             wheel_frictionloss_balance_rng,
@@ -171,33 +193,38 @@ def _sample_agent_dynamics(
             dyn.wheel_armature_scale_min,
             dyn.wheel_armature_scale_max,
             scale,
+            dyn.wheel_armature_scale_nominal,
         ),
         motor_strength_scale=_sample_scale(
             strength_rng,
             dyn.motor_strength_scale_min,
             dyn.motor_strength_scale_max,
             scale,
+            dyn.motor_strength_scale_nominal,
         ),
         back_emf_scale=_sample_scale(
             back_emf_rng,
             dyn.back_emf_scale_min,
             dyn.back_emf_scale_max,
             scale,
+            dyn.back_emf_scale_nominal,
         ),
         motor_balance=_sample_centered(balance_rng, dyn.motor_balance_delta_max, scale),
         motor_deadzone=random.uniform(
             deadzone_rng,
             (),
-            minval=dyn.motor_deadzone_min,
-            maxval=scale * dyn.motor_deadzone_max
-            + (1.0 - scale) * dyn.motor_deadzone_min,
+            minval=jnp.maximum(
+                dyn.motor_deadzone_min,
+                dyn.motor_deadzone_nominal - dyn.motor_deadzone_delta * scale,
+            ),
+            maxval=dyn.motor_deadzone_nominal + dyn.motor_deadzone_delta * scale,
         ),
-        motor_time_constant_seconds=random.uniform(
+        motor_time_constant_seconds=_sample_scale(
             time_constant_rng,
-            (),
-            minval=dyn.motor_time_constant_seconds_min,
-            maxval=scale * dyn.motor_time_constant_seconds_max
-            + (1.0 - scale) * dyn.motor_time_constant_seconds_min,
+            dyn.motor_time_constant_seconds_min,
+            dyn.motor_time_constant_seconds_max,
+            scale,
+            dyn.motor_time_constant_seconds_nominal,
         ),
     )
 
@@ -244,10 +271,16 @@ def sample_pipeline_params(
         stale_steps_rng,
     ) = random.split(rng, 8)
     pipe = config.pipeline_randomization
-    max_action_delay = jnp.int32(jnp.floor(scale * pipe.max_action_delay_substeps))
-    max_observation_delay = jnp.int32(
-        jnp.floor(scale * pipe.max_observation_delay_substeps)
+    delta_action = jnp.int32(jnp.floor(scale * pipe.action_delay_substeps_delta))
+    min_action_delay = jnp.maximum(
+        0, jnp.int32(pipe.nominal_action_delay_substeps) - delta_action
     )
+    max_action_delay = jnp.int32(pipe.nominal_action_delay_substeps) + delta_action
+    delta_obs = jnp.int32(jnp.floor(scale * pipe.observation_delay_substeps_delta))
+    min_observation_delay = jnp.maximum(
+        0, jnp.int32(pipe.nominal_observation_delay_substeps) - delta_obs
+    )
+    max_observation_delay = jnp.int32(pipe.nominal_observation_delay_substeps) + delta_obs
     max_stale_steps = jnp.int32(
         jnp.maximum(0, jnp.floor(scale * pipe.max_stale_observation_steps))
     )
@@ -260,10 +293,10 @@ def sample_pipeline_params(
     )
 
     action_delay_substeps = random.randint(
-        action_delay_rng, (), 0, max_action_delay + 1
+        action_delay_rng, (), min_action_delay, max_action_delay + 1
     )
     observation_delay_substeps = random.randint(
-        obs_delay_rng, (), 0, max_observation_delay + 1
+        obs_delay_rng, (), min_observation_delay, max_observation_delay + 1
     )
     return PipelineParams(
         action_delay_substeps=jnp.int32(action_delay_substeps),

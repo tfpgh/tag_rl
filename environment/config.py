@@ -41,53 +41,93 @@ class LayoutRandomizationConfig:
 @dataclass
 class DynamicsRandomizationConfig:
     enabled: bool = True
+    # Chassis mass — no sysid estimate, centered at 1.0
     chassis_mass_scale_min: float = 0.9
     chassis_mass_scale_max: float = 1.1
-    com_offset_x_max: float = 0.003
+    # CoM offset — x has sysid nominal, y does not (kept centered at 0)
+    com_offset_x_nominal: float = 0.01653
+    com_offset_x_delta: float = 0.010
     com_offset_y_max: float = 0.003
-    track_width_scale_min: float = 0.96
-    track_width_scale_max: float = 1.04
-    wheel_longitudinal_offset_max: float = 0.01
-    wheel_radius_scale_min: float = 0.94
-    wheel_radius_scale_max: float = 1.06
-    wheel_slide_friction_scale_min: float = 0.9
-    wheel_slide_friction_scale_max: float = 1.12
+    # Track width (±5% of nominal)
+    track_width_scale_nominal: float = 0.9753
+    track_width_scale_min: float = 0.926
+    track_width_scale_max: float = 1.024
+    # Wheel longitudinal offset
+    wheel_longitudinal_offset_nominal: float = 0.00445
+    wheel_longitudinal_offset_delta: float = 0.008
+    # Wheel radius (±5% of nominal)
+    wheel_radius_scale_nominal: float = 1.2341
+    wheel_radius_scale_min: float = 1.172
+    wheel_radius_scale_max: float = 1.296
+    # Wheel slide friction (±25% of nominal)
+    wheel_slide_friction_scale_nominal: float = 1.9029
+    wheel_slide_friction_scale_min: float = 1.43
+    wheel_slide_friction_scale_max: float = 2.38
     wheel_slide_friction_balance_delta_max: float = 0.06
-    wheel_torsional_friction_scale_min: float = 0.75
-    wheel_torsional_friction_scale_max: float = 1.25
-    wheel_rolling_friction_scale_min: float = 0.75
-    wheel_rolling_friction_scale_max: float = 1.25
-    caster_radius_scale_min: float = 0.9
-    caster_radius_scale_max: float = 1.1
-    caster_offset_x_max: float = 0.01
-    caster_slide_friction_scale_min: float = 0.85
-    caster_slide_friction_scale_max: float = 1.2
-    caster_torsional_friction_scale_min: float = 0.75
-    caster_torsional_friction_scale_max: float = 1.25
-    wheel_joint_damping_scale_min: float = 0.75
-    wheel_joint_damping_scale_max: float = 1.35
+    # Wheel torsional friction (±25% of nominal)
+    wheel_torsional_friction_scale_nominal: float = 1.3705
+    wheel_torsional_friction_scale_min: float = 1.03
+    wheel_torsional_friction_scale_max: float = 1.71
+    # Wheel rolling friction (±25% of nominal)
+    wheel_rolling_friction_scale_nominal: float = 1.8496
+    wheel_rolling_friction_scale_min: float = 1.39
+    wheel_rolling_friction_scale_max: float = 2.31
+    # Caster radius (±5% of nominal)
+    caster_radius_scale_nominal: float = 0.8859
+    caster_radius_scale_min: float = 0.842
+    caster_radius_scale_max: float = 0.930
+    # Caster offset
+    caster_offset_x_nominal: float = 0.01256
+    caster_offset_x_delta: float = 0.008
+    # Caster slide friction (±25% of nominal)
+    caster_slide_friction_scale_nominal: float = 1.8087
+    caster_slide_friction_scale_min: float = 1.36
+    caster_slide_friction_scale_max: float = 2.26
+    # Caster torsional friction (±25% of nominal)
+    caster_torsional_friction_scale_nominal: float = 2.4057
+    caster_torsional_friction_scale_min: float = 1.81
+    caster_torsional_friction_scale_max: float = 3.01
+    # Wheel joint damping (±20% of nominal)
+    wheel_joint_damping_scale_nominal: float = 2.5091
+    wheel_joint_damping_scale_min: float = 2.01
+    wheel_joint_damping_scale_max: float = 3.01
     wheel_joint_damping_balance_delta_max: float = 0.1
-    wheel_joint_frictionloss_scale_min: float = 0.85
-    wheel_joint_frictionloss_scale_max: float = 1.2
+    # Wheel joint frictionloss (±25% of nominal)
+    wheel_joint_frictionloss_scale_nominal: float = 0.07856
+    wheel_joint_frictionloss_scale_min: float = 0.059
+    wheel_joint_frictionloss_scale_max: float = 0.098
     wheel_joint_frictionloss_balance_delta_max: float = 0.08
-    wheel_armature_scale_min: float = 0.6
-    wheel_armature_scale_max: float = 1.6
-    motor_strength_scale_min: float = 0.88
-    motor_strength_scale_max: float = 1.12
-    back_emf_scale_min: float = 0.9
-    back_emf_scale_max: float = 1.1
-    motor_balance_delta_max: float = 0.06
-    motor_deadzone_min: float = 0.0
-    motor_deadzone_max: float = 0.08
-    motor_time_constant_seconds_min: float = 0.0
-    motor_time_constant_seconds_max: float = 0.08
+    # Wheel armature (±15% of nominal)
+    wheel_armature_scale_nominal: float = 2.9323
+    wheel_armature_scale_min: float = 2.49
+    wheel_armature_scale_max: float = 3.37
+    # Motor strength (±15% of nominal)
+    motor_strength_scale_nominal: float = 2.2544
+    motor_strength_scale_min: float = 1.92
+    motor_strength_scale_max: float = 2.59
+    # Back EMF (±15% of nominal)
+    back_emf_scale_nominal: float = 2.5003
+    back_emf_scale_min: float = 2.13
+    back_emf_scale_max: float = 2.88
+    # Motor balance — centered at 0 (sysid found -0.015 on one robot; not generalised)
+    motor_balance_delta_max: float = 0.10
+    # Motor deadzone
+    motor_deadzone_nominal: float = 0.000452
+    motor_deadzone_delta: float = 0.002
+    motor_deadzone_min: float = 0.0  # hard floor
+    # Motor time constant
+    motor_time_constant_seconds_nominal: float = 0.03167
+    motor_time_constant_seconds_min: float = 0.020
+    motor_time_constant_seconds_max: float = 0.045
 
 
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    max_action_delay_substeps: int = 20
-    max_observation_delay_substeps: int = 20
+    nominal_action_delay_substeps: int = 3
+    action_delay_substeps_delta: int = 3
+    nominal_observation_delay_substeps: int = 3
+    observation_delay_substeps_delta: int = 3
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.01
     frame_drop_probability_max: float = 0.02
@@ -103,7 +143,7 @@ class CurriculumConfig:
     layout_start: float = 0.05
     pipeline_start: float = 0.10
     dynamics_start: float = 0.15
-    full_progress: float = 0.60
+    full_progress: float = 0.50
     exponent: float = 1.3
 
 
@@ -264,8 +304,8 @@ class EnvironmentConfig:
             raise ValueError("mass scales must be positive")
         if dyn.track_width_scale_min <= 0 or dyn.track_width_scale_max <= 0:
             raise ValueError("track width scales must be positive")
-        if dyn.wheel_longitudinal_offset_max < 0:
-            raise ValueError("wheel longitudinal offset limit must be nonnegative")
+        if dyn.wheel_longitudinal_offset_delta < 0:
+            raise ValueError("wheel longitudinal offset delta must be nonnegative")
         if dyn.wheel_radius_scale_min <= 0 or dyn.wheel_radius_scale_max <= 0:
             raise ValueError("wheel radius scales must be positive")
         if (
@@ -285,8 +325,8 @@ class EnvironmentConfig:
             raise ValueError("wheel rolling friction scales must be positive")
         if dyn.caster_radius_scale_min <= 0 or dyn.caster_radius_scale_max <= 0:
             raise ValueError("caster radius scales must be positive")
-        if dyn.caster_offset_x_max < 0:
-            raise ValueError("caster offset limit must be nonnegative")
+        if dyn.caster_offset_x_delta < 0:
+            raise ValueError("caster offset delta must be nonnegative")
         if (
             dyn.caster_slide_friction_scale_min <= 0
             or dyn.caster_slide_friction_scale_max <= 0
@@ -332,20 +372,22 @@ class EnvironmentConfig:
             raise ValueError(
                 "wheel_joint_frictionloss_balance_delta_max must be in [0, 1)"
             )
-        if dyn.motor_deadzone_min < 0 or dyn.motor_deadzone_max >= 1.0:
-            raise ValueError("motor deadzone bounds must be in [0, 1)")
+        if dyn.motor_deadzone_min < 0 or dyn.motor_deadzone_delta < 0:
+            raise ValueError("motor deadzone bounds must be nonnegative")
         if (
             dyn.motor_time_constant_seconds_min < 0
             or dyn.motor_time_constant_seconds_max < 0
         ):
             raise ValueError("motor time constants must be nonnegative")
-        if dyn.com_offset_x_max < 0 or dyn.com_offset_y_max < 0:
+        if dyn.com_offset_x_delta < 0 or dyn.com_offset_y_max < 0:
             raise ValueError("CoM offset limits must be nonnegative")
 
         pipe = self.pipeline_randomization
         if (
-            pipe.max_action_delay_substeps < 0
-            or pipe.max_observation_delay_substeps < 0
+            pipe.nominal_action_delay_substeps < 0
+            or pipe.action_delay_substeps_delta < 0
+            or pipe.nominal_observation_delay_substeps < 0
+            or pipe.observation_delay_substeps_delta < 0
         ):
             raise ValueError("delay substeps must be nonnegative")
         if pipe.max_stale_observation_steps < 0:

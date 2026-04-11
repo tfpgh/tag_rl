@@ -61,11 +61,14 @@ class TagEnvironment:
         self.freeze_steps = config.chaser_freeze_seconds * config.action_frequency
         self.tag_distance = 2 * config.agent_radius * config.tag_distance_factor
         self.obs_size = observation_size(config)
+        pipe = config.pipeline_randomization
         self.max_action_buffer_len = (
-            config.pipeline_randomization.max_action_delay_substeps + 1
+            pipe.nominal_action_delay_substeps + pipe.action_delay_substeps_delta + 1
         )
         self.max_observation_buffer_len = (
-            config.pipeline_randomization.max_observation_delay_substeps + 1
+            pipe.nominal_observation_delay_substeps
+            + pipe.observation_delay_substeps_delta
+            + 1
         )
 
         self._template_mjx_data = mjx.make_data(self.mj_model)

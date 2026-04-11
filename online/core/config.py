@@ -40,7 +40,7 @@ class CameraConfig:
 class DetectorConfig:
     family: str = "tagStandard41h12"
     threads: int = 12
-    quad_decimate: float = 2.0
+    quad_decimate: float = 1.0
 
 
 @dataclass(slots=True)

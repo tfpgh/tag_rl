@@ -20,7 +20,7 @@ from online.core.state import BoardState, Pose2D
 from online.data.logger import RunLogger
 from online.tracking.tracker import ARENA_WINDOW_NAME, RAW_WINDOW_NAME, BoardTracker
 
-SAFE_LINEAR_COMMAND = 0.55
+SAFE_LINEAR_COMMAND = 0.70
 START_POSE_CENTER = "centered, facing +x"
 START_POSE_CENTER_REVERSE = "centered, facing -x"
 
@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--show-preview",
         choices=("none", "raw", "arena", "both"),
-        default="arena",
+        default="none",
     )
     parser.add_argument(
         "--stop-on-target-loss-s",
@@ -97,18 +97,26 @@ def _base_activations() -> list[Activation]:
         Activation("small_reverse_step", -0.11, -0.11, 0.80, START_POSE_CENTER_REVERSE),
         Activation("forward_low", 0.17, 0.17, 0.75, START_POSE_CENTER),
         Activation("forward_medium", 0.26, 0.26, 0.60, START_POSE_CENTER),
+        Activation("forward_high", 0.42, 0.42, 0.40, START_POSE_CENTER),
+        Activation("forward_burst", 0.58, 0.58, 0.22, START_POSE_CENTER),
         Activation("reverse_low", -0.17, -0.17, 0.75, START_POSE_CENTER_REVERSE),
         Activation("reverse_medium", -0.26, -0.26, 0.60, START_POSE_CENTER_REVERSE),
+        Activation("reverse_high", -0.42, -0.42, 0.40, START_POSE_CENTER_REVERSE),
+        Activation("reverse_burst", -0.58, -0.58, 0.22, START_POSE_CENTER_REVERSE),
         Activation("pivot_left_low", -0.13, 0.13, 0.75, START_POSE_CENTER),
         Activation("pivot_right_low", 0.13, -0.13, 0.75, START_POSE_CENTER),
         Activation("pivot_left_medium", -0.21, 0.21, 0.65, START_POSE_CENTER),
         Activation("pivot_right_medium", 0.21, -0.21, 0.65, START_POSE_CENTER),
+        Activation("pivot_left_high", -0.34, 0.34, 0.45, START_POSE_CENTER),
+        Activation("pivot_right_high", 0.34, -0.34, 0.45, START_POSE_CENTER),
         Activation("arc_left_gentle", 0.14, 0.24, 0.80, START_POSE_CENTER),
         Activation("arc_right_gentle", 0.24, 0.14, 0.80, START_POSE_CENTER),
         Activation("arc_left_medium", 0.12, 0.30, 0.70, START_POSE_CENTER),
         Activation("arc_right_medium", 0.30, 0.12, 0.70, START_POSE_CENTER),
         Activation("arc_left_strong", 0.08, 0.33, 0.60, START_POSE_CENTER),
         Activation("arc_right_strong", 0.33, 0.08, 0.60, START_POSE_CENTER),
+        Activation("arc_left_high", 0.18, 0.48, 0.42, START_POSE_CENTER),
+        Activation("arc_right_high", 0.48, 0.18, 0.42, START_POSE_CENTER),
         Activation("forward_pulse", 0.20, 0.20, 0.40, START_POSE_CENTER),
         Activation("reverse_pulse", -0.20, -0.20, 0.40, START_POSE_CENTER_REVERSE),
     ]
@@ -161,6 +169,13 @@ def _render_preview(
         cv2.imshow(RAW_WINDOW_NAME, raw_view)
     if show_arena:
         cv2.imshow(ARENA_WINDOW_NAME, arena_view)
+
+
+def _poll_preview_quit(show_preview: bool) -> bool:
+    if not show_preview:
+        return False
+    key = cv2.waitKey(1) & 0xFF
+    return key in (ord("q"), 27)
 
 
 def _write_segment_record(file: TextIO, record: ActivationRecord) -> None:
@@ -249,19 +264,15 @@ def _wait_for_activation_start(
 ) -> str:
     activation = activations[activation_index]
     teleop.set_tank_command(0.0, 0.0)
+    show_preview = show_raw or show_arena
     _drain_stdin()
     while True:
         frame, board_state = tracker.process_next_frame()
         target_pose = _target_pose(board_state, config.teleop.robot_tag_id, config)
         teleop.pop_events()
         _render_preview(tracker, frame, board_state, show_raw, show_arena)
-        key = cv2.waitKey(1) & 0xFF
-        if key in (ord("q"), 27):
+        if _poll_preview_quit(show_preview):
             return "quit"
-        if key == ord("s"):
-            return "skip"
-        if key == ord(" "):
-            teleop.set_tank_command(0.0, 0.0)
 
         lines = _status_lines(
             logger,
@@ -310,6 +321,7 @@ def _run_activation(
     split: str,
 ) -> tuple[str, str | None, int]:
     teleop.pop_events()
+    show_preview = show_raw or show_arena
     start_time = time.monotonic()
     last_visible_time = start_time
     total_duration_s = (
@@ -345,13 +357,9 @@ def _run_activation(
             logger.log_command(event)
 
         _render_preview(tracker, frame, board_state, show_raw, show_arena)
-        key = cv2.waitKey(1) & 0xFF
-        if key in (ord("q"), 27):
+        if _poll_preview_quit(show_preview):
             teleop.set_tank_command(0.0, 0.0)
             return "quit", "operator requested quit", frame_index + 1
-        if key == ord(" "):
-            teleop.set_tank_command(0.0, 0.0)
-            return "aborted", "operator emergency stop", frame_index + 1
 
         lines = _status_lines(
             logger,

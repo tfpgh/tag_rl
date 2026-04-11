@@ -75,6 +75,12 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
         return [json.loads(line) for line in file if line.strip()]
 
 
+def _load_jsonl_if_exists(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return _load_jsonl(path)
+
+
 def _extract_physical_params(path: Path) -> dict[str, float]:
     text = path.read_text(encoding="utf-8")
     if path.suffix == ".jsonl":
@@ -254,14 +260,47 @@ def _segment_samples(
     return segments
 
 
+def _segment_samples_from_records(
+    samples: list[dict[str, Any]], segments: list[dict[str, Any]]
+) -> list[list[dict[str, Any]]]:
+    if not samples:
+        return []
+    sample_times = np.array(
+        [sample["monotonic_time"] for sample in samples], dtype=np.float64
+    )
+    sample_segments: list[list[dict[str, Any]]] = []
+    for segment in segments:
+        if segment.get("status") != "completed":
+            continue
+        start_time = segment.get("started_at")
+        end_time = segment.get("ended_at")
+        if start_time is None or end_time is None:
+            continue
+        start_index = int(
+            np.searchsorted(sample_times, float(start_time) - 1e-9, side="left")
+        )
+        end_index = int(
+            np.searchsorted(sample_times, float(end_time) + 1e-9, side="right")
+        )
+        if end_index - start_index < 2:
+            continue
+        sample_segments.append(samples[start_index:end_index])
+    return sample_segments
+
+
 def _simulate_target_poses_segmented(
     evaluator: SysIdEvaluator,
     physical_params: dict[str, float],
     samples: list[dict[str, Any]],
     commands: list[dict[str, Any]],
     segment_seconds: float,
+    segment_records: list[dict[str, Any]] | None = None,
 ) -> np.ndarray:
-    segments = _segment_samples(samples, segment_seconds)
+    segments = (
+        _segment_samples_from_records(samples, segment_records)
+        if segment_records
+        else _segment_samples(samples, segment_seconds)
+    )
     simulated_segments = [
         _simulate_target_poses(evaluator, physical_params, segment, commands)
         for segment in segments
@@ -526,6 +565,7 @@ def render_compare(args: argparse.Namespace) -> None:
     if not samples:
         raise ValueError("No samples available after filtering.")
     commands = _load_jsonl(args.run_dir / "commands.jsonl")
+    segment_records = _load_jsonl_if_exists(args.run_dir / "segments.jsonl")
     params = _extract_physical_params(args.params)
 
     max_logged_obstacles = max(len(sample.get("obstacles", [])) for sample in samples)
@@ -540,7 +580,12 @@ def render_compare(args: argparse.Namespace) -> None:
         + 1,
     )
     simulated = _simulate_target_poses_segmented(
-        evaluator, params, samples, commands, args.segment_seconds
+        evaluator,
+        params,
+        samples,
+        commands,
+        args.segment_seconds,
+        segment_records=segment_records,
     )
 
     model = mujoco.MjModel.from_xml_string(generate_mjcf(env_config, mode="render"))

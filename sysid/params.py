@@ -33,7 +33,7 @@ PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
     ("caster_torsional_friction_scale", ParamBounds(0.30, 3.0)),
     ("wheel_joint_damping_scale", ParamBounds(0.30, 3.00)),
     ("wheel_joint_damping_balance", ParamBounds(-0.18, 0.18)),
-    ("wheel_joint_frictionloss_scale", ParamBounds(0.15, 1.50)),
+    ("wheel_joint_frictionloss_scale", ParamBounds(0.03, 0.75)),
     ("wheel_joint_frictionloss_balance", ParamBounds(-0.18, 0.18)),
     ("wheel_armature_scale", ParamBounds(0.50, 3.50)),
     ("motor_strength_scale", ParamBounds(1.00, 2.40)),

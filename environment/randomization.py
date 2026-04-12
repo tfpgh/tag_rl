@@ -8,7 +8,7 @@ from mujoco import mjx
 from environment.config import EnvironmentConfig
 from environment.curriculum import curriculum_scale
 from environment.geometry import circle_intersects_box
-from environment.mjcf import WHEEL_BODY_Z_OFFSET, WHEEL_RADIUS
+from environment.mjcf import CASTER_BODY_Z_OFFSET, CASTER_RADIUS, WHEEL_BODY_Z_OFFSET, WHEEL_RADIUS
 from environment.mujoco_data import yaw_to_quaternion
 from environment.types import (
     AgentDynamicsParams,
@@ -528,8 +528,14 @@ def sample_spawn_state(
 
     qpos = jnp.zeros(model_nq)
     qvel = jnp.zeros(model_nv)
-    chaser_z = WHEEL_BODY_Z_OFFSET + WHEEL_RADIUS * domain_params.chaser.wheel_radius_scale
-    evader_z = WHEEL_BODY_Z_OFFSET + WHEEL_RADIUS * domain_params.evader.wheel_radius_scale
+    chaser_z = jnp.maximum(
+        WHEEL_BODY_Z_OFFSET + WHEEL_RADIUS * domain_params.chaser.wheel_radius_scale,
+        CASTER_BODY_Z_OFFSET + CASTER_RADIUS * domain_params.chaser.caster_radius_scale,
+    )
+    evader_z = jnp.maximum(
+        WHEEL_BODY_Z_OFFSET + WHEEL_RADIUS * domain_params.evader.wheel_radius_scale,
+        CASTER_BODY_Z_OFFSET + CASTER_RADIUS * domain_params.evader.caster_radius_scale,
+    )
     identity_quaternion = jnp.array([1.0, 0.0, 0.0, 0.0])
 
     qpos = qpos.at[chaser_root_qpos_adr : chaser_root_qpos_adr + 3].set(

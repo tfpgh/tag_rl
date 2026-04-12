@@ -498,8 +498,8 @@ class TagEnvironment:
     ]:
         config = self.config
 
-        chaser_action = jnp.clip(chaser_action, -1.0, 1.0)
-        evader_action = jnp.clip(evader_action, -1.0, 1.0)
+        chaser_action = jnp.clip(chaser_action, -1.0, 1.0) * config.arena.action_scale
+        evader_action = jnp.clip(evader_action, -1.0, 1.0) * config.arena.action_scale
         proposed_actions = jnp.stack([chaser_action, evader_action], axis=0)
 
         is_frozen = state.step_count < self.freeze_steps

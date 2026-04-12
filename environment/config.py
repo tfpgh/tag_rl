@@ -7,7 +7,7 @@ class ArenaConfig:
     arena_width: float = 2.24
     arena_height: float = 1.02
     agent_radius: float = 0.05
-    agent_z: float = 0.03204  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.1070011854171753)
+    agent_z: float = 0.030004  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.0052034854888916)
     tag_distance_factor: float = 1.05
     n_rays: int = 128
     action_frequency: int = 20
@@ -46,78 +46,78 @@ class DynamicsRandomizationConfig:
     chassis_mass_scale_min: float = 0.9
     chassis_mass_scale_max: float = 1.1
     # CoM offset — x has sysid nominal, y does not (kept centered at 0)
-    com_offset_x_nominal: float = 0.015139739960432053
+    com_offset_x_nominal: float = 0.01592063345015049
     com_offset_x_delta: float = 0.010
-    com_offset_z_nominal: float = 0.0
+    com_offset_z_nominal: float = -0.0010955356992781162
     com_offset_z_delta: float = 0.006
     com_offset_y_max: float = 0.003
     # Track width (±5% of nominal)
-    track_width_scale_nominal: float = 0.9871505498886108
+    track_width_scale_nominal: float = 0.9986158609390259
     track_width_scale_min: float = 0.926
     track_width_scale_max: float = 1.024
     # Wheel radius (±5% of nominal)
-    wheel_radius_scale_nominal: float = 1.1070011854171753
+    wheel_radius_scale_nominal: float = 1.0052034854888916
     wheel_radius_scale_min: float = 1.172
     wheel_radius_scale_max: float = 1.296
     # Wheel slide friction (±25% of nominal)
-    wheel_slide_friction_scale_nominal: float = 1.9845917224884033
+    wheel_slide_friction_scale_nominal: float = 1.6792786121368408
     wheel_slide_friction_scale_min: float = 1.43
     wheel_slide_friction_scale_max: float = 2.38
     # Wheel torsional friction (±25% of nominal)
-    wheel_torsional_friction_scale_nominal: float = 2.3199970722198486
+    wheel_torsional_friction_scale_nominal: float = 0.7837682962417603
     wheel_torsional_friction_scale_min: float = 1.03
     wheel_torsional_friction_scale_max: float = 1.71
     # Wheel rolling friction (±25% of nominal)
-    wheel_rolling_friction_scale_nominal: float = 1.9188979864120483
+    wheel_rolling_friction_scale_nominal: float = 1.8326932191848755
     wheel_rolling_friction_scale_min: float = 1.39
     wheel_rolling_friction_scale_max: float = 2.31
     # Shared chassis/bumper floor-contact slide friction scale
-    body_contact_friction_scale_nominal: float = 1.0
+    body_contact_friction_scale_nominal: float = 0.8387575149536133
     body_contact_friction_scale_min: float = 0.25
     body_contact_friction_scale_max: float = 4.0
     # Caster radius (±5% of nominal)
-    caster_radius_scale_nominal: float = 0.9061615467071533
+    caster_radius_scale_nominal: float = 0.8783398270606995
     caster_radius_scale_min: float = 0.842
     caster_radius_scale_max: float = 0.930
     # Caster offset
-    caster_offset_x_nominal: float = 0.008848106488585472
+    caster_offset_x_nominal: float = -0.0037132548168301582
     caster_offset_x_delta: float = 0.008
     # Caster slide friction (±25% of nominal)
-    caster_slide_friction_scale_nominal: float = 2.2958288192749023
+    caster_slide_friction_scale_nominal: float = 1.3645780086517334
     caster_slide_friction_scale_min: float = 1.36
     caster_slide_friction_scale_max: float = 2.26
     # Caster torsional friction (±25% of nominal)
-    caster_torsional_friction_scale_nominal: float = 2.5376009941101074
+    caster_torsional_friction_scale_nominal: float = 0.7791167497634888
     caster_torsional_friction_scale_min: float = 1.81
     caster_torsional_friction_scale_max: float = 3.01
     # Wheel joint damping (±20% of nominal)
-    wheel_joint_damping_scale_nominal: float = 2.635035514831543
+    wheel_joint_damping_scale_nominal: float = 0.632819414138794
     wheel_joint_damping_scale_min: float = 2.01
     wheel_joint_damping_scale_max: float = 3.01
     # Wheel joint frictionloss (±25% of nominal)
-    wheel_joint_frictionloss_scale_nominal: float = 0.22823172807693481
-    wheel_joint_frictionloss_scale_min: float = 0.059
-    wheel_joint_frictionloss_scale_max: float = 0.098
+    wheel_joint_frictionloss_scale_nominal: float = 0.05953681841492653
+    wheel_joint_frictionloss_scale_min: float = 0.05
+    wheel_joint_frictionloss_scale_max: float = 0.07
     # Wheel armature (±15% of nominal)
-    wheel_armature_scale_nominal: float = 2.408203601837158
+    wheel_armature_scale_nominal: float = 1.0952191352844238
     wheel_armature_scale_min: float = 2.49
     wheel_armature_scale_max: float = 3.37
     # Motor strength (±15% of nominal)
-    motor_strength_scale_nominal: float = 3.497734785079956
+    motor_strength_scale_nominal: float = 1.6562129259109497
     motor_strength_scale_min: float = 1.92
     motor_strength_scale_max: float = 2.59
     # Back EMF (±15% of nominal)
-    back_emf_scale_nominal: float = 3.312692403793335
+    back_emf_scale_nominal: float = 1.4739843606948853
     back_emf_scale_min: float = 2.13
     back_emf_scale_max: float = 2.88
     # Motor balance — centered at 0 (sysid found -0.015 on one robot; not generalised)
     motor_balance_delta_max: float = 0.10
     # Motor deadzone
-    motor_deadzone_nominal: float = 0.003350683022290468
-    motor_deadzone_delta: float = 0.002
+    motor_deadzone_nominal: float = 0.0006686113774776459
+    motor_deadzone_delta: float = 0.0005
     motor_deadzone_min: float = 0.0  # hard floor
     # Motor time constant
-    motor_time_constant_seconds_nominal: float = 0.02531667798757553
+    motor_time_constant_seconds_nominal: float = 0.03243434429168701
     motor_time_constant_seconds_min: float = 0.020
     motor_time_constant_seconds_max: float = 0.045
 
@@ -125,9 +125,9 @@ class DynamicsRandomizationConfig:
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    nominal_action_delay_substeps: int = 4
+    nominal_action_delay_substeps: int = 3
     action_delay_substeps_delta: int = 3
-    nominal_observation_delay_substeps: int = 5
+    nominal_observation_delay_substeps: int = 3
     observation_delay_substeps_delta: int = 3
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002

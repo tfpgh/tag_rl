@@ -83,8 +83,8 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "wheel_joint_frictionloss_scale",
-        ParamBounds(0.00001, 3.0),
-        1.0,
+        ParamBounds(0.005, 0.06),
+        0.02,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(

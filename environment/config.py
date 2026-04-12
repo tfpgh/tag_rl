@@ -48,6 +48,8 @@ class DynamicsRandomizationConfig:
     # CoM offset — x has sysid nominal, y does not (kept centered at 0)
     com_offset_x_nominal: float = 0.015139739960432053
     com_offset_x_delta: float = 0.010
+    com_offset_z_nominal: float = 0.0
+    com_offset_z_delta: float = 0.006
     com_offset_y_max: float = 0.003
     # Track width (±5% of nominal)
     track_width_scale_nominal: float = 0.9871505498886108
@@ -69,6 +71,10 @@ class DynamicsRandomizationConfig:
     wheel_rolling_friction_scale_nominal: float = 1.9188979864120483
     wheel_rolling_friction_scale_min: float = 1.39
     wheel_rolling_friction_scale_max: float = 2.31
+    # Shared chassis/bumper floor-contact slide friction scale
+    body_contact_friction_scale_nominal: float = 1.0
+    body_contact_friction_scale_min: float = 0.25
+    body_contact_friction_scale_max: float = 4.0
     # Caster radius (±5% of nominal)
     caster_radius_scale_nominal: float = 0.9061615467071533
     caster_radius_scale_min: float = 0.842
@@ -316,6 +322,11 @@ class EnvironmentConfig:
             or dyn.wheel_rolling_friction_scale_max <= 0
         ):
             raise ValueError("wheel rolling friction scales must be positive")
+        if (
+            dyn.body_contact_friction_scale_min <= 0
+            or dyn.body_contact_friction_scale_max <= 0
+        ):
+            raise ValueError("body contact friction scales must be positive")
         if dyn.caster_radius_scale_min <= 0 or dyn.caster_radius_scale_max <= 0:
             raise ValueError("caster radius scales must be positive")
         if dyn.caster_offset_x_delta < 0:
@@ -355,7 +366,11 @@ class EnvironmentConfig:
             or dyn.motor_time_constant_seconds_max < 0
         ):
             raise ValueError("motor time constants must be nonnegative")
-        if dyn.com_offset_x_delta < 0 or dyn.com_offset_y_max < 0:
+        if (
+            dyn.com_offset_x_delta < 0
+            or dyn.com_offset_z_delta < 0
+            or dyn.com_offset_y_max < 0
+        ):
             raise ValueError("CoM offset limits must be nonnegative")
 
         pipe = self.pipeline_randomization

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Literal, Mapping
 
 import jax
 import jax.numpy as jnp
 
+from environment.config import EnvironmentConfig
 from environment.types import AgentDynamicsParams, DomainParams, PipelineParams
 
-
-def _sigmoid(x: jax.Array) -> jax.Array:
-    return 0.5 * (jnp.tanh(x / 2.0) + 1.0)
+PARAM_TRANSFORM_LINEAR = "linear"
+PARAM_TRANSFORM_LOG = "log"
+PARAM_TRANSFORM_INTEGER = "integer"
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,43 +20,179 @@ class ParamBounds:
     high: float
 
 
-PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(0.75, 1.25)),  # mid 1.00
-    ("wheel_radius_scale", ParamBounds(0.70, 1.30)),  # mid 1.00
-    ("caster_radius_scale", ParamBounds(0.70, 1.30)),  # mid 1.00
-    ("caster_offset_x", ParamBounds(-0.020, 0.020)),  # mid 0.0
-    ("com_offset_x", ParamBounds(-0.020, 0.040)),  # mid 0.01
-    ("wheel_slide_friction_scale", ParamBounds(0.50, 3.50)),  # mid 2.00
-    ("wheel_torsional_friction_scale", ParamBounds(0.50, 3.50)),  # mid 2.00
-    ("wheel_rolling_friction_scale", ParamBounds(0.50, 3.50)),  # mid 2.00
-    ("caster_slide_friction_scale", ParamBounds(0.50, 3.50)),  # mid 2.00
-    ("caster_torsional_friction_scale", ParamBounds(0.50, 3.50)),  # mid 2.00
-    ("wheel_joint_damping_scale", ParamBounds(0.50, 4.50)),  # mid 2.50
-    ("wheel_joint_frictionloss_scale", ParamBounds(0.05, 1.00)),  # mid 0.525
-    ("wheel_armature_scale", ParamBounds(0.50, 4.50)),  # mid 2.50
-    ("motor_strength_scale", ParamBounds(0.50, 4.50)),  # mid 2.50
-    ("back_emf_scale", ParamBounds(0.50, 4.50)),  # mid 2.50
-    ("motor_balance", ParamBounds(-0.20, 0.20)),  # mid 0.0
-    ("motor_deadzone", ParamBounds(0.0, 0.010)),  # mid 0.005
-    ("motor_time_constant_seconds", ParamBounds(0.010, 0.060)),  # mid 0.035
-    ("command_delay_substeps", ParamBounds(0.0, 8.0)),  # mid 4
-    ("observation_delay_substeps", ParamBounds(0.0, 8.0)),  # mid 4
+@dataclass(frozen=True, slots=True)
+class ParamSpec:
+    name: str
+    bounds: ParamBounds
+    center: float
+    transform: Literal["linear", "log", "integer"]
+
+
+_ENV = EnvironmentConfig()
+
+PARAM_SPECS: tuple[ParamSpec, ...] = (
+    ParamSpec("track_width_scale", ParamBounds(0.75, 1.25), 1.0, PARAM_TRANSFORM_LOG),
+    ParamSpec("wheel_radius_scale", ParamBounds(0.70, 1.30), 1.0, PARAM_TRANSFORM_LOG),
+    ParamSpec("caster_radius_scale", ParamBounds(0.70, 1.30), 1.0, PARAM_TRANSFORM_LOG),
+    ParamSpec(
+        "caster_offset_x", ParamBounds(-0.020, 0.020), 0.0, PARAM_TRANSFORM_LINEAR
+    ),
+    ParamSpec("com_offset_x", ParamBounds(-0.020, 0.040), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec("com_offset_z", ParamBounds(-0.020, 0.020), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec(
+        "wheel_slide_friction_scale",
+        ParamBounds(0.50, 3.50),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_torsional_friction_scale",
+        ParamBounds(0.50, 3.50),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_rolling_friction_scale",
+        ParamBounds(0.50, 3.50),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "body_contact_friction_scale",
+        ParamBounds(0.25, 4.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_slide_friction_scale",
+        ParamBounds(0.50, 3.50),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_torsional_friction_scale",
+        ParamBounds(0.50, 3.50),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_joint_damping_scale",
+        ParamBounds(0.50, 4.50),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_joint_frictionloss_scale",
+        ParamBounds(0.05, 1.00),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_armature_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG
+    ),
+    ParamSpec(
+        "motor_strength_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG
+    ),
+    ParamSpec("back_emf_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG),
+    ParamSpec("motor_balance", ParamBounds(-0.20, 0.20), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec("motor_deadzone", ParamBounds(0.0, 0.010), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec(
+        "motor_time_constant_seconds",
+        ParamBounds(0.010, 0.060),
+        0.04,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "command_delay_substeps",
+        ParamBounds(0.0, 8.0),
+        float(_ENV.pipeline_randomization.nominal_action_delay_substeps),
+        PARAM_TRANSFORM_INTEGER,
+    ),
+    ParamSpec(
+        "observation_delay_substeps",
+        ParamBounds(0.0, 8.0),
+        float(_ENV.pipeline_randomization.nominal_observation_delay_substeps),
+        PARAM_TRANSFORM_INTEGER,
+    ),
 )
 
 FROZEN_PARAMS: dict[str, float] = {}
 
-PARAM_NAMES = tuple(name for name, _ in PARAM_SPECS)
+PARAM_NAMES = tuple(spec.name for spec in PARAM_SPECS)
 LATENT_DIM = len(PARAM_SPECS)
-PARAM_BOUNDS = {name: bounds for name, bounds in PARAM_SPECS}
+PARAM_BOUNDS = {spec.name: spec.bounds for spec in PARAM_SPECS}
+PARAM_SPEC_BY_NAME = {spec.name: spec for spec in PARAM_SPECS}
 MAX_COMMAND_DELAY_SUBSTEPS = int(PARAM_BOUNDS["command_delay_substeps"].high)
 MAX_OBSERVATION_DELAY_SUBSTEPS = int(PARAM_BOUNDS["observation_delay_substeps"].high)
 
 
+def _signed_sigmoid(x: jax.Array) -> jax.Array:
+    return jnp.tanh(x / 2.0)
+
+
+def _atanh(x: jax.Array) -> jax.Array:
+    return 0.5 * jnp.log((1.0 + x) / (1.0 - x))
+
+
+def _validate_spec(spec: ParamSpec) -> None:
+    if not (spec.bounds.low <= spec.center <= spec.bounds.high):
+        raise ValueError(f"Center for {spec.name} must lie within bounds")
+    if spec.transform == PARAM_TRANSFORM_LOG and spec.bounds.low <= 0:
+        raise ValueError(f"Log-space param {spec.name} must have positive bounds")
+
+
+for _spec in PARAM_SPECS:
+    _validate_spec(_spec)
+
+
+def _unit_to_physical(unit: jax.Array, spec: ParamSpec) -> jax.Array:
+    low = jnp.asarray(spec.bounds.low, dtype=jnp.float32)
+    high = jnp.asarray(spec.bounds.high, dtype=jnp.float32)
+    center = jnp.asarray(spec.center, dtype=jnp.float32)
+    if spec.transform == PARAM_TRANSFORM_LOG:
+        log_low = jnp.log(low)
+        log_high = jnp.log(high)
+        log_center = jnp.log(center)
+        return jnp.where(
+            unit >= 0.0,
+            jnp.exp(log_center + unit * (log_high - log_center)),
+            jnp.exp(log_center + unit * (log_center - log_low)),
+        )
+    return jnp.where(
+        unit >= 0.0,
+        center + unit * (high - center),
+        center + unit * (center - low),
+    )
+
+
+def _physical_to_unit(value: jax.Array, spec: ParamSpec) -> jax.Array:
+    low = jnp.asarray(spec.bounds.low, dtype=jnp.float32)
+    high = jnp.asarray(spec.bounds.high, dtype=jnp.float32)
+    center = jnp.asarray(spec.center, dtype=jnp.float32)
+    value = jnp.clip(value, low, high)
+    if spec.transform == PARAM_TRANSFORM_LOG:
+        log_value = jnp.log(value)
+        log_low = jnp.log(low)
+        log_high = jnp.log(high)
+        log_center = jnp.log(center)
+        unit = jnp.where(
+            value >= center,
+            (log_value - log_center) / jnp.maximum(log_high - log_center, 1e-6),
+            (log_value - log_center) / jnp.maximum(log_center - log_low, 1e-6),
+        )
+    else:
+        unit = jnp.where(
+            value >= center,
+            (value - center) / jnp.maximum(high - center, 1e-6),
+            (value - center) / jnp.maximum(center - low, 1e-6),
+        )
+    return jnp.clip(unit, -1.0 + 1e-6, 1.0 - 1e-6)
+
+
 def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:
     params: dict[str, jax.Array] = {}
-    for index, (name, bounds) in enumerate(PARAM_SPECS):
-        scale = _sigmoid(latent[index])
-        params[name] = bounds.low + (bounds.high - bounds.low) * scale
+    for index, spec in enumerate(PARAM_SPECS):
+        params[spec.name] = _unit_to_physical(_signed_sigmoid(latent[index]), spec)
     params["command_delay_substeps"] = jnp.rint(params["command_delay_substeps"])
     params["observation_delay_substeps"] = jnp.rint(
         params["observation_delay_substeps"]
@@ -65,12 +202,9 @@ def latent_to_physical(latent: jax.Array) -> dict[str, jax.Array]:
 
 def physical_to_latent(params: Mapping[str, jax.Array | float | int]) -> jax.Array:
     latent: list[jax.Array] = []
-    for name, bounds in PARAM_SPECS:
-        value = jnp.asarray(params[name], dtype=jnp.float32)
-        span = bounds.high - bounds.low
-        fraction = (value - bounds.low) / span
-        fraction = jnp.clip(fraction, 1e-6, 1.0 - 1e-6)
-        latent.append(jnp.log(fraction / (1.0 - fraction)))
+    for spec in PARAM_SPECS:
+        value = jnp.asarray(params[spec.name], dtype=jnp.float32)
+        latent.append(2.0 * _atanh(_physical_to_unit(value, spec)))
     return jnp.stack(latent, axis=0)
 
 
@@ -80,7 +214,10 @@ def build_domain_and_pipeline_from_physical(
     resolved = {**FROZEN_PARAMS, **params}
     agent = AgentDynamicsParams(
         mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
-        com_offset_xy=jnp.array([resolved["com_offset_x"], 0.0], dtype=jnp.float32),
+        com_offset_xyz=jnp.array(
+            [resolved["com_offset_x"], 0.0, resolved["com_offset_z"]],
+            dtype=jnp.float32,
+        ),
         track_width_scale=jnp.asarray(resolved["track_width_scale"], dtype=jnp.float32),
         wheel_radius_scale=jnp.asarray(
             resolved["wheel_radius_scale"], dtype=jnp.float32
@@ -93,6 +230,9 @@ def build_domain_and_pipeline_from_physical(
         ),
         wheel_rolling_friction_scale=jnp.asarray(
             resolved["wheel_rolling_friction_scale"], dtype=jnp.float32
+        ),
+        body_contact_friction_scale=jnp.asarray(
+            resolved["body_contact_friction_scale"], dtype=jnp.float32
         ),
         caster_radius_scale=jnp.asarray(
             resolved["caster_radius_scale"], dtype=jnp.float32

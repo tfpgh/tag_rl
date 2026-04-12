@@ -19,12 +19,13 @@ class ObstacleState(NamedTuple):
 
 class AgentDynamicsParams(NamedTuple):
     mass_scale: jax.Array
-    com_offset_xy: jax.Array
+    com_offset_xyz: jax.Array
     track_width_scale: jax.Array
     wheel_radius_scale: jax.Array
     wheel_slide_friction_scale: jax.Array
     wheel_torsional_friction_scale: jax.Array
     wheel_rolling_friction_scale: jax.Array
+    body_contact_friction_scale: jax.Array
     caster_radius_scale: jax.Array
     caster_offset_x: jax.Array
     caster_slide_friction_scale: jax.Array
@@ -57,6 +58,8 @@ class PipelineParams(NamedTuple):
 
 class AgentModelIndices(NamedTuple):
     body_id: int
+    chassis_base_geom_id: int
+    bumper_geom_id: int
     left_wheel_body_id: int
     right_wheel_body_id: int
     left_wheel_geom_id: int

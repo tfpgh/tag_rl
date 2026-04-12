@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,12 @@ import numpy as np
 from environment.config import EnvironmentConfig
 from sysid.dataset import WindowConfig, load_dataset_splits
 from sysid.evaluator import SysIdEvaluator
-from sysid.params import PARAM_BOUNDS, PARAM_NAMES, PARAM_SPECS
+from sysid.params import (
+    PARAM_BOUNDS,
+    PARAM_NAMES,
+    PARAM_SPEC_BY_NAME,
+    physical_to_latent,
+)
 
 CORE_SWEEP_PARAMS = [
     "track_width_scale",
@@ -23,6 +29,7 @@ CORE_SWEEP_PARAMS = [
     "wheel_slide_friction_scale",
     "wheel_torsional_friction_scale",
     "wheel_rolling_friction_scale",
+    "body_contact_friction_scale",
     "motor_strength_scale",
     "back_emf_scale",
     "motor_balance",
@@ -41,6 +48,7 @@ SECONDARY_SWEEP_PARAMS = [
     "wheel_joint_frictionloss_scale",
     "wheel_armature_scale",
     "com_offset_x",
+    "com_offset_z",
 ]
 
 
@@ -90,36 +98,34 @@ def _load_params_from_history(path: Path, source: str) -> dict[str, float]:
 
 
 def _to_latent(physical: dict[str, float]) -> jax.Array:
-    latent: list[float] = []
-    for name, bounds in PARAM_SPECS:
-        span = bounds.high - bounds.low
-        fraction = (physical[name] - bounds.low) / span
-        fraction = min(max(fraction, 1e-6), 1.0 - 1e-6)
-        latent.append(float(np.log(fraction / (1.0 - fraction))))
-    return jnp.asarray(latent, dtype=jnp.float32)
+    return physical_to_latent(physical)
 
 
 def _linspace_for_param(name: str, points: int) -> list[float]:
+    spec = PARAM_SPEC_BY_NAME[name]
     bounds = PARAM_BOUNDS[name]
-    if name.endswith("delay_substeps"):
+    if spec.transform == "integer":
         low = int(round(bounds.low))
         high = int(round(bounds.high))
         if high - low + 1 <= points:
             return [float(v) for v in range(low, high + 1)]
         return [float(v) for v in np.linspace(low, high, points).round().astype(int)]
+    if spec.transform == "log":
+        return [float(v) for v in np.geomspace(bounds.low, bounds.high, points)]
     return [float(v) for v in np.linspace(bounds.low, bounds.high, points)]
 
 
 def _local_values_for_param(
     name: str, base: dict[str, float], points: int, local_fraction: float
 ) -> list[float]:
+    spec = PARAM_SPEC_BY_NAME[name]
     bounds = PARAM_BOUNDS[name]
     base_value = float(base[name])
-    span = bounds.high - bounds.low
-    radius = 0.5 * local_fraction * span
-    low = max(bounds.low, base_value - radius)
-    high = min(bounds.high, base_value + radius)
-    if name.endswith("delay_substeps"):
+    if spec.transform == "integer":
+        span = bounds.high - bounds.low
+        radius = 0.5 * local_fraction * span
+        low = max(bounds.low, base_value - radius)
+        high = min(bounds.high, base_value + radius)
         low_i = int(round(low))
         high_i = int(round(high))
         base_i = int(round(base_value))
@@ -130,6 +136,22 @@ def _local_values_for_param(
             )
         )
         return [float(v) for v in values]
+    if spec.transform == "log":
+        log_low = math.log(bounds.low)
+        log_high = math.log(bounds.high)
+        log_base = math.log(min(max(base_value, bounds.low), bounds.high))
+        radius = 0.5 * local_fraction * (log_high - log_low)
+        low = max(bounds.low, math.exp(log_base - radius))
+        high = min(bounds.high, math.exp(log_base + radius))
+        values = np.geomspace(low, high, points, dtype=np.float64)
+        values = np.unique(
+            np.concatenate([values, np.asarray([base_value], dtype=np.float64)])
+        )
+        return [float(v) for v in values.tolist()]
+    span = bounds.high - bounds.low
+    radius = 0.5 * local_fraction * span
+    low = max(bounds.low, base_value - radius)
+    high = min(bounds.high, base_value + radius)
     values = np.linspace(low, high, points, dtype=np.float64)
     values = np.unique(
         np.concatenate([values, np.asarray([base_value], dtype=np.float64)])
@@ -268,6 +290,7 @@ def _build_probe_groups(
 
     groups["ablations"] = [
         {"label": "com_offset_x=0", "params": _candidate(base, com_offset_x=0.0)},
+        {"label": "com_offset_z=0", "params": _candidate(base, com_offset_z=0.0)},
         {
             "label": "wheel_torsion=1.0",
             "params": _candidate(base, wheel_torsional_friction_scale=1.0),

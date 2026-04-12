@@ -31,9 +31,10 @@ CHASSIS_TOP_HEIGHT = 0.003
 OBSTACLE_COLOR = "0.6 0.6 0.65 1"
 
 WHEEL_LATERAL_OFFSET = 0.037123
-WHEEL_BODY_Z_OFFSET = 0.0099   # wheel body is this far below robot root in MJCF
+WHEEL_BODY_Z_OFFSET = 0.0099  # wheel body is this far below robot root in MJCF
 CASTER_BODY_Z_OFFSET = 0.0251  # caster ball body is this far below robot root in MJCF
 CASTER_FRICTION = "0.12 0.0005 0.00002"
+BODY_CONTACT_FRICTION = "0.3 0.005 0.0001"
 WHEEL_RADIUS = 0.020
 CASTER_RADIUS = 0.0048
 WHEEL_HALF_WIDTH = 0.0020
@@ -65,6 +66,7 @@ def _agent_mjcf(
             group="{GEOM_GROUP_AGENT}"
             size="0.05 0.019"
             rgba="0.1 0.1 0.1 1"
+            friction="{BODY_CONTACT_FRICTION}"
             contype="{CONTACTS["chassis"][0]}"
             conaffinity="{CONTACTS["chassis"][1]}"
         />
@@ -86,6 +88,7 @@ def _agent_mjcf(
             size="0.00635 0.010"
             group="{GEOM_GROUP_AGENT}"
             rgba="0.1 0.1 0.1 1"
+            friction="{BODY_CONTACT_FRICTION}"
             contype="{CONTACTS["chassis"][0]}"
             conaffinity="{CONTACTS["chassis"][1]}"
         />

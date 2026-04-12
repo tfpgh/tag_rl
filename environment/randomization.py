@@ -61,12 +61,14 @@ def _sample_agent_dynamics(
     (
         mass_rng,
         com_x_rng,
+        com_z_rng,
         com_y_rng,
         track_rng,
         wheel_radius_rng,
         wheel_slide_friction_rng,
         wheel_torsional_friction_rng,
         wheel_rolling_friction_rng,
+        body_contact_friction_rng,
         caster_radius_rng,
         caster_offset_rng,
         caster_slide_friction_rng,
@@ -79,18 +81,21 @@ def _sample_agent_dynamics(
         balance_rng,
         deadzone_rng,
         time_constant_rng,
-    ) = random.split(rng, 20)
+    ) = random.split(rng, 22)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
             mass_rng, dyn.chassis_mass_scale_min, dyn.chassis_mass_scale_max, scale
         ),
-        com_offset_xy=jnp.array(
+        com_offset_xyz=jnp.array(
             [
                 _sample_centered(
                     com_x_rng, dyn.com_offset_x_delta, scale, dyn.com_offset_x_nominal
                 ),
                 _sample_centered(com_y_rng, dyn.com_offset_y_max, scale),
+                _sample_centered(
+                    com_z_rng, dyn.com_offset_z_delta, scale, dyn.com_offset_z_nominal
+                ),
             ]
         ),
         track_width_scale=_sample_scale(
@@ -127,6 +132,13 @@ def _sample_agent_dynamics(
             dyn.wheel_rolling_friction_scale_max,
             scale,
             dyn.wheel_rolling_friction_scale_nominal,
+        ),
+        body_contact_friction_scale=_sample_scale(
+            body_contact_friction_rng,
+            dyn.body_contact_friction_scale_min,
+            dyn.body_contact_friction_scale_max,
+            scale,
+            dyn.body_contact_friction_scale_nominal,
         ),
         caster_radius_scale=_sample_scale(
             caster_radius_rng,
@@ -580,6 +592,20 @@ def _apply_agent_dynamics(
     left_emf_scale = agent_params.back_emf_scale * (1.0 + agent_params.motor_balance)
     right_emf_scale = agent_params.back_emf_scale * (1.0 - agent_params.motor_balance)
 
+    for body_geom_id in (
+        agent_indices.chassis_base_geom_id,
+        agent_indices.bumper_geom_id,
+    ):
+        base_friction = base_model.geom_friction[body_geom_id]
+        geom_friction = geom_friction.at[body_geom_id].set(
+            jnp.maximum(
+                1e-6,
+                base_friction.at[0].set(
+                    base_friction[0] * agent_params.body_contact_friction_scale
+                ),
+            )
+        )
+
     for wheel_geom_id in (
         agent_indices.left_wheel_geom_id,
         agent_indices.right_wheel_geom_id,
@@ -647,7 +673,11 @@ def _apply_agent_dynamics(
     body_ipos = body_ipos.at[agent_indices.body_id].set(
         base_ipos
         + jnp.array(
-            [agent_params.com_offset_xy[0], agent_params.com_offset_xy[1], 0.0],
+            [
+                agent_params.com_offset_xyz[0],
+                agent_params.com_offset_xyz[1],
+                agent_params.com_offset_xyz[2],
+            ],
             dtype=base_ipos.dtype,
         )
     )

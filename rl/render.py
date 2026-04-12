@@ -1,6 +1,7 @@
 import os
+import sys
 
-if __name__ == "__main__":
+if __name__ == "__main__" and sys.platform != "darwin":
     os.environ["MUJOCO_GL"] = "egl"
 
 

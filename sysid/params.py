@@ -20,30 +20,30 @@ class ParamBounds:
 
 
 PARAM_SPECS: tuple[tuple[str, ParamBounds], ...] = (
-    ("track_width_scale", ParamBounds(0.8, 1.35)),
-    ("wheel_longitudinal_offset", ParamBounds(-0.015, 0.015)),
-    ("wheel_radius_scale", ParamBounds(1.00, 1.35)),
-    ("wheel_slide_friction_scale", ParamBounds(0.80, 5.0)),
-    ("wheel_slide_friction_balance", ParamBounds(-0.0001, 0.0001)),
-    ("wheel_torsional_friction_scale", ParamBounds(0.25, 4.0)),
-    ("wheel_rolling_friction_scale", ParamBounds(0.10, 2.40)),
-    ("caster_radius_scale", ParamBounds(0.85, 1.20)),
-    ("caster_offset_x", ParamBounds(-0.015, 0.015)),
-    ("caster_slide_friction_scale", ParamBounds(0.30, 2.00)),
-    ("caster_torsional_friction_scale", ParamBounds(0.30, 3.0)),
-    ("wheel_joint_damping_scale", ParamBounds(0.30, 3.00)),
-    ("wheel_joint_damping_balance", ParamBounds(-0.0001, 0.0001)),
-    ("wheel_joint_frictionloss_scale", ParamBounds(0.03, 0.75)),
-    ("wheel_joint_frictionloss_balance", ParamBounds(-0.0001, 0.0001)),
-    ("wheel_armature_scale", ParamBounds(0.50, 3.50)),
-    ("motor_strength_scale", ParamBounds(1.00, 3.0)),
-    ("back_emf_scale", ParamBounds(0.90, 3.00)),
-    ("motor_balance", ParamBounds(-0.20, 0.20)),
-    ("motor_deadzone", ParamBounds(0.0, 0.03)),
-    ("motor_time_constant_seconds", ParamBounds(0.0, 0.05)),
-    ("com_offset_x", ParamBounds(-0.010, 0.020)),
-    ("command_delay_substeps", ParamBounds(0.0, 20.0)),
-    ("observation_delay_substeps", ParamBounds(0.0, 20.0)),
+    ("track_width_scale",               ParamBounds(0.75, 1.25)),    # mid 1.00
+    ("wheel_longitudinal_offset",       ParamBounds(-0.020, 0.020)), # mid 0.0
+    ("wheel_radius_scale",              ParamBounds(0.70, 1.30)),    # mid 1.00
+    ("caster_radius_scale",             ParamBounds(0.70, 1.30)),    # mid 1.00
+    ("caster_offset_x",                 ParamBounds(-0.020, 0.020)), # mid 0.0
+    ("com_offset_x",                    ParamBounds(-0.020, 0.040)), # mid 0.01
+    ("wheel_slide_friction_scale",      ParamBounds(0.50, 3.50)),    # mid 2.00
+    ("wheel_slide_friction_balance",    ParamBounds(-0.0002, 0.0002)),
+    ("wheel_torsional_friction_scale",  ParamBounds(0.50, 3.50)),    # mid 2.00
+    ("wheel_rolling_friction_scale",    ParamBounds(0.50, 3.50)),    # mid 2.00
+    ("caster_slide_friction_scale",     ParamBounds(0.50, 3.50)),    # mid 2.00
+    ("caster_torsional_friction_scale", ParamBounds(0.50, 3.50)),    # mid 2.00
+    ("wheel_joint_damping_scale",       ParamBounds(0.50, 4.50)),    # mid 2.50
+    ("wheel_joint_damping_balance",     ParamBounds(-0.0002, 0.0002)),
+    ("wheel_joint_frictionloss_scale",  ParamBounds(0.05, 1.00)),    # mid 0.525
+    ("wheel_joint_frictionloss_balance",ParamBounds(-0.0002, 0.0002)),
+    ("wheel_armature_scale",            ParamBounds(0.50, 4.50)),    # mid 2.50
+    ("motor_strength_scale",            ParamBounds(0.50, 4.50)),    # mid 2.50
+    ("back_emf_scale",                  ParamBounds(0.50, 4.50)),    # mid 2.50
+    ("motor_balance",                   ParamBounds(-0.20, 0.20)),   # mid 0.0
+    ("motor_deadzone",                  ParamBounds(0.0, 0.010)),    # mid 0.005
+    ("motor_time_constant_seconds",     ParamBounds(0.010, 0.060)),  # mid 0.035
+    ("command_delay_substeps",          ParamBounds(0.0, 8.0)),      # mid 4
+    ("observation_delay_substeps",      ParamBounds(0.0, 8.0)),      # mid 4
 )
 
 FROZEN_PARAMS: dict[str, float] = {}

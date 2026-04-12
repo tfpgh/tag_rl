@@ -415,6 +415,7 @@ class TagEnvironment:
             spawn_rng,
             self.config,
             obstacle_state,
+            domain_params,
             self.mj_model.nq,
             self.mj_model.nv,
             self.joint_qpos_slices.chaser_root.start,

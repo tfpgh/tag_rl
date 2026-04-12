@@ -7,7 +7,7 @@ class ArenaConfig:
     arena_width: float = 2.24
     arena_height: float = 1.02
     agent_radius: float = 0.05
-    agent_z: float = 0.0299
+    agent_z: float = 0.0346  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.2341)
     tag_distance_factor: float = 1.05
     n_rays: int = 128
     action_frequency: int = 20

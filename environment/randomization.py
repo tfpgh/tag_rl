@@ -8,6 +8,7 @@ from mujoco import mjx
 from environment.config import EnvironmentConfig
 from environment.curriculum import curriculum_scale
 from environment.geometry import circle_intersects_box
+from environment.mjcf import WHEEL_BODY_Z_OFFSET, WHEEL_RADIUS
 from environment.mujoco_data import yaw_to_quaternion
 from environment.types import (
     AgentDynamicsParams,
@@ -432,6 +433,7 @@ def sample_spawn_state(
     rng: jax.Array,
     config: EnvironmentConfig,
     obstacle_state: ObstacleState,
+    domain_params: DomainParams,
     model_nq: int,
     model_nv: int,
     chaser_root_qpos_adr: int,
@@ -526,11 +528,12 @@ def sample_spawn_state(
 
     qpos = jnp.zeros(model_nq)
     qvel = jnp.zeros(model_nv)
-    z = config.agent_z
+    chaser_z = WHEEL_BODY_Z_OFFSET + WHEEL_RADIUS * domain_params.chaser.wheel_radius_scale
+    evader_z = WHEEL_BODY_Z_OFFSET + WHEEL_RADIUS * domain_params.evader.wheel_radius_scale
     identity_quaternion = jnp.array([1.0, 0.0, 0.0, 0.0])
 
     qpos = qpos.at[chaser_root_qpos_adr : chaser_root_qpos_adr + 3].set(
-        jnp.array([chaser_xy[0], chaser_xy[1], z])
+        jnp.array([chaser_xy[0], chaser_xy[1], chaser_z])
     )
     qpos = qpos.at[chaser_root_qpos_adr + 3 : chaser_root_qpos_adr + 7].set(
         yaw_to_quaternion(chaser_yaw)
@@ -538,7 +541,7 @@ def sample_spawn_state(
     qpos = qpos.at[chaser_caster_qpos_slice].set(identity_quaternion)
 
     qpos = qpos.at[evader_root_qpos_adr : evader_root_qpos_adr + 3].set(
-        jnp.array([evader_xy[0], evader_xy[1], z])
+        jnp.array([evader_xy[0], evader_xy[1], evader_z])
     )
     qpos = qpos.at[evader_root_qpos_adr + 3 : evader_root_qpos_adr + 7].set(
         yaw_to_quaternion(evader_yaw)

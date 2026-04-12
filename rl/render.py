@@ -28,7 +28,7 @@ RolloutResult = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax
 RenderFrames = list[npt.NDArray[np.uint8]]
 
 # ── Configuration ──────────────────────────────────────────────────────
-CHECKPOINT_PATH = "runs/Feb28_12-38-35_node002/checkpoints/step_419430400.pkl"
+CHECKPOINT_PATH = "runs/step_209715200.pkl"
 OUTPUT_PATH = "render.mp4"
 NUM_EPISODES = 10
 VIDEO_HEIGHT = 1080

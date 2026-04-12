@@ -93,7 +93,7 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ParamSpec("motor_strength_scale", ParamBounds(0.50, 7.0), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("back_emf_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("motor_balance", ParamBounds(-0.20, 0.20), 0.0, PARAM_TRANSFORM_LINEAR),
-    ParamSpec("motor_deadzone", ParamBounds(0.0, 0.010), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec("motor_deadzone", ParamBounds(0.0, 0.001), 0.0, PARAM_TRANSFORM_LINEAR),
     ParamSpec(
         "motor_time_constant_seconds",
         ParamBounds(0.010, 0.060),

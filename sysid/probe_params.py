@@ -33,16 +33,12 @@ CORE_SWEEP_PARAMS = [
 ]
 
 SECONDARY_SWEEP_PARAMS = [
-    "wheel_longitudinal_offset",
-    "wheel_slide_friction_balance",
     "caster_radius_scale",
     "caster_offset_x",
     "caster_slide_friction_scale",
     "caster_torsional_friction_scale",
     "wheel_joint_damping_scale",
-    "wheel_joint_damping_balance",
     "wheel_joint_frictionloss_scale",
-    "wheel_joint_frictionloss_balance",
     "wheel_armature_scale",
     "com_offset_x",
 ]

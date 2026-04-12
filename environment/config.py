@@ -53,9 +53,6 @@ class DynamicsRandomizationConfig:
     track_width_scale_nominal: float = 0.9871505498886108
     track_width_scale_min: float = 0.926
     track_width_scale_max: float = 1.024
-    # Wheel longitudinal offset
-    wheel_longitudinal_offset_nominal: float = -9.999977919505909e-06
-    wheel_longitudinal_offset_delta: float = 0.008
     # Wheel radius (±5% of nominal)
     wheel_radius_scale_nominal: float = 1.1070011854171753
     wheel_radius_scale_min: float = 1.172
@@ -64,7 +61,6 @@ class DynamicsRandomizationConfig:
     wheel_slide_friction_scale_nominal: float = 1.9845917224884033
     wheel_slide_friction_scale_min: float = 1.43
     wheel_slide_friction_scale_max: float = 2.38
-    wheel_slide_friction_balance_delta_max: float = 0.06
     # Wheel torsional friction (±25% of nominal)
     wheel_torsional_friction_scale_nominal: float = 2.3199970722198486
     wheel_torsional_friction_scale_min: float = 1.03
@@ -92,12 +88,10 @@ class DynamicsRandomizationConfig:
     wheel_joint_damping_scale_nominal: float = 2.635035514831543
     wheel_joint_damping_scale_min: float = 2.01
     wheel_joint_damping_scale_max: float = 3.01
-    wheel_joint_damping_balance_delta_max: float = 0.1
     # Wheel joint frictionloss (±25% of nominal)
     wheel_joint_frictionloss_scale_nominal: float = 0.22823172807693481
     wheel_joint_frictionloss_scale_min: float = 0.059
     wheel_joint_frictionloss_scale_max: float = 0.098
-    wheel_joint_frictionloss_balance_delta_max: float = 0.08
     # Wheel armature (±15% of nominal)
     wheel_armature_scale_nominal: float = 2.408203601837158
     wheel_armature_scale_min: float = 2.49
@@ -305,8 +299,6 @@ class EnvironmentConfig:
             raise ValueError("mass scales must be positive")
         if dyn.track_width_scale_min <= 0 or dyn.track_width_scale_max <= 0:
             raise ValueError("track width scales must be positive")
-        if dyn.wheel_longitudinal_offset_delta < 0:
-            raise ValueError("wheel longitudinal offset delta must be nonnegative")
         if dyn.wheel_radius_scale_min <= 0 or dyn.wheel_radius_scale_max <= 0:
             raise ValueError("wheel radius scales must be positive")
         if (
@@ -356,23 +348,6 @@ class EnvironmentConfig:
             raise ValueError("back-EMF scales must be positive")
         if dyn.motor_balance_delta_max < 0 or dyn.motor_balance_delta_max >= 1.0:
             raise ValueError("motor_balance_delta_max must be in [0, 1)")
-        if (
-            dyn.wheel_slide_friction_balance_delta_max < 0
-            or dyn.wheel_slide_friction_balance_delta_max >= 1.0
-        ):
-            raise ValueError("wheel_slide_friction_balance_delta_max must be in [0, 1)")
-        if (
-            dyn.wheel_joint_damping_balance_delta_max < 0
-            or dyn.wheel_joint_damping_balance_delta_max >= 1.0
-        ):
-            raise ValueError("wheel_joint_damping_balance_delta_max must be in [0, 1)")
-        if (
-            dyn.wheel_joint_frictionloss_balance_delta_max < 0
-            or dyn.wheel_joint_frictionloss_balance_delta_max >= 1.0
-        ):
-            raise ValueError(
-                "wheel_joint_frictionloss_balance_delta_max must be in [0, 1)"
-            )
         if dyn.motor_deadzone_min < 0 or dyn.motor_deadzone_delta < 0:
             raise ValueError("motor deadzone bounds must be nonnegative")
         if (

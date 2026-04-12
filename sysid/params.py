@@ -31,11 +31,11 @@ class ParamSpec:
 _ENV = EnvironmentConfig()
 
 PARAM_SPECS: tuple[ParamSpec, ...] = (
-    ParamSpec("track_width_scale", ParamBounds(0.75, 1.25), 1.0, PARAM_TRANSFORM_LOG),
-    ParamSpec("wheel_radius_scale", ParamBounds(0.70, 1.30), 1.0, PARAM_TRANSFORM_LOG),
+    ParamSpec("track_width_scale", ParamBounds(0.95, 1.05), 1.0, PARAM_TRANSFORM_LOG),
+    ParamSpec("wheel_radius_scale", ParamBounds(0.95, 1.05), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("caster_radius_scale", ParamBounds(0.70, 1.30), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec(
-        "caster_offset_x", ParamBounds(-0.020, 0.020), 0.0, PARAM_TRANSFORM_LINEAR
+        "caster_offset_x", ParamBounds(-0.010, 0.010), 0.0, PARAM_TRANSFORM_LINEAR
     ),
     ParamSpec("com_offset_x", ParamBounds(-0.020, 0.040), 0.0, PARAM_TRANSFORM_LINEAR),
     ParamSpec("com_offset_z", ParamBounds(-0.020, 0.020), 0.0, PARAM_TRANSFORM_LINEAR),
@@ -83,16 +83,14 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "wheel_joint_frictionloss_scale",
-        ParamBounds(0.05, 1.00),
+        ParamBounds(0.03, 3.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_armature_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG
     ),
-    ParamSpec(
-        "motor_strength_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG
-    ),
+    ParamSpec("motor_strength_scale", ParamBounds(0.50, 7.0), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("back_emf_scale", ParamBounds(0.50, 4.50), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("motor_balance", ParamBounds(-0.20, 0.20), 0.0, PARAM_TRANSFORM_LINEAR),
     ParamSpec("motor_deadzone", ParamBounds(0.0, 0.010), 0.0, PARAM_TRANSFORM_LINEAR),

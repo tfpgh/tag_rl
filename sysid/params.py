@@ -77,7 +77,7 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "wheel_joint_damping_scale",
-        ParamBounds(0.50, 4.50),
+        ParamBounds(0.05, 4.50),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),

@@ -252,14 +252,22 @@ def sample_pipeline_params(
     rng: jax.Array, config: EnvironmentConfig, curriculum_progress: jax.Array
 ) -> PipelineParams:
     if not config.pipeline_randomization.enabled:
-        scale = jnp.asarray(0.0, dtype=jnp.float32)
-    else:
-        scale = curriculum_scale(
-            curriculum_progress,
-            config.curriculum.pipeline_start,
-            config.curriculum.full_progress,
-            config.curriculum.exponent,
+        return PipelineParams(
+            action_delay_substeps=jnp.int32(0),
+            observation_delay_substeps=jnp.int32(0),
+            action_drop_probability=jnp.float32(0.0),
+            frame_drop_probability=jnp.float32(0.0),
+            stale_observation_probability=jnp.float32(0.0),
+            position_noise_std=jnp.float32(0.0),
+            yaw_noise_std=jnp.float32(0.0),
+            max_stale_steps=jnp.int32(0),
         )
+    scale = curriculum_scale(
+        curriculum_progress,
+        config.curriculum.pipeline_start,
+        config.curriculum.full_progress,
+        config.curriculum.exponent,
+    )
     (
         action_delay_rng,
         obs_delay_rng,

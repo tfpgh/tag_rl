@@ -33,6 +33,7 @@ NUM_EPISODES = 10
 VIDEO_HEIGHT = 1080
 VIDEO_WIDTH = 1920
 PRNG_KEY = 0
+CURRICULUM_PROGRESS = 0.0  # 0.0 = nominal params only, 1.0 = full DR
 
 
 def make_rollout(
@@ -49,7 +50,7 @@ def make_rollout(
     ) -> RolloutResult:
         rng, reset_rng = jax.random.split(rng)
         state, chaser_obs, evader_obs = env.reset(
-            reset_rng, jnp.asarray(1.0, dtype=jnp.float32)
+            reset_rng, jnp.asarray(CURRICULUM_PROGRESS, dtype=jnp.float32)
         )
         chaser_hstate = ScannedRNN.initialize_carry(1, hidden_size)
         evader_hstate = ScannedRNN.initialize_carry(1, hidden_size)

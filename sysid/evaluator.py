@@ -160,8 +160,6 @@ class SysIdEvaluator:
                 "layout_randomization": {"max_obstacles": 0},
                 "pipeline_randomization": {
                     "enabled": False,
-                    "max_action_delay_substeps": MAX_COMMAND_DELAY_SUBSTEPS,
-                    "max_observation_delay_substeps": MAX_OBSERVATION_DELAY_SUBSTEPS,
                 },
                 "dynamics_randomization": {"enabled": False},
                 "curriculum": {"enabled": False},

@@ -28,13 +28,17 @@ RolloutResult = tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax
 RenderFrames = list[npt.NDArray[np.uint8]]
 
 # ── Configuration ──────────────────────────────────────────────────────
-CHECKPOINT_PATH = "runs/step_209715200.pkl"
+CHECKPOINT_PATH = "runs/step_209715200_slow.pkl"
 OUTPUT_PATH = "render.mp4"
 NUM_EPISODES = 10
 VIDEO_HEIGHT = 1080
 VIDEO_WIDTH = 1920
 PRNG_KEY = 0
 CURRICULUM_PROGRESS = 0.0  # 0.0 = nominal params only, 1.0 = full DR
+CAMERA_AZIMUTH_DEG = 92.0
+CAMERA_ELEVATION_DEG = -15.0
+CAMERA_DISTANCE = 2.6
+CAMERA_LOOKAT = np.array([0.0, 0.0, 0.05], dtype=np.float64)
 
 
 def make_rollout(
@@ -190,6 +194,12 @@ def render_trajectory(
     """Render a trajectory on CPU, returning a list of RGB frames."""
     renderer = mujoco.Renderer(mj_model, height=VIDEO_HEIGHT, width=VIDEO_WIDTH)
     mj_data = mujoco.MjData(mj_model)
+    camera = mujoco.MjvCamera()
+    camera.type = mujoco.mjtCamera.mjCAMERA_FREE
+    camera.azimuth = CAMERA_AZIMUTH_DEG
+    camera.elevation = CAMERA_ELEVATION_DEG
+    camera.distance = CAMERA_DISTANCE
+    camera.lookat[:] = CAMERA_LOOKAT
     mocap_pos, mocap_quat = obstacle_mocap_buffers(
         mj_model, obstacle_positions_xy, obstacle_yaws, obstacle_active
     )
@@ -202,7 +212,7 @@ def render_trajectory(
         mj_data.mocap_pos[:] = mocap_pos
         mj_data.mocap_quat[:] = mocap_quat
         mujoco.mj_forward(mj_model, mj_data)
-        renderer.update_scene(mj_data)
+        renderer.update_scene(mj_data, camera=camera)
         frames.append(renderer.render().copy())
 
     renderer.close()

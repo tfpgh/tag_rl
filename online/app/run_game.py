@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 
 import uvicorn
 
@@ -28,8 +29,11 @@ def main() -> None:
     config.evader.robot_ip = args.evader_ip
     config.chaser.udp_port = args.udp_port
     config.evader.udp_port = args.udp_port
-    config.tracker.arena.chaser_tag_id = config.chaser.tag_id
-    config.tracker.arena.evader_tag_id = config.evader.tag_id
+    config.tracker.arena = replace(
+        config.tracker.arena,
+        chaser_tag_id=config.chaser.tag_id,
+        evader_tag_id=config.evader.tag_id,
+    )
     config.tracker.teleop.robot_ip = config.chaser.robot_ip
     config.tracker.teleop.udp_port = config.chaser.udp_port
     config.tracker.teleop.robot_tag_id = config.chaser.tag_id

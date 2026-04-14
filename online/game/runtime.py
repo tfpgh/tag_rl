@@ -13,7 +13,7 @@ import numpy as np
 from online.game.config import GameRuntimeConfig
 from online.game.control import DualRobotController, RobotCommand
 from online.game.inference import DualPolicyRunner, sync_live_env_config
-from online.game.observations import LiveObservations, build_live_observations
+from online.game.observations import LiveObservationBuilder, LiveObservations
 from online.tracking.tracker import BoardTracker
 
 
@@ -33,6 +33,8 @@ class TagGameRuntime:
             config.tracker.arena.board_height_m,
             config.tracker.arena.obstacle_size_m,
         )
+        self.observation_builder = LiveObservationBuilder(self.env_config)
+        self.observation_builder.warmup()
         self.control_hz = config.control_hz or float(self.env_config.action_frequency)
         self.match_duration_s = config.match_duration_s or float(
             self.env_config.episode_max_length
@@ -67,6 +69,9 @@ class TagGameRuntime:
         self._last_control_loop_dt_s: float | None = None
         self._last_render_loop_monotonic: float | None = None
         self._last_render_loop_dt_s: float | None = None
+        self._last_observation_build_ms: float | None = None
+        self._last_inference_ms: float | None = None
+        self._last_send_ms: float | None = None
         self._latest_raw_action = {
             "chaser": RobotCommand(0.0, 0.0).as_dict(),
             "evader": RobotCommand(0.0, 0.0).as_dict(),
@@ -299,9 +304,11 @@ class TagGameRuntime:
                 self._match_start_monotonic = now
                 self._match_step_count = 0
             episode_progress = self._episode_progress()
-            observations = build_live_observations(
-                board_state, self.env_config, episode_progress
-            )
+            observation_started = time.perf_counter()
+            observations = self.observation_builder.build(board_state, episode_progress)
+            self._last_observation_build_ms = (
+                time.perf_counter() - observation_started
+            ) * 1000.0
             if observations is None:
                 self._mode = modes.armed
                 self._phase = phases.ready
@@ -309,16 +316,20 @@ class TagGameRuntime:
                 self._status = "Observation build failed"
                 self._push_event("observation_build_failed")
             else:
+                inference_started = time.perf_counter()
                 outputs = self.policy_runner.step(
                     observations.chaser, observations.evader
                 )
+                self._last_inference_ms = (
+                    time.perf_counter() - inference_started
+                ) * 1000.0
                 raw_chaser = RobotCommand(
-                    left=float(jax.device_get(outputs.chaser_action[0])),
-                    right=float(jax.device_get(outputs.chaser_action[1])),
+                    left=float(outputs.chaser_action[0]),
+                    right=float(outputs.chaser_action[1]),
                 )
                 raw_evader = RobotCommand(
-                    left=float(jax.device_get(outputs.evader_action[0])),
-                    right=float(jax.device_get(outputs.evader_action[1])),
+                    left=float(outputs.evader_action[0]),
+                    right=float(outputs.evader_action[1]),
                 )
                 target_chaser, target_evader, terminal_reason = self._apply_game_rules(
                     now, board_state, raw_chaser, raw_evader
@@ -344,7 +355,9 @@ class TagGameRuntime:
         self._smoothed_chaser = final_chaser
         self._smoothed_evader = final_evader
 
+        send_started = time.perf_counter()
         self.controller.send(final_chaser, final_evader)
+        self._last_send_ms = (time.perf_counter() - send_started) * 1000.0
         self._latest_observation = observations
         self._latest_raw_action = {
             "chaser": raw_chaser.as_dict(),
@@ -483,6 +496,9 @@ class TagGameRuntime:
                 "render_actual_hz": None
                 if not self._last_render_loop_dt_s
                 else 1.0 / self._last_render_loop_dt_s,
+                "observation_build_ms": self._last_observation_build_ms,
+                "inference_ms": self._last_inference_ms,
+                "send_ms": self._last_send_ms,
                 "action_output_scale": self.config.action_output_scale,
                 "action_smoothing_alpha": self.config.action_smoothing_alpha,
                 "action_max_delta_per_tick": self.config.action_max_delta_per_tick,

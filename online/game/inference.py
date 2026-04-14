@@ -7,6 +7,7 @@ from runtime import jax_setup as _jax_setup  # noqa: F401
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from environment.config import EnvironmentConfig
 from rl.checkpoints import load_checkpoint_configs, load_policy_params
@@ -16,8 +17,8 @@ from rl.policy import build_policies
 
 @dataclass(slots=True)
 class DualPolicyOutputs:
-    chaser_action: jax.Array
-    evader_action: jax.Array
+    chaser_action: np.ndarray
+    evader_action: np.ndarray
 
 
 class DualPolicyRunner:
@@ -98,9 +99,13 @@ class DualPolicyRunner:
             jnp.asarray(chaser_obs, dtype=jnp.float32),
             jnp.asarray(evader_obs, dtype=jnp.float32),
         )
+        host_actions = np.asarray(
+            jax.device_get(jnp.stack([chaser_action, evader_action], axis=0)),
+            dtype=np.float32,
+        )
         return DualPolicyOutputs(
-            chaser_action=chaser_action,
-            evader_action=evader_action,
+            chaser_action=host_actions[0],
+            evader_action=host_actions[1],
         )
 
 

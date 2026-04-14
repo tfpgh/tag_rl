@@ -128,9 +128,9 @@ class PipelineRandomizationConfig:
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002
     frame_drop_probability_max: float = 0.02
-    stale_observation_probability_max: float = 0.02
-    position_noise_std_max: float = 0.004
-    yaw_noise_std_max: float = 0.05
+    stale_observation_probability_max: float = 0.01
+    position_noise_std_max: float = 0.001
+    yaw_noise_std_max: float = 0.02
     hold_last_action_on_drop: bool = True
 
 

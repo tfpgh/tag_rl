@@ -79,6 +79,7 @@ class TrackerConfig:
     display: DisplayConfig = field(default_factory=DisplayConfig)
     calibration_frames: int = 10
     use_roi_tracking: bool = True
+    full_frame_refresh_interval_frames: int = 60
     roi_padding_scale: float = 2.0
     min_roi_size_px: int = 100
     max_roi_size_px: int = 600

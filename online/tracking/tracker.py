@@ -113,6 +113,8 @@ class BoardTracker:
         expected_tag_ids = self._expected_tag_ids()
         if not self.config.use_roi_tracking or not self._last_detections:
             return self._full_frame_detect(gray)
+        if self._should_run_full_frame_refresh():
+            return self._full_frame_detect(gray)
 
         roi_detections: dict[int, TagDetection] = {}
         for tag_id in expected_tag_ids:
@@ -146,6 +148,12 @@ class BoardTracker:
             {detection.tag_id: detection for detection in detections}
         )
         return detections
+
+    def _should_run_full_frame_refresh(self) -> bool:
+        interval = self.config.full_frame_refresh_interval_frames
+        return (
+            interval > 0 and self._frame_index > 0 and self._frame_index % interval == 0
+        )
 
     def _expected_tag_ids(self) -> tuple[int, ...]:
         arena = self.config.arena

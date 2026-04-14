@@ -63,6 +63,7 @@ class TagGameRuntime:
         self._match_start_monotonic: float | None = None
         self._match_step_count = 0
         self._frame_timestamp: float | None = None
+        self._frame_received_monotonic: float | None = None
         self._latest_snapshot: dict[str, Any] = {}
         self._latest_jpeg: bytes | None = None
         self._latest_frame: np.ndarray | None = None
@@ -201,6 +202,7 @@ class TagGameRuntime:
                 with self._lock:
                     self._latest_frame = frame
                     self._latest_board_state = board_state
+                    self._frame_received_monotonic = time.monotonic()
             except Exception as exc:
                 self.controller.zero_all()
                 with self._lock:
@@ -411,8 +413,8 @@ class TagGameRuntime:
                 return True, "Tracking grace window"
             return False, "Robot visibility lost"
         if (
-            self._frame_timestamp is not None
-            and now - self._frame_timestamp > self.config.stale_frame_timeout_s
+            self._frame_received_monotonic is not None
+            and now - self._frame_received_monotonic > self.config.stale_frame_timeout_s
         ):
             return False, "Tracker frame stale"
         return True, "Ready"
@@ -456,7 +458,9 @@ class TagGameRuntime:
         self, now: float, board_state, ready: bool, ready_reason: str
     ) -> dict[str, Any]:
         frame_age = (
-            None if self._frame_timestamp is None else now - self._frame_timestamp
+            None
+            if self._frame_received_monotonic is None
+            else now - self._frame_received_monotonic
         )
         chaser_pose = (
             None

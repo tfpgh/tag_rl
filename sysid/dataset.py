@@ -14,6 +14,7 @@ PREROLL_SECONDS = 0.5
 STRIDE_SECONDS = 0.5
 SUBSTEP_DT_SECONDS = 0.005
 MAX_ABS_INT16 = 32767.0
+GAME_TAIL_TRIM_SECONDS = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,19 @@ def _load_jsonl_if_exists(path: Path) -> list[dict]:
     if not path.exists():
         return []
     return _load_jsonl(path)
+
+
+def _game_tail_trim_seconds(run_dir: Path) -> float:
+    metadata_path = run_dir / "metadata.json"
+    if not metadata_path.exists():
+        return 0.0
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    collection = metadata.get("collection")
+    if not isinstance(collection, dict):
+        return 0.0
+    if collection.get("mode") != "game":
+        return 0.0
+    return GAME_TAIL_TRIM_SECONDS
 
 
 def _command_array(record: dict) -> np.ndarray:
@@ -221,6 +235,7 @@ def _segment_records(
     samples = _iter_valid_samples(_load_jsonl(run_dir / "samples.jsonl"))
     commands = _load_jsonl(run_dir / "commands.jsonl")
     segments = _load_jsonl_if_exists(run_dir / "segments.jsonl")
+    tail_trim_seconds = _game_tail_trim_seconds(run_dir)
     records: list[dict[str, np.ndarray]] = []
     metadata: list[WindowMetadata] = []
     if not samples or not commands or not segments:
@@ -239,7 +254,9 @@ def _segment_records(
         pre_roll_s = float(segment.get("pre_roll_s", config.preroll_seconds))
         window_start = float(started_at)
         score_start = window_start + pre_roll_s
-        window_end = float(ended_at)
+        window_end = float(ended_at) - tail_trim_seconds
+        if window_end <= score_start:
+            continue
         start_index = int(
             np.searchsorted(sample_times, window_start - 1e-9, side="left")
         )
@@ -285,13 +302,16 @@ def _window_records(
 ) -> tuple[list[dict[str, np.ndarray]], list[WindowMetadata]]:
     samples = _iter_valid_samples(_load_jsonl(run_dir / "samples.jsonl"))
     commands = _load_jsonl(run_dir / "commands.jsonl")
+    tail_trim_seconds = _game_tail_trim_seconds(run_dir)
     records: list[dict[str, np.ndarray]] = []
     metadata: list[WindowMetadata] = []
     if not samples or not commands:
         return records, metadata
 
-    max_time = samples[-1]["monotonic_time"]
+    max_time = samples[-1]["monotonic_time"] - tail_trim_seconds
     next_window_start = samples[0]["monotonic_time"]
+    if max_time <= next_window_start:
+        return records, metadata
     for start_index, sample in enumerate(samples):
         window_start = sample["monotonic_time"]
         if window_start + config.total_seconds > max_time:

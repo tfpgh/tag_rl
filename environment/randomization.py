@@ -353,8 +353,10 @@ def sample_layout_state(
     ) = random.split(rng, 3)
 
     obstacle_cfg = config.layout_randomization
-    available_max_obstacles = jnp.int32(
-        jnp.floor(layout_scale * obstacle_cfg.max_obstacles)
+    available_max_obstacles = jnp.where(
+        layout_scale > 0.0,
+        jnp.int32(jnp.ceil(layout_scale * obstacle_cfg.max_obstacles)),
+        jnp.int32(0),
     )
     n_active = random.randint(key_obs_count, (), 0, available_max_obstacles + 1)
     obstacle_active = jnp.arange(config.max_obstacles) < n_active

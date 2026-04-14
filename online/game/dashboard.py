@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections.abc import Iterator
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from online.game.runtime import TagGameRuntime
@@ -87,7 +87,10 @@ def build_dashboard_app(runtime: TagGameRuntime) -> FastAPI:
 
     @app.post("/api/control/{action}")
     def control(action: str) -> JSONResponse:
-        runtime.handle_action(action)
+        try:
+            runtime.handle_action(action)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse({"ok": True, "action": action})
 
     @app.get("/video.mjpg")
@@ -104,7 +107,7 @@ def build_dashboard_app(runtime: TagGameRuntime) -> FastAPI:
             while True:
                 await websocket.send_json(runtime.get_snapshot())
                 await asyncio.sleep(0.10)
-        finally:
-            await websocket.close()
+        except Exception:
+            pass
 
     return app

@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import cv2
@@ -45,8 +45,8 @@ class TagGameRuntime:
         self._thread: threading.Thread | None = None
         self._running = False
         self._lock = threading.Lock()
-        self._mode = "idle"
-        self._phase = "waiting"
+        self._mode = config.modes.idle
+        self._phase = config.phases.waiting
         self._status = "Booting"
         self._match_start_monotonic: float | None = None
         self._frame_timestamp: float | None = None
@@ -61,7 +61,6 @@ class TagGameRuntime:
             "evader": RobotCommand(0.0, 0.0).as_dict(),
         }
         self._latest_observation: LiveObservations | None = None
-        self._last_loop_started: float | None = None
         self._last_ready_time: float | None = None
         self._events: deque[RuntimeEvent] = deque(maxlen=20)
         self._push_event("runtime_initialized")
@@ -81,52 +80,59 @@ class TagGameRuntime:
         self.tracker.close()
 
     def handle_action(self, action: str) -> None:
+        actions = self.config.actions
+        modes = self.config.modes
+        phases = self.config.phases
         with self._lock:
-            if action == "arm":
-                if self._mode != "estop":
-                    self._mode = "armed"
+            if action == actions.arm:
+                if self._mode != modes.estop:
+                    self._mode = modes.armed
                     self._status = "System armed"
                     self._push_event("armed")
-            elif action == "disarm":
-                self._mode = "idle"
-                self._phase = "ready"
+            elif action == actions.disarm:
+                self._mode = modes.idle
+                self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
                 self._status = "System disarmed"
                 self._push_event("disarmed")
-            elif action == "start":
-                if self._mode == "armed":
-                    self._mode = "running"
-                    self._phase = "active"
+            elif action == actions.start:
+                if self._mode == modes.armed:
+                    self._mode = modes.running
+                    self._phase = phases.active
                     self._match_start_monotonic = None
                     self.policy_runner.reset()
                     self._status = "Waiting for first active tick"
                     self._push_event("game_started")
-            elif action == "stop":
-                self._mode = "armed"
-                self._phase = "ready"
+            elif action == actions.stop:
+                self._mode = modes.armed
+                self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
                 self._status = "Game stopped"
                 self._push_event("game_stopped")
-            elif action == "reset":
-                self._phase = "ready"
+            elif action == actions.reset:
+                self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
                 self._status = "Game state reset"
                 self._push_event("game_reset")
-            elif action == "estop":
-                self._mode = "estop"
-                self._phase = "stopped"
+            elif action == actions.estop:
+                self._mode = modes.estop
+                self._phase = phases.stopped
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
                 self._status = "Emergency stop engaged"
                 self._push_event("estop")
-            elif action == "clear_estop":
-                self._mode = "idle"
-                self._phase = "ready"
+            elif action == actions.clear_estop:
+                self._mode = modes.idle
+                self._phase = phases.ready
+                self._match_start_monotonic = None
+                self.policy_runner.reset()
                 self._status = "Emergency stop cleared"
                 self._push_event("estop_cleared")
+            else:
+                raise ValueError(f"Unsupported action: {action}")
 
     def get_snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -137,13 +143,13 @@ class TagGameRuntime:
             return self._latest_jpeg
 
     def _run_loop(self) -> None:
+        modes = self.config.modes
         interval = 1.0 / self.control_hz
         while self._running:
             loop_started = time.perf_counter()
             try:
                 frame, board_state = self.tracker.process_next_frame()
                 now = time.monotonic()
-                self._last_loop_started = now
                 snapshot = self._step_runtime(now, frame, board_state)
                 jpeg = self._render_dashboard_frame(frame, board_state, snapshot)
                 with self._lock:
@@ -152,6 +158,7 @@ class TagGameRuntime:
             except Exception as exc:
                 self.controller.zero_all()
                 with self._lock:
+                    self._mode = modes.estop
                     self._status = f"Runtime error: {exc}"
                     self._latest_snapshot = {
                         "runtime": {
@@ -168,15 +175,18 @@ class TagGameRuntime:
     def _step_runtime(
         self, now: float, frame: np.ndarray, board_state
     ) -> dict[str, Any]:
+        del frame
+        modes = self.config.modes
+        phases = self.config.phases
         self._frame_timestamp = board_state.timestamp
         ready, reason = self._ready_state(now, board_state)
         if ready:
             self._last_ready_time = now
-            if self._mode != "running":
-                self._phase = "ready"
-        elif self._mode == "running":
-            self._mode = "armed"
-            self._phase = "ready"
+            if self._mode != modes.running:
+                self._phase = phases.ready
+        elif self._mode == modes.running:
+            self._mode = modes.armed
+            self._phase = phases.ready
             self.policy_runner.reset()
             self._status = reason
             self._push_event("tracking_not_ready")
@@ -188,7 +198,7 @@ class TagGameRuntime:
         episode_progress = self._episode_progress(now)
         observations = None
 
-        if self._mode == "running" and ready:
+        if self._mode == modes.running and ready:
             if self._match_start_monotonic is None:
                 self._match_start_monotonic = now
                 episode_progress = 0.0
@@ -196,10 +206,11 @@ class TagGameRuntime:
                 board_state, self.env_config, episode_progress
             )
             if observations is None:
-                self._mode = "armed"
-                self._phase = "ready"
+                self._mode = modes.armed
+                self._phase = phases.ready
                 self.policy_runner.reset()
                 self._status = "Observation build failed"
+                self._push_event("observation_build_failed")
             else:
                 outputs = self.policy_runner.step(
                     observations.chaser, observations.evader
@@ -216,14 +227,14 @@ class TagGameRuntime:
                     now, board_state, raw_chaser, raw_evader
                 )
                 if terminal_reason is not None:
-                    self._mode = "armed"
+                    self._mode = modes.armed
                     self._status = terminal_reason
                     self.policy_runner.reset()
 
-        if self._mode == "estop":
+        if self._mode == modes.estop:
             final_chaser = RobotCommand(0.0, 0.0)
             final_evader = RobotCommand(0.0, 0.0)
-            self._phase = "stopped"
+            self._phase = phases.stopped
 
         self.controller.send(final_chaser, final_evader)
         self._latest_observation = observations
@@ -235,7 +246,7 @@ class TagGameRuntime:
             "chaser": final_chaser.as_dict(),
             "evader": final_evader.as_dict(),
         }
-        if self._mode != "running" and self._mode != "estop":
+        if self._mode not in (modes.running, modes.estop):
             self.controller.zero_all()
         return self._build_snapshot(now, board_state, ready, reason)
 
@@ -247,13 +258,18 @@ class TagGameRuntime:
         )
 
     def _ready_state(self, now: float, board_state) -> tuple[bool, str]:
-        if self._mode == "estop":
+        if self._mode == self.config.modes.estop:
             return False, "Emergency stop engaged"
         if not board_state.calibration.valid:
             return False, "Arena calibration incomplete"
         if board_state.chaser is None or board_state.evader is None:
             return False, "Missing robot detections"
         if not board_state.chaser.visible or not board_state.evader.visible:
+            if (
+                self._last_ready_time is not None
+                and now - self._last_ready_time <= self.config.target_loss_timeout_s
+            ):
+                return True, "Tracking grace window"
             return False, "Robot visibility lost"
         if (
             self._frame_timestamp is not None
@@ -283,14 +299,14 @@ class TagGameRuntime:
             )
         )
         if distance < self.tag_distance:
-            self._phase = "tagged"
+            self._phase = self.config.phases.tagged
             self._push_event("tagged")
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Tagged"
         if elapsed >= self.match_duration_s:
-            self._phase = "time_up"
+            self._phase = self.config.phases.time_up
             self._push_event("time_up")
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Time up"
-        self._phase = "active"
+        self._phase = self.config.phases.active
         self._status = "Game active"
         return chaser, evader, None
 
@@ -367,7 +383,7 @@ class TagGameRuntime:
                     self._latest_raw_action["evader"],
                 ),
             },
-            "events": [event.__dict__ for event in self._events],
+            "events": [asdict(event) for event in self._events],
         }
 
     def _policy_summary(

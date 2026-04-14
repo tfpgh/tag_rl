@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from runtime import jax_setup as _jax_setup  # noqa: F401
@@ -64,7 +64,8 @@ def sync_live_env_config(
     board_height_m: float,
     obstacle_size_m: float,
 ) -> EnvironmentConfig:
-    env_config.arena.arena_width = board_width_m
-    env_config.arena.arena_height = board_height_m
-    env_config.layout_randomization.obstacle_width = obstacle_size_m
-    return env_config
+    live_env_config = EnvironmentConfig.from_dict(asdict(env_config))
+    live_env_config.arena.arena_width = board_width_m
+    live_env_config.arena.arena_height = board_height_m
+    live_env_config.layout_randomization.obstacle_width = obstacle_size_m
+    return live_env_config

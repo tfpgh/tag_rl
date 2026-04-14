@@ -16,6 +16,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chaser-ip", default="192.168.1.5")
     parser.add_argument("--evader-ip", default="192.168.1.6")
     parser.add_argument("--udp-port", type=int, default=8888)
+    parser.add_argument("--chaser-tag-id", type=int, default=4)
+    parser.add_argument("--evader-tag-id", type=int, default=5)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--no-udp", action="store_true")
@@ -25,6 +27,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = GameRuntimeConfig(checkpoint_path=args.checkpoint)
+    config.chaser.tag_id = args.chaser_tag_id
+    config.evader.tag_id = args.evader_tag_id
     config.chaser.robot_ip = args.chaser_ip
     config.evader.robot_ip = args.evader_ip
     config.chaser.udp_port = args.udp_port

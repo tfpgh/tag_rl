@@ -13,6 +13,35 @@ class RobotEndpointConfig:
     tag_id: int
 
 
+@dataclass(frozen=True, slots=True)
+class RuntimeModeConfig:
+    idle: str = "idle"
+    armed: str = "armed"
+    running: str = "running"
+    estop: str = "estop"
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimePhaseConfig:
+    waiting: str = "waiting"
+    ready: str = "ready"
+    active: str = "active"
+    tagged: str = "tagged"
+    time_up: str = "time_up"
+    stopped: str = "stopped"
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeActionConfig:
+    arm: str = "arm"
+    disarm: str = "disarm"
+    start: str = "start"
+    stop: str = "stop"
+    reset: str = "reset"
+    estop: str = "estop"
+    clear_estop: str = "clear_estop"
+
+
 @dataclass(slots=True)
 class GameRuntimeConfig:
     checkpoint_path: str
@@ -40,3 +69,6 @@ class GameRuntimeConfig:
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8000
     jpeg_quality: int = 80
+    modes: RuntimeModeConfig = field(default_factory=RuntimeModeConfig)
+    phases: RuntimePhaseConfig = field(default_factory=RuntimePhaseConfig)
+    actions: RuntimeActionConfig = field(default_factory=RuntimeActionConfig)

@@ -64,6 +64,7 @@ class GameRuntimeConfig:
     )
     control_hz: float | None = None
     match_duration_s: float | None = None
+    action_output_scale: float = 0.5
     stale_frame_timeout_s: float = 0.20
     target_loss_timeout_s: float = 0.20
     dashboard_host: str = "127.0.0.1"

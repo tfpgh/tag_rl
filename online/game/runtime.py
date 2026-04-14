@@ -360,7 +360,11 @@ class TagGameRuntime:
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Time up"
         self._phase = self.config.phases.active
         self._status = "Game active"
-        return chaser, evader, None
+        return self._scale_command(chaser), self._scale_command(evader), None
+
+    def _scale_command(self, command: RobotCommand) -> RobotCommand:
+        scale = self.config.action_output_scale
+        return RobotCommand(left=command.left * scale, right=command.right * scale)
 
     def _build_snapshot(
         self, now: float, board_state, ready: bool, ready_reason: str
@@ -394,6 +398,7 @@ class TagGameRuntime:
                 "ready": ready,
                 "ready_reason": ready_reason,
                 "control_hz": self.control_hz,
+                "action_output_scale": self.config.action_output_scale,
                 "frame_age_s": frame_age,
             },
             "game": {

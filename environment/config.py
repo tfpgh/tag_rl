@@ -110,7 +110,7 @@ class DynamicsRandomizationConfig:
     back_emf_scale_nominal: float = 1.4739843606948853
     back_emf_scale_min: float = 2.13
     back_emf_scale_max: float = 2.88
-    # Motor balance — centered at 0 (sysid found -0.015 on one robot; not generalised)
+    # Motor balance — centered at 0
     motor_balance_delta_max: float = 0.10
     # Motor deadzone
     motor_deadzone_nominal: float = 0.0006686113774776459

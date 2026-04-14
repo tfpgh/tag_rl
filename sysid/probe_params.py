@@ -33,7 +33,6 @@ CORE_SWEEP_PARAMS = [
     "motor_strength_scale",
     "back_emf_scale",
     "motor_balance",
-    "motor_deadzone",
     "motor_time_constant_seconds",
     "command_delay_substeps",
     "observation_delay_substeps",
@@ -271,20 +270,19 @@ def _build_probe_groups(
         for emf in emf_values
     ]
 
-    deadzone_values = _local_values_for_param("motor_deadzone", base, 5, local_fraction)
     lag_values = _local_values_for_param(
         "motor_time_constant_seconds", base, 5, local_fraction
     )
-    groups["grid:deadzone_vs_lag"] = [
+    groups["grid:balance_vs_lag"] = [
         {
-            "label": f"deadzone={deadzone} lag={lag}",
+            "label": f"balance={balance} lag={lag}",
             "params": _candidate(
                 base,
-                motor_deadzone=deadzone,
+                motor_balance=balance,
                 motor_time_constant_seconds=lag,
             ),
         }
-        for deadzone in deadzone_values
+        for balance in _local_values_for_param("motor_balance", base, 5, local_fraction)
         for lag in lag_values
     ]
 
@@ -294,10 +292,6 @@ def _build_probe_groups(
         {
             "label": "wheel_torsion=1.0",
             "params": _candidate(base, wheel_torsional_friction_scale=1.0),
-        },
-        {
-            "label": "motor_deadzone=0",
-            "params": _candidate(base, motor_deadzone=0.0),
         },
         {
             "label": "motor_lag=0",

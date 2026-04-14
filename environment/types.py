@@ -36,7 +36,6 @@ class AgentDynamicsParams(NamedTuple):
     motor_strength_scale: jax.Array
     back_emf_scale: jax.Array
     motor_balance: jax.Array
-    motor_deadzone: jax.Array
     motor_time_constant_seconds: jax.Array
 
 

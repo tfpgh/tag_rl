@@ -11,7 +11,6 @@ from mujoco import mjx
 
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
-from environment.motor import apply_deadzone
 from environment.mujoco_data import JointDofSlices, JointQposSlices, yaw_to_quaternion
 from environment.randomization import randomize_model
 from sysid.params import (
@@ -397,7 +396,6 @@ class SysIdEvaluator:
         initial_buffer = jnp.repeat(
             window.initial_command[None, :], self.action_buffer_len, axis=0
         )
-        motor_deadzone = domain_params.chaser.motor_deadzone
 
         def substep(
             carry: tuple[mjx.Data, jax.Array], proposed_action: jax.Array
@@ -407,10 +405,9 @@ class SysIdEvaluator:
                 jnp.roll(action_buffer, shift=-1, axis=0).at[-1].set(proposed_action)
             )
             delayed_action = action_buffer[-1 - pipeline_params.action_delay_substeps]
-            motor_command = apply_deadzone(delayed_action, motor_deadzone)
             data = data.replace(
                 ctrl=jnp.concatenate(
-                    [motor_command, jnp.zeros((2,), dtype=jnp.float32)]
+                    [delayed_action, jnp.zeros((2,), dtype=jnp.float32)]
                 )
             )
             data = mjx.step(model, data)

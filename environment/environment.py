@@ -11,7 +11,6 @@ from environment.geometry import (
     point_out_of_bounds,
     raycast_scene,
 )
-from environment.motor import apply_deadzone
 from environment.mjcf import generate_mjcf
 from environment.mujoco_data import JointDofSlices, JointQposSlices, quaternion_to_yaw
 from environment.randomization import (
@@ -260,18 +259,6 @@ class TagEnvironment:
         )
         expanded_fallback_actions = self._expand_actions_to_substeps(fallback_actions)
         return expanded_actions, expanded_fallback_actions
-
-    def _apply_motor_deadzone(
-        self, state: TagEnvironmentState, applied_actions: jax.Array
-    ) -> jax.Array:
-        deadzones = jnp.stack(
-            [
-                state.domain_params.chaser.motor_deadzone,
-                state.domain_params.evader.motor_deadzone,
-            ],
-            axis=0,
-        )
-        return jax.vmap(apply_deadzone)(applied_actions, deadzones)
 
     def _sample_measurement(
         self,
@@ -583,9 +570,7 @@ class TagEnvironment:
                 ),
                 delayed_actions,
             )
-            control_actions = jnp.concatenate(
-                self._apply_motor_deadzone(state, applied_actions), axis=0
-            )
+            control_actions = jnp.concatenate(applied_actions, axis=0)
             data = data.replace(ctrl=control_actions)
             data = mjx.step(randomized_model, data)
 

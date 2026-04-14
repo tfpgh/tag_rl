@@ -74,13 +74,13 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "wheel_joint_damping_scale",
-        ParamBounds(0.10, 5.0),
+        ParamBounds(0.01, 5.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_joint_frictionloss_scale",
-        ParamBounds(0.10, 5.0),
+        ParamBounds(0.01, 5.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
@@ -88,7 +88,6 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ParamSpec("motor_strength_scale", ParamBounds(0.25, 8.0), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("back_emf_scale", ParamBounds(0.25, 5.0), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec("motor_balance", ParamBounds(-0.25, 0.25), 0.0, PARAM_TRANSFORM_LINEAR),
-    ParamSpec("motor_deadzone", ParamBounds(0.0, 0.01), 0.0, PARAM_TRANSFORM_LINEAR),
     ParamSpec(
         "motor_time_constant_seconds",
         ParamBounds(0.005, 0.100),
@@ -251,7 +250,6 @@ def build_domain_and_pipeline_from_physical(
         ),
         back_emf_scale=jnp.asarray(resolved["back_emf_scale"], dtype=jnp.float32),
         motor_balance=jnp.asarray(resolved["motor_balance"], dtype=jnp.float32),
-        motor_deadzone=jnp.asarray(resolved["motor_deadzone"], dtype=jnp.float32),
         motor_time_constant_seconds=jnp.asarray(
             resolved["motor_time_constant_seconds"], dtype=jnp.float32
         ),

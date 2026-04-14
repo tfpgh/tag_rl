@@ -17,7 +17,6 @@ import numpy as np
 from mujoco import mjx
 
 from environment.mjcf import generate_mjcf
-from environment.motor import apply_deadzone
 from environment.randomization import randomize_model
 from online.app.render_run import (
     DEFAULT_FPS,
@@ -69,6 +68,11 @@ def parse_args() -> argparse.Namespace:
         default=5.0,
         help="Reset the simulated ghost to the recorded pose every N seconds. Use 0 to disable.",
     )
+    parser.add_argument(
+        "--include-scripted",
+        action="store_true",
+        help="When --run-dir points to a dataset root, include non-game runs too.",
+    )
     return parser.parse_args()
 
 
@@ -108,6 +112,88 @@ def _extract_physical_params(path: Path) -> dict[str, float]:
 
 def _iter_samples(run_dir: Path) -> list[dict[str, Any]]:
     return _load_jsonl(run_dir / "samples.jsonl")
+
+
+def _is_run_dir(path: Path) -> bool:
+    return (path / "samples.jsonl").exists() and (path / "commands.jsonl").exists()
+
+
+def _discover_run_dirs(root: Path, include_scripted: bool) -> list[Path]:
+    run_dirs: list[Path] = []
+    seen: set[Path] = set()
+    for metadata_path in sorted(root.rglob("metadata.json")):
+        run_dir = metadata_path.parent
+        if run_dir in seen or not _is_run_dir(run_dir):
+            continue
+        seen.add(run_dir)
+        if include_scripted:
+            run_dirs.append(run_dir)
+            continue
+        metadata = load_metadata(run_dir)
+        collection = metadata.get("collection")
+        if isinstance(collection, dict) and collection.get("mode") == "game":
+            run_dirs.append(run_dir)
+    return run_dirs
+
+
+def _resolve_run_dirs(path: Path, include_scripted: bool) -> list[Path]:
+    if _is_run_dir(path):
+        return [path]
+    if not path.exists() or not path.is_dir():
+        raise ValueError(f"Run path does not exist: {path}")
+    run_dirs = _discover_run_dirs(path, include_scripted)
+    if not run_dirs:
+        raise ValueError(f"No renderable runs found under {path}")
+    return run_dirs
+
+
+def _title_card(
+    width: int,
+    height: int,
+    run_dir: Path,
+    metadata: dict[str, Any],
+    params_label: str,
+) -> np.ndarray:
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    frame[:] = np.array(OVERLAY_BG, dtype=np.uint8)
+    collection = metadata.get("collection")
+    split = (
+        collection.get("split", "unknown")
+        if isinstance(collection, dict)
+        else "unknown"
+    )
+    mode = (
+        collection.get("mode", "unknown") if isinstance(collection, dict) else "unknown"
+    )
+    end_reason = (
+        collection.get("end_reason", "unknown")
+        if isinstance(collection, dict)
+        else "unknown"
+    )
+    target_tag = metadata.get("teleop", {}).get("robot_tag_id", "unknown")
+    lines = [
+        "SysID Compare",
+        run_dir.name,
+        f"split={split} mode={mode} target_tag={target_tag}",
+        f"end_reason={end_reason}",
+        params_label,
+    ]
+    y = 120
+    for index, line in enumerate(lines):
+        scale = 1.0 if index == 0 else 0.72
+        thickness = 2 if index == 0 else 1
+        cv2.putText(
+            frame,
+            line,
+            (48, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            scale,
+            TEXT_COLOR,
+            thickness,
+            cv2.LINE_AA,
+        )
+        y += 46 if index == 0 else 36
+    return frame
 
 
 def _build_command_substeps(
@@ -202,11 +288,8 @@ def _simulate_target_poses(
             jnp.roll(action_buffer, shift=-1, axis=0).at[-1].set(proposed_action)
         )
         delayed_action = action_buffer[-1 - pipeline_params.action_delay_substeps]
-        motor_command = apply_deadzone(
-            delayed_action, domain_params.chaser.motor_deadzone
-        )
         data = data.replace(
-            ctrl=jnp.concatenate([motor_command, jnp.zeros((2,), dtype=jnp.float32)])
+            ctrl=jnp.concatenate([delayed_action, jnp.zeros((2,), dtype=jnp.float32)])
         )
         data = mjx.step(model, data)
         qpos = data.qpos[evaluator.qpos_slices.chaser_root]
@@ -555,9 +638,15 @@ def _draw_metrics_overlay(
     )
 
 
-def render_compare(args: argparse.Namespace) -> None:
-    metadata = load_metadata(args.run_dir)
-    all_samples = _iter_samples(args.run_dir)
+def _render_run(
+    writer: Any,
+    args: argparse.Namespace,
+    params: dict[str, float],
+    params_label: str,
+    run_dir: Path,
+) -> None:
+    metadata = load_metadata(run_dir)
+    all_samples = _iter_samples(run_dir)
     samples = selected_samples(
         all_samples,
         start_frame=args.start_frame,
@@ -565,10 +654,10 @@ def render_compare(args: argparse.Namespace) -> None:
         keep_uncalibrated=args.keep_uncalibrated,
     )
     if not samples:
-        raise ValueError("No samples available after filtering.")
-    commands = _load_jsonl(args.run_dir / "commands.jsonl")
-    segment_records = _load_jsonl_if_exists(args.run_dir / "segments.jsonl")
-    params = _extract_physical_params(args.params)
+        print(f"Skipping {run_dir}: no samples available after filtering")
+        return
+    commands = _load_jsonl(run_dir / "commands.jsonl")
+    segment_records = _load_jsonl_if_exists(run_dir / "segments.jsonl")
 
     max_logged_obstacles = max(len(sample.get("obstacles", [])) for sample in samples)
     env_config = build_env_config(metadata, max_logged_obstacles)
@@ -596,96 +685,108 @@ def render_compare(args: argparse.Namespace) -> None:
     renderer = mujoco.Renderer(model, height=args.height, width=args.width)
     camera = default_camera(env_config)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     hold_last_pose = not args.no_hold_last_pose
     real_pose: PoseState | None = None
     real_trail: deque[tuple[float, float]] = deque(maxlen=args.trail_length)
     sim_trail: deque[tuple[float, float]] = deque(maxlen=args.trail_length)
     running_pos_errs: list[float] = []
     running_yaw_errs: list[float] = []
-    params_label = f"Params: {args.params.name}"
 
-    with imageio.get_writer(args.output, fps=args.fps, codec="h264") as writer:
-        writer = cast(Any, writer)
-        for index, (sample, sim_pose_array) in enumerate(
-            zip(samples, simulated, strict=True), start=1
-        ):
-            qpos = np.zeros(model.nq, dtype=np.float64)
-            qvel = np.zeros(model.nv, dtype=np.float64)
+    title_card = _title_card(args.width, args.height, run_dir, metadata, params_label)
+    for _ in range(max(1, int(round(args.fps)))):
+        writer.append_data(title_card)
 
-            real_pose = pose_from_record(
-                sample.get("target_robot"), real_pose, hold_last_pose
+    for index, (sample, sim_pose_array) in enumerate(
+        zip(samples, simulated, strict=True), start=1
+    ):
+        qpos = np.zeros(model.nq, dtype=np.float64)
+        qvel = np.zeros(model.nv, dtype=np.float64)
+
+        real_pose = pose_from_record(
+            sample.get("target_robot"), real_pose, hold_last_pose
+        )
+        sim_pose = PoseState(
+            x_m=float(sim_pose_array[0]),
+            y_m=float(sim_pose_array[1]),
+            yaw_rad=float(sim_pose_array[2]),
+        )
+
+        set_agent_pose(qpos, qpos_slices.chaser_root, real_pose, env_config.agent_z)
+        set_agent_pose(qpos, qpos_slices.evader_root, sim_pose, env_config.agent_z)
+        mocap_pos, mocap_quat = obstacle_mocap_buffers(model, sample)
+
+        data.qpos[:] = qpos
+        data.qvel[:] = qvel
+        if model.nmocap > 0:
+            data.mocap_pos[:] = mocap_pos
+            data.mocap_quat[:] = mocap_quat
+        mujoco.mj_forward(model, data)
+        renderer.update_scene(data, camera=camera)
+        frame = renderer.render().copy()
+
+        current_errors: dict[str, float] | None = None
+        if real_pose is not None:
+            real_trail.append((real_pose.x_m, real_pose.y_m))
+            pos_err = float(
+                np.hypot(sim_pose.x_m - real_pose.x_m, sim_pose.y_m - real_pose.y_m)
             )
-            sim_pose = PoseState(
-                x_m=float(sim_pose_array[0]),
-                y_m=float(sim_pose_array[1]),
-                yaw_rad=float(sim_pose_array[2]),
-            )
-
-            set_agent_pose(qpos, qpos_slices.chaser_root, real_pose, env_config.agent_z)
-            set_agent_pose(qpos, qpos_slices.evader_root, sim_pose, env_config.agent_z)
-            mocap_pos, mocap_quat = obstacle_mocap_buffers(model, sample)
-
-            data.qpos[:] = qpos
-            data.qvel[:] = qvel
-            if model.nmocap > 0:
-                data.mocap_pos[:] = mocap_pos
-                data.mocap_quat[:] = mocap_quat
-            mujoco.mj_forward(model, data)
-            renderer.update_scene(data, camera=camera)
-            frame = renderer.render().copy()
-
-            current_errors: dict[str, float] | None = None
-            if real_pose is not None:
-                real_trail.append((real_pose.x_m, real_pose.y_m))
-                pos_err = float(
-                    np.hypot(sim_pose.x_m - real_pose.x_m, sim_pose.y_m - real_pose.y_m)
-                )
-                yaw_err = float(
-                    np.degrees(
-                        np.arctan2(
-                            np.sin(sim_pose.yaw_rad - real_pose.yaw_rad),
-                            np.cos(sim_pose.yaw_rad - real_pose.yaw_rad),
-                        )
+            yaw_err = float(
+                np.degrees(
+                    np.arctan2(
+                        np.sin(sim_pose.yaw_rad - real_pose.yaw_rad),
+                        np.cos(sim_pose.yaw_rad - real_pose.yaw_rad),
                     )
                 )
-                running_pos_errs.append(pos_err)
-                running_yaw_errs.append(abs(yaw_err))
-                current_errors = {
-                    "position_cm": pos_err * 100.0,
-                    "yaw_deg": abs(yaw_err),
-                }
-            sim_trail.append((sim_pose.x_m, sim_pose.y_m))
+            )
+            running_pos_errs.append(pos_err)
+            running_yaw_errs.append(abs(yaw_err))
+            current_errors = {
+                "position_cm": pos_err * 100.0,
+                "yaw_deg": abs(yaw_err),
+            }
+        sim_trail.append((sim_pose.x_m, sim_pose.y_m))
 
-            draw_control_overlay(frame, sample)
-            _draw_panel(
-                frame,
-                sample,
-                real_pose,
-                sim_pose,
-                real_trail,
-                sim_trail,
-                env_config,
-                current_errors,
-            )
-            _draw_metrics_overlay(
-                frame,
-                current_errors,
-                {
-                    "position_cm": (100.0 * float(np.mean(running_pos_errs)))
-                    if running_pos_errs
-                    else 0.0,
-                    "yaw_deg": float(np.mean(running_yaw_errs))
-                    if running_yaw_errs
-                    else 0.0,
-                },
-                params_label,
-            )
-            writer.append_data(frame)
-            if index % 100 == 0 or index == len(samples):
-                print(f"Rendered {index}/{len(samples)} frames")
+        draw_control_overlay(frame, sample)
+        _draw_panel(
+            frame,
+            sample,
+            real_pose,
+            sim_pose,
+            real_trail,
+            sim_trail,
+            env_config,
+            current_errors,
+        )
+        _draw_metrics_overlay(
+            frame,
+            current_errors,
+            {
+                "position_cm": (100.0 * float(np.mean(running_pos_errs)))
+                if running_pos_errs
+                else 0.0,
+                "yaw_deg": float(np.mean(running_yaw_errs))
+                if running_yaw_errs
+                else 0.0,
+            },
+            params_label,
+        )
+        writer.append_data(frame)
+        if index % 100 == 0 or index == len(samples):
+            print(f"Rendered {run_dir.name}: {index}/{len(samples)} frames")
 
     renderer.close()
+
+
+def render_compare(args: argparse.Namespace) -> None:
+    run_dirs = _resolve_run_dirs(args.run_dir, args.include_scripted)
+    params = _extract_physical_params(args.params)
+    params_label = f"Params: {args.params.name}"
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with imageio.get_writer(args.output, fps=args.fps, codec="h264") as writer:
+        writer = cast(Any, writer)
+        for run_dir in run_dirs:
+            _render_run(writer, args, params, params_label, run_dir)
     print(f"Saved comparison video to {args.output}")
 
 

@@ -112,10 +112,6 @@ class DynamicsRandomizationConfig:
     back_emf_scale_max: float = 2.88
     # Motor balance — centered at 0
     motor_balance_delta_max: float = 0.10
-    # Motor deadzone
-    motor_deadzone_nominal: float = 0.0006686113774776459
-    motor_deadzone_delta: float = 0.0005
-    motor_deadzone_min: float = 0.0  # hard floor
     # Motor time constant
     motor_time_constant_seconds_nominal: float = 0.03243434429168701
     motor_time_constant_seconds_min: float = 0.020
@@ -359,8 +355,6 @@ class EnvironmentConfig:
             raise ValueError("back-EMF scales must be positive")
         if dyn.motor_balance_delta_max < 0 or dyn.motor_balance_delta_max >= 1.0:
             raise ValueError("motor_balance_delta_max must be in [0, 1)")
-        if dyn.motor_deadzone_min < 0 or dyn.motor_deadzone_delta < 0:
-            raise ValueError("motor deadzone bounds must be nonnegative")
         if (
             dyn.motor_time_constant_seconds_min < 0
             or dyn.motor_time_constant_seconds_max < 0

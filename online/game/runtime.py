@@ -14,6 +14,7 @@ from online.game.config import GameRuntimeConfig
 from online.game.control import DualRobotController, RobotCommand
 from online.game.inference import DualPolicyRunner, sync_live_env_config
 from online.game.observations import LiveObservationBuilder, LiveObservations
+from online.game.recording import LiveGameRecorder
 from online.tracking.tracker import BoardTracker
 
 
@@ -50,6 +51,7 @@ class TagGameRuntime:
         )
         self.tracker = BoardTracker(config.tracker)
         self.controller = DualRobotController(config.chaser, config.evader, udp_enabled)
+        self.recorder = LiveGameRecorder(config, config.checkpoint_path)
         self._tracker_thread: threading.Thread | None = None
         self._control_thread: threading.Thread | None = None
         self._render_thread: threading.Thread | None = None
@@ -83,6 +85,7 @@ class TagGameRuntime:
         self._latest_observation: LiveObservations | None = None
         self._last_ready_time: float | None = None
         self._events: deque[RuntimeEvent] = deque(maxlen=20)
+        self._recording_frame_index = 0
         self._push_event("runtime_initialized")
 
     def start(self) -> None:
@@ -101,6 +104,7 @@ class TagGameRuntime:
         for thread in (self._tracker_thread, self._control_thread, self._render_thread):
             if thread is not None:
                 thread.join(timeout=2.0)
+        self._finish_recording("runtime_stopped")
         self.controller.close()
         self.tracker.close()
 
@@ -115,6 +119,7 @@ class TagGameRuntime:
                     self._status = "System armed"
                     self._push_event("armed")
             elif action == actions.disarm:
+                self._finish_recording("disarmed")
                 self._mode = modes.idle
                 self._phase = phases.ready
                 self._match_start_monotonic = None
@@ -132,6 +137,7 @@ class TagGameRuntime:
                     self._status = "Waiting for first active tick"
                     self._push_event("game_started")
             elif action == actions.stop:
+                self._finish_recording("game_stopped")
                 self._mode = modes.armed
                 self._phase = phases.ready
                 self._match_start_monotonic = None
@@ -140,6 +146,7 @@ class TagGameRuntime:
                 self._status = "Game stopped"
                 self._push_event("game_stopped")
             elif action == actions.reset:
+                self._finish_recording("game_reset")
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self._match_step_count = 0
@@ -147,6 +154,7 @@ class TagGameRuntime:
                 self._status = "Game state reset"
                 self._push_event("game_reset")
             elif action == actions.estop:
+                self._finish_recording("estop")
                 self._mode = modes.estop
                 self._phase = phases.stopped
                 self._match_start_monotonic = None
@@ -162,6 +170,19 @@ class TagGameRuntime:
                 self.policy_runner.reset()
                 self._status = "Emergency stop cleared"
                 self._push_event("estop_cleared")
+            elif action == actions.record_off:
+                self.recorder.set_recording_split("off")
+                self._finish_recording("recording_disabled")
+                self._status = "Recording disabled"
+                self._push_event("recording_off")
+            elif action == actions.record_train:
+                self.recorder.set_recording_split("train")
+                self._status = "Recording armed for train games"
+                self._push_event("recording_train")
+            elif action == actions.record_eval:
+                self.recorder.set_recording_split("eval")
+                self._status = "Recording armed for eval games"
+                self._push_event("recording_eval")
             else:
                 raise ValueError(f"Unsupported action: {action}")
 
@@ -183,6 +204,7 @@ class TagGameRuntime:
             except Exception as exc:
                 self.controller.zero_all()
                 with self._lock:
+                    self._finish_recording("tracker_error")
                     self._mode = self.config.modes.estop
                     self._status = f"Tracker error: {exc}"
                     self._latest_snapshot = {
@@ -217,6 +239,7 @@ class TagGameRuntime:
             except Exception as exc:
                 self.controller.zero_all()
                 with self._lock:
+                    self._finish_recording("runtime_error")
                     self._mode = modes.estop
                     self._status = f"Runtime error: {exc}"
                     self._latest_snapshot = {
@@ -270,6 +293,7 @@ class TagGameRuntime:
             if self._mode != modes.running:
                 self._phase = phases.ready
         elif self._mode == modes.running:
+            self._finish_recording("tracking_not_ready")
             self._mode = modes.armed
             self._phase = phases.ready
             self._match_step_count = 0
@@ -290,6 +314,8 @@ class TagGameRuntime:
             if self._match_start_monotonic is None:
                 self._match_start_monotonic = now
                 self._match_step_count = 0
+                self._recording_frame_index = 0
+                self.recorder.start_game(board_state)
             episode_progress = self._episode_progress()
             observation_started = time.perf_counter()
             observations = self.observation_builder.build(board_state, episode_progress)
@@ -297,6 +323,7 @@ class TagGameRuntime:
                 time.perf_counter() - observation_started
             ) * 1000.0
             if observations is None:
+                self._finish_recording("observation_build_failed")
                 self._mode = modes.armed
                 self._phase = phases.ready
                 self.policy_runner.reset()
@@ -322,11 +349,20 @@ class TagGameRuntime:
                     now, board_state, raw_chaser, raw_evader
                 )
                 if terminal_reason is not None:
+                    self._finish_recording(terminal_reason.lower().replace(" ", "_"))
                     self._mode = modes.armed
                     self._match_step_count = 0
                     self._status = terminal_reason
                     self.policy_runner.reset()
                 else:
+                    self.recorder.record_step(
+                        self._recording_frame_index,
+                        now,
+                        board_state,
+                        target_chaser,
+                        target_evader,
+                    )
+                    self._recording_frame_index += 1
                     self._match_step_count = min(
                         self._match_step_count + 1, self.max_steps
                     )
@@ -462,6 +498,8 @@ class TagGameRuntime:
                 "send_ms": self._last_send_ms,
                 "action_output_scale": self.config.action_output_scale,
                 "frame_age_s": frame_age,
+                "recording_split": self.recorder.recording_split,
+                "recording_active": self.recorder.active,
             },
             "game": {
                 "elapsed_s": 0.0
@@ -560,3 +598,7 @@ class TagGameRuntime:
 
     def _push_event(self, message: str) -> None:
         self._events.appendleft(RuntimeEvent(timestamp=time.time(), message=message))
+
+    def _finish_recording(self, reason: str) -> None:
+        for run_dir in self.recorder.finish_game(reason):
+            self._push_event(f"recorded_run:{run_dir}")

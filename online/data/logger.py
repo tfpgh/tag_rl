@@ -11,6 +11,15 @@ from online.core.config import TrackerConfig
 from online.core.state import BoardState, ObstacleState, Pose2D, TagDetection
 
 
+def _deep_update(target: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(target.get(key), dict):
+            _deep_update(target[key], value)
+        else:
+            target[key] = value
+    return target
+
+
 def _pose_dict(pose: Pose2D | None) -> dict[str, Any] | None:
     if pose is None:
         return None
@@ -122,5 +131,13 @@ class RunLogger:
             },
         }
         (self.run_dir / "metadata.json").write_text(
+            json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+        )
+
+    def update_metadata(self, updates: dict[str, Any]) -> None:
+        metadata_path = self.run_dir / "metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        _deep_update(metadata, updates)
+        metadata_path.write_text(
             json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
         )

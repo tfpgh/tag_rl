@@ -40,6 +40,9 @@ class RuntimeActionConfig:
     reset: str = "reset"
     estop: str = "estop"
     clear_estop: str = "clear_estop"
+    record_off: str = "record_off"
+    record_train: str = "record_train"
+    record_eval: str = "record_eval"
 
 
 @dataclass(slots=True)
@@ -73,6 +76,8 @@ class GameRuntimeConfig:
     telemetry_hz: float = 20.0
     dashboard_frame_width: int = 1280
     jpeg_quality: int = 80
+    recording_root: str = "data"
+    recording_games_dirname: str = "games"
     modes: RuntimeModeConfig = field(default_factory=RuntimeModeConfig)
     phases: RuntimePhaseConfig = field(default_factory=RuntimePhaseConfig)
     actions: RuntimeActionConfig = field(default_factory=RuntimeActionConfig)

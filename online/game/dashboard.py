@@ -63,11 +63,6 @@ INDEX_HTML = """
       background: #0b0d11;
       border: 1px solid #272d38;
     }
-    .video-caption {
-      margin-top: 10px;
-      color: var(--muted);
-      font-size: 13px;
-    }
     .controls-header, .section-header {
       display: flex;
       justify-content: space-between;
@@ -255,19 +250,15 @@ INDEX_HTML = """
 </head>
 <body>
   <div class=\"layout\">
-    <div class=\"panel video-panel\">
-      <img src=\"/video.mjpg\" alt=\"Live video\" />
-      <div class=\"video-caption\">Top: raw tracker overlay. Bottom: warped arena view with robot and obstacle poses.</div>
-    </div>
+      <div class=\"panel video-panel\">
+        <img src=\"/video.mjpg\" alt=\"Live video\" />
+      </div>
     <div class=\"panel\">
-      <div class=\"controls-header\">
-        <div>
-          <div class=\"section-title\">Controls</div>
+        <div class=\"controls-header\">
           <div id=\"connectionStatus\" class=\"status-line\">Connecting to telemetry...</div>
-        </div>
-        <div class=\"badge-row\">
-          <span id=\"modeBadge\" class=\"badge\">mode</span>
-          <span id=\"phaseBadge\" class=\"badge\">phase</span>
+          <div class=\"badge-row\">
+            <span id=\"modeBadge\" class=\"badge\">mode</span>
+            <span id=\"phaseBadge\" class=\"badge\">phase</span>
           <span id=\"readyBadge\" class=\"badge\">ready</span>
         </div>
       </div>
@@ -279,6 +270,11 @@ INDEX_HTML = """
         <button class=\"danger\" onclick=\"sendAction('estop')\">E-Stop</button>
         <button onclick=\"sendAction('clear_estop')\">Clear E-Stop</button>
         <button onclick=\"sendAction('disarm')\">Disarm</button>
+      </div>
+      <div class=\"buttons\">
+        <button onclick=\"sendAction('record_off')\">Record Off</button>
+        <button onclick=\"sendAction('record_train')\">Record Train</button>
+        <button onclick=\"sendAction('record_eval')\">Record Eval</button>
       </div>
 
       <div class=\"hero\">
@@ -308,6 +304,7 @@ INDEX_HTML = """
           <div class=\"metric\"><span class=\"metric-label\">Control Rate</span><span id=\"controlRate\" class=\"metric-value\">--</span></div>
           <div class=\"metric\"><span class=\"metric-label\">Render Rate</span><span id=\"renderRate\" class=\"metric-value\">--</span></div>
           <div class=\"metric\"><span class=\"metric-label\">Inference</span><span id=\"inferenceTime\" class=\"metric-value\">--</span></div>
+          <div class=\"metric\"><span class=\"metric-label\">Recording</span><span id=\"recordingValue\" class=\"metric-value\">--</span></div>
         </div>
         <div class=\"card\">
           <h3>Game</h3>
@@ -373,6 +370,7 @@ INDEX_HTML = """
       controlRate: document.getElementById('controlRate'),
       renderRate: document.getElementById('renderRate'),
       inferenceTime: document.getElementById('inferenceTime'),
+      recordingValue: document.getElementById('recordingValue'),
       durationValue: document.getElementById('durationValue'),
       tagDistanceValue: document.getElementById('tagDistanceValue'),
       visibleTagsValue: document.getElementById('visibleTagsValue'),
@@ -478,6 +476,7 @@ INDEX_HTML = """
       elements.controlRate.textContent = `${fmtNumber(runtime.control_actual_hz, 1)} Hz (target ${fmtNumber(runtime.control_target_hz, 1)} Hz)`;
       elements.renderRate.textContent = `${fmtNumber(runtime.render_actual_hz, 1)} Hz (target ${fmtNumber(runtime.render_target_hz, 1)} Hz)`;
       elements.inferenceTime.textContent = `${fmtNumber(runtime.observation_build_ms, 1, ' ms')} build, ${fmtNumber(runtime.inference_ms, 1, ' ms')} infer, ${fmtNumber(runtime.send_ms, 1, ' ms')} send`;
+      elements.recordingValue.textContent = `${runtime.recording_split || 'off'}${runtime.recording_active ? ' (active)' : ''}`;
 
       elements.durationValue.textContent = fmtNumber(game.duration_s, 1, ' s');
       elements.tagDistanceValue.textContent = fmtNumber(game.tag_distance_m, 3, ' m');

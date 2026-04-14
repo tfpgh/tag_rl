@@ -261,14 +261,22 @@ def _segment_records(
 
 
 def _discover_run_dirs(split_dir: Path) -> list[Path]:
+    if not split_dir.exists():
+        return []
+
     run_dirs: list[Path] = []
-    if (split_dir / "samples.jsonl").exists() and (
-        split_dir / "commands.jsonl"
-    ).exists():
-        run_dirs.append(split_dir)
-    for child in sorted(path for path in split_dir.iterdir() if path.is_dir()):
-        if (child / "samples.jsonl").exists() and (child / "commands.jsonl").exists():
-            run_dirs.append(child)
+    seen: set[Path] = set()
+    for candidate in [
+        split_dir,
+        *sorted(path for path in split_dir.rglob("*") if path.is_dir()),
+    ]:
+        if candidate in seen:
+            continue
+        if (candidate / "samples.jsonl").exists() and (
+            candidate / "commands.jsonl"
+        ).exists():
+            run_dirs.append(candidate)
+            seen.add(candidate)
     return run_dirs
 
 

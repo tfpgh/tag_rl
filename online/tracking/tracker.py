@@ -237,7 +237,7 @@ class BoardTracker:
     ) -> list[ObstacleState]:
         obstacles: list[ObstacleState] = []
         obstacle_tag_ids = set(self.config.arena.obstacle_tag_ids)
-        for detection in detections:
+        for detection in sorted(detections, key=lambda detection: detection.tag_id):
             if detection.tag_id not in obstacle_tag_ids:
                 continue
             pose = self._pose_from_detection(detection, calibration, timestamp)

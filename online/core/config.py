@@ -8,11 +8,11 @@ class ArenaConfig:
     corner_tag_ids: tuple[int, int, int, int] = (0, 1, 2, 3)
     chaser_tag_id: int = 4
     evader_tag_id: int = 5
-    obstacle_tag_ids: tuple[int, ...] = (6,)
+    obstacle_tag_ids: tuple[int, ...] = (6, 7, 8, 9)
     tag_size_m: float = 0.1
     tag_center_width_m: float = 2.3384
     tag_center_height_m: float = 1.1192
-    obstacle_size_m: float = 0.1
+    obstacle_size_m: float = 0.20
 
     @property
     def board_width_m(self) -> float:

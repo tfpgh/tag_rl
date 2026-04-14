@@ -94,7 +94,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional best_params.json or history.jsonl to initialize CMA-ES from.",
     )
-    parser.add_argument("--window-seconds", type=float, default=3.0)
+    parser.add_argument("--window-seconds", type=float, default=1.5)
     parser.add_argument("--preroll-seconds", type=float, default=0.5)
     parser.add_argument("--stride-seconds", type=float, default=0.5)
     return parser.parse_args()

@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--segment-seconds",
         type=float,
-        default=5.0,
+        default=1.5,
         help="Reset the simulated ghost to the recorded pose every N seconds. Use 0 to disable.",
     )
     parser.add_argument(

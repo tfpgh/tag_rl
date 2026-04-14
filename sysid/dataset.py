@@ -9,7 +9,7 @@ import numpy as np
 
 from sysid.types import DatasetSplits, WindowBatch, WindowMetadata
 
-WINDOW_SECONDS = 3.0
+WINDOW_SECONDS = 1.5
 PREROLL_SECONDS = 0.5
 STRIDE_SECONDS = 0.5
 SUBSTEP_DT_SECONDS = 0.005

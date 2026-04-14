@@ -381,7 +381,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--params", type=Path, required=True)
     parser.add_argument("--data-root", type=Path, default=Path("data"))
     parser.add_argument("--output", type=Path, default=Path("runs/sysid_probe.json"))
-    parser.add_argument("--window-seconds", type=float, default=3.0)
+    parser.add_argument("--window-seconds", type=float, default=1.5)
     parser.add_argument("--preroll-seconds", type=float, default=0.5)
     parser.add_argument("--stride-seconds", type=float, default=0.5)
     parser.add_argument("--points", type=int, default=7)

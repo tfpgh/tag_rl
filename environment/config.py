@@ -17,7 +17,7 @@ class ArenaConfig:
     agent_max_angular_velocity: float = 31.0
     minimum_starting_separation: float = 0.13
     wall_margin_factor: float = 1.5
-    action_scale: float = 0.5
+    action_scale: float = 1.0
 
 
 @dataclass
@@ -145,7 +145,7 @@ class CurriculumConfig:
     pipeline_start: float = 0.10
     dynamics_start: float = 0.15
     full_progress: float = 0.50
-    exponent: float = 1.3
+    exponent: float = 1.1
 
 
 @dataclass

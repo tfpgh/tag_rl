@@ -57,7 +57,7 @@ class GameRuntimeConfig:
     evader: RobotEndpointConfig = field(
         default_factory=lambda: RobotEndpointConfig(
             name="evader",
-            robot_ip="192.168.1.6",
+            robot_ip="192.168.1.4",
             udp_port=8888,
             tag_id=5,
         )

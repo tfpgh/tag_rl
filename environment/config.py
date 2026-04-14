@@ -28,7 +28,7 @@ class RewardConfig:
     collision_penalty: float = 5.0
     distance_shaping_scale: float = 0.0
     distance_shaping_gamma: float = 0.99
-    forward_motion_reward_scale: float = 0.005
+    forward_motion_reward_scale: float = 0.003
 
 
 @dataclass
@@ -37,7 +37,7 @@ class LayoutRandomizationConfig:
     obstacle_width: float = 0.20
     obstacle_candidate_pool: int = 64
     spawn_candidate_pool: int = 64
-    obstacle_separation_factor: float = 2.2
+    obstacle_separation_factor: float = 1.4
 
 
 @dataclass
@@ -115,9 +115,9 @@ class DynamicsRandomizationConfig:
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    nominal_action_delay_substeps: int = 3
+    nominal_action_delay_substeps: int = 6
     action_delay_substeps_delta: int = 3
-    nominal_observation_delay_substeps: int = 3
+    nominal_observation_delay_substeps: int = 7
     observation_delay_substeps_delta: int = 3
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002

@@ -106,7 +106,7 @@ def build_dashboard_app(runtime: TagGameRuntime) -> FastAPI:
         try:
             while True:
                 await websocket.send_json(runtime.get_snapshot())
-                await asyncio.sleep(0.10)
+                await asyncio.sleep(1.0 / runtime.config.telemetry_hz)
         except Exception:
             pass
 

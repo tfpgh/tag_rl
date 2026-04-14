@@ -71,7 +71,8 @@ class GameRuntimeConfig:
     target_loss_timeout_s: float = 0.20
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8000
-    render_hz: float = 8.0
+    render_hz: float = 20.0
+    telemetry_hz: float = 20.0
     dashboard_frame_width: int = 1280
     jpeg_quality: int = 80
     modes: RuntimeModeConfig = field(default_factory=RuntimeModeConfig)

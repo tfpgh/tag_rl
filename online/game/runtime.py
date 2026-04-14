@@ -63,6 +63,10 @@ class TagGameRuntime:
         self._latest_jpeg: bytes | None = None
         self._latest_frame: np.ndarray | None = None
         self._latest_board_state = None
+        self._last_control_loop_monotonic: float | None = None
+        self._last_control_loop_dt_s: float | None = None
+        self._last_render_loop_monotonic: float | None = None
+        self._last_render_loop_dt_s: float | None = None
         self._latest_raw_action = {
             "chaser": RobotCommand(0.0, 0.0).as_dict(),
             "evader": RobotCommand(0.0, 0.0).as_dict(),
@@ -209,6 +213,11 @@ class TagGameRuntime:
                     time.sleep(0.01)
                     continue
                 now = time.monotonic()
+                if self._last_control_loop_monotonic is not None:
+                    self._last_control_loop_dt_s = (
+                        now - self._last_control_loop_monotonic
+                    )
+                self._last_control_loop_monotonic = now
                 snapshot = self._step_runtime(now, board_state)
                 with self._lock:
                     self._latest_snapshot = snapshot
@@ -234,6 +243,7 @@ class TagGameRuntime:
         while self._running:
             loop_started = time.perf_counter()
             try:
+                render_now = time.monotonic()
                 with self._lock:
                     frame = (
                         None
@@ -246,6 +256,11 @@ class TagGameRuntime:
                     jpeg = self._render_dashboard_frame(frame, board_state)
                     with self._lock:
                         self._latest_jpeg = jpeg
+                if self._last_render_loop_monotonic is not None:
+                    self._last_render_loop_dt_s = (
+                        render_now - self._last_render_loop_monotonic
+                    )
+                self._last_render_loop_monotonic = render_now
             except Exception:
                 pass
             elapsed = time.perf_counter() - loop_started
@@ -458,7 +473,16 @@ class TagGameRuntime:
                 "status": self._status,
                 "ready": ready,
                 "ready_reason": ready_reason,
-                "control_hz": self.control_hz,
+                "control_target_hz": self.control_hz,
+                "control_dt_s": self._last_control_loop_dt_s,
+                "control_actual_hz": None
+                if not self._last_control_loop_dt_s
+                else 1.0 / self._last_control_loop_dt_s,
+                "render_target_hz": self.config.render_hz,
+                "render_dt_s": self._last_render_loop_dt_s,
+                "render_actual_hz": None
+                if not self._last_render_loop_dt_s
+                else 1.0 / self._last_render_loop_dt_s,
                 "action_output_scale": self.config.action_output_scale,
                 "action_smoothing_alpha": self.config.action_smoothing_alpha,
                 "action_max_delta_per_tick": self.config.action_max_delta_per_tick,

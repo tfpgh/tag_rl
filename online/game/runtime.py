@@ -37,6 +37,12 @@ class TagGameRuntime:
         self.match_duration_s = config.match_duration_s or float(
             self.env_config.episode_max_length
         )
+        self.max_steps = int(self.env_config.episode_max_length) * int(
+            self.env_config.action_frequency
+        )
+        self.freeze_steps = int(self.env_config.chaser_freeze_seconds) * int(
+            self.env_config.action_frequency
+        )
         self.tag_distance = (
             2.0 * self.env_config.agent_radius * self.env_config.tag_distance_factor
         )
@@ -51,6 +57,7 @@ class TagGameRuntime:
         self._phase = config.phases.waiting
         self._status = "Booting"
         self._match_start_monotonic: float | None = None
+        self._match_step_count = 0
         self._frame_timestamp: float | None = None
         self._latest_snapshot: dict[str, Any] = {}
         self._latest_jpeg: bytes | None = None
@@ -108,6 +115,7 @@ class TagGameRuntime:
                 self._mode = modes.idle
                 self._phase = phases.ready
                 self._match_start_monotonic = None
+                self._match_step_count = 0
                 self.policy_runner.reset()
                 self._reset_smoothed_commands()
                 self._status = "System disarmed"
@@ -117,6 +125,7 @@ class TagGameRuntime:
                     self._mode = modes.running
                     self._phase = phases.active
                     self._match_start_monotonic = None
+                    self._match_step_count = 0
                     self.policy_runner.reset()
                     self._reset_smoothed_commands()
                     self._status = "Waiting for first active tick"
@@ -125,6 +134,7 @@ class TagGameRuntime:
                 self._mode = modes.armed
                 self._phase = phases.ready
                 self._match_start_monotonic = None
+                self._match_step_count = 0
                 self.policy_runner.reset()
                 self._reset_smoothed_commands()
                 self._status = "Game stopped"
@@ -132,6 +142,7 @@ class TagGameRuntime:
             elif action == actions.reset:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
+                self._match_step_count = 0
                 self.policy_runner.reset()
                 self._reset_smoothed_commands()
                 self._status = "Game state reset"
@@ -140,6 +151,7 @@ class TagGameRuntime:
                 self._mode = modes.estop
                 self._phase = phases.stopped
                 self._match_start_monotonic = None
+                self._match_step_count = 0
                 self.policy_runner.reset()
                 self._reset_smoothed_commands()
                 self._status = "Emergency stop engaged"
@@ -148,6 +160,7 @@ class TagGameRuntime:
                 self._mode = modes.idle
                 self._phase = phases.ready
                 self._match_start_monotonic = None
+                self._match_step_count = 0
                 self.policy_runner.reset()
                 self._reset_smoothed_commands()
                 self._status = "Emergency stop cleared"
@@ -251,6 +264,7 @@ class TagGameRuntime:
         elif self._mode == modes.running:
             self._mode = modes.armed
             self._phase = phases.ready
+            self._match_step_count = 0
             self.policy_runner.reset()
             self._reset_smoothed_commands()
             self._status = reason
@@ -262,13 +276,14 @@ class TagGameRuntime:
         final_evader = RobotCommand(0.0, 0.0)
         raw_chaser = RobotCommand(0.0, 0.0)
         raw_evader = RobotCommand(0.0, 0.0)
-        episode_progress = self._episode_progress(now)
+        episode_progress = self._episode_progress()
         observations = None
 
         if self._mode == modes.running and ready:
             if self._match_start_monotonic is None:
                 self._match_start_monotonic = now
-                episode_progress = 0.0
+                self._match_step_count = 0
+            episode_progress = self._episode_progress()
             observations = build_live_observations(
                 board_state, self.env_config, episode_progress
             )
@@ -295,9 +310,14 @@ class TagGameRuntime:
                 )
                 if terminal_reason is not None:
                     self._mode = modes.armed
+                    self._match_step_count = 0
                     self._status = terminal_reason
                     self.policy_runner.reset()
                     self._reset_smoothed_commands()
+                else:
+                    self._match_step_count = min(
+                        self._match_step_count + 1, self.max_steps
+                    )
 
         if self._mode == modes.estop:
             target_chaser = RobotCommand(0.0, 0.0)
@@ -327,12 +347,10 @@ class TagGameRuntime:
             self.controller.zero_all()
         return self._build_snapshot(now, board_state, ready, reason)
 
-    def _episode_progress(self, now: float) -> float:
-        if self._match_start_monotonic is None:
+    def _episode_progress(self) -> float:
+        if self.max_steps <= 0:
             return 0.0
-        return max(
-            0.0, min(1.0, (now - self._match_start_monotonic) / self.match_duration_s)
-        )
+        return max(0.0, min(1.0, self._match_step_count / self.max_steps))
 
     def _ready_state(self, now: float, board_state) -> tuple[bool, str]:
         if self._mode == self.config.modes.estop:
@@ -364,8 +382,7 @@ class TagGameRuntime:
     ) -> tuple[RobotCommand, RobotCommand, str | None]:
         if self._match_start_monotonic is None:
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), None
-        elapsed = now - self._match_start_monotonic
-        if elapsed < float(self.env_config.chaser_freeze_seconds):
+        if self._match_step_count < self.freeze_steps:
             chaser = RobotCommand(0.0, 0.0)
         if board_state.chaser is None or board_state.evader is None:
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Tracking lost"
@@ -379,7 +396,7 @@ class TagGameRuntime:
             self._phase = self.config.phases.tagged
             self._push_event("tagged")
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Tagged"
-        if elapsed >= self.match_duration_s:
+        if self._match_step_count >= self.max_steps:
             self._phase = self.config.phases.time_up
             self._push_event("time_up")
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Time up"
@@ -452,7 +469,9 @@ class TagGameRuntime:
                 if self._match_start_monotonic is None
                 else now - self._match_start_monotonic,
                 "duration_s": self.match_duration_s,
-                "episode_progress": self._episode_progress(now),
+                "step_count": self._match_step_count,
+                "max_steps": self.max_steps,
+                "episode_progress": self._episode_progress(),
                 "tag_distance_m": self.tag_distance,
             },
             "tracker": {

@@ -42,7 +42,9 @@ class TagGameRuntime:
         )
         self.tracker = BoardTracker(config.tracker)
         self.controller = DualRobotController(config.chaser, config.evader, udp_enabled)
-        self._thread: threading.Thread | None = None
+        self._tracker_thread: threading.Thread | None = None
+        self._control_thread: threading.Thread | None = None
+        self._render_thread: threading.Thread | None = None
         self._running = False
         self._lock = threading.Lock()
         self._mode = config.modes.idle
@@ -52,6 +54,8 @@ class TagGameRuntime:
         self._frame_timestamp: float | None = None
         self._latest_snapshot: dict[str, Any] = {}
         self._latest_jpeg: bytes | None = None
+        self._latest_frame: np.ndarray | None = None
+        self._latest_board_state = None
         self._latest_raw_action = {
             "chaser": RobotCommand(0.0, 0.0).as_dict(),
             "evader": RobotCommand(0.0, 0.0).as_dict(),
@@ -69,13 +73,18 @@ class TagGameRuntime:
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._run_loop, daemon=True)
-        self._thread.start()
+        self._tracker_thread = threading.Thread(target=self._tracker_loop, daemon=True)
+        self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
+        self._render_thread = threading.Thread(target=self._render_loop, daemon=True)
+        self._tracker_thread.start()
+        self._control_thread.start()
+        self._render_thread.start()
 
     def stop(self) -> None:
         self._running = False
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
+        for thread in (self._tracker_thread, self._control_thread, self._render_thread):
+            if thread is not None:
+                thread.join(timeout=2.0)
         self.controller.close()
         self.tracker.close()
 
@@ -142,19 +151,42 @@ class TagGameRuntime:
         with self._lock:
             return self._latest_jpeg
 
-    def _run_loop(self) -> None:
+    def _tracker_loop(self) -> None:
+        while self._running:
+            try:
+                frame, board_state = self.tracker.process_next_frame()
+                with self._lock:
+                    self._latest_frame = frame
+                    self._latest_board_state = board_state
+            except Exception as exc:
+                self.controller.zero_all()
+                with self._lock:
+                    self._mode = self.config.modes.estop
+                    self._status = f"Tracker error: {exc}"
+                    self._latest_snapshot = {
+                        "runtime": {
+                            "mode": self._mode,
+                            "phase": self._phase,
+                            "status": self._status,
+                        }
+                    }
+                time.sleep(0.10)
+
+    def _control_loop(self) -> None:
         modes = self.config.modes
         interval = 1.0 / self.control_hz
         while self._running:
             loop_started = time.perf_counter()
             try:
-                frame, board_state = self.tracker.process_next_frame()
+                with self._lock:
+                    board_state = self._latest_board_state
+                if board_state is None:
+                    time.sleep(0.01)
+                    continue
                 now = time.monotonic()
-                snapshot = self._step_runtime(now, frame, board_state)
-                jpeg = self._render_dashboard_frame(frame, board_state, snapshot)
+                snapshot = self._step_runtime(now, board_state)
                 with self._lock:
                     self._latest_snapshot = snapshot
-                    self._latest_jpeg = jpeg
             except Exception as exc:
                 self.controller.zero_all()
                 with self._lock:
@@ -172,10 +204,30 @@ class TagGameRuntime:
             if elapsed < interval:
                 time.sleep(interval - elapsed)
 
-    def _step_runtime(
-        self, now: float, frame: np.ndarray, board_state
-    ) -> dict[str, Any]:
-        del frame
+    def _render_loop(self) -> None:
+        interval = 1.0 / self.config.render_hz
+        while self._running:
+            loop_started = time.perf_counter()
+            try:
+                with self._lock:
+                    frame = (
+                        None
+                        if self._latest_frame is None
+                        else self._latest_frame.copy()
+                    )
+                    board_state = self._latest_board_state
+                    snapshot = dict(self._latest_snapshot)
+                if frame is not None and board_state is not None and snapshot:
+                    jpeg = self._render_dashboard_frame(frame, board_state)
+                    with self._lock:
+                        self._latest_jpeg = jpeg
+            except Exception:
+                pass
+            elapsed = time.perf_counter() - loop_started
+            if elapsed < interval:
+                time.sleep(interval - elapsed)
+
+    def _step_runtime(self, now: float, board_state) -> dict[str, Any]:
         modes = self.config.modes
         phases = self.config.phases
         self._frame_timestamp = board_state.timestamp
@@ -403,10 +455,10 @@ class TagGameRuntime:
             "action": action,
         }
 
-    def _render_dashboard_frame(
-        self, frame: np.ndarray, board_state, snapshot: dict[str, Any]
-    ) -> bytes | None:
+    def _render_dashboard_frame(self, frame: np.ndarray, board_state) -> bytes | None:
         raw_view, arena_view = self.tracker.render_debug_views(frame, board_state)
+        raw_view = self._scale_frame(raw_view)
+        arena_view = self._scale_frame(arena_view)
         target_height = min(raw_view.shape[0], arena_view.shape[0])
         raw_small = cv2.resize(
             raw_view,
@@ -420,35 +472,22 @@ class TagGameRuntime:
             ),
         )
         combined = cv2.hconcat([raw_small, arena_small])
-        overlay_lines = [
-            f"mode={snapshot['runtime']['mode']} phase={snapshot['runtime']['phase']}",
-            f"status={snapshot['runtime']['status']}",
-            f"ready={snapshot['runtime']['ready']} fps={snapshot['tracker']['fps']:.1f}",
-            "chaser L/R={left:+.2f}/{right:+.2f} evader L/R={eleft:+.2f}/{eright:+.2f}".format(
-                left=self._latest_final_action["chaser"]["left"],
-                right=self._latest_final_action["chaser"]["right"],
-                eleft=self._latest_final_action["evader"]["left"],
-                eright=self._latest_final_action["evader"]["right"],
-            ),
-        ]
-        for index, line in enumerate(overlay_lines):
-            y = 28 + index * 26
-            cv2.putText(
-                combined,
-                line,
-                (16, y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (235, 240, 245),
-                2,
-                cv2.LINE_AA,
-            )
         ok, encoded = cv2.imencode(
             ".jpg", combined, [int(cv2.IMWRITE_JPEG_QUALITY), self.config.jpeg_quality]
         )
         if not ok:
             return None
         return encoded.tobytes()
+
+    def _scale_frame(self, frame: np.ndarray) -> np.ndarray:
+        if frame.shape[1] <= self.config.dashboard_frame_width:
+            return frame
+        scale = self.config.dashboard_frame_width / frame.shape[1]
+        return cv2.resize(
+            frame,
+            (self.config.dashboard_frame_width, int(round(frame.shape[0] * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
 
     def _push_event(self, message: str) -> None:
         self._events.appendleft(RuntimeEvent(timestamp=time.time(), message=message))

@@ -31,13 +31,38 @@ class DualPolicyRunner:
         )
         self.chaser_params = jax.device_put(chaser_params)
         self.evader_params = jax.device_put(evader_params)
+        self._step_fn = jax.jit(self._step_impl)
         self.reset()
+        self.warmup()
 
     def reset(self) -> None:
         self.chaser_hstate = ScannedRNN.initialize_carry(1, self.hidden_size)
         self.evader_hstate = ScannedRNN.initialize_carry(1, self.hidden_size)
 
-    def step(self, chaser_obs: jax.Array, evader_obs: jax.Array) -> DualPolicyOutputs:
+    def warmup(self) -> None:
+        obs_size = 2 * self.env_config.n_rays + 1
+        zero_obs = jnp.zeros((obs_size,), dtype=jnp.float32)
+        chaser_hstate, evader_hstate, _, _ = self._step_fn(
+            self.chaser_params,
+            self.evader_params,
+            self.chaser_hstate,
+            self.evader_hstate,
+            zero_obs,
+            zero_obs,
+        )
+        self.chaser_hstate = chaser_hstate
+        self.evader_hstate = evader_hstate
+        self.reset()
+
+    def _step_impl(
+        self,
+        chaser_params: Any,
+        evader_params: Any,
+        chaser_hstate: jax.Array,
+        evader_hstate: jax.Array,
+        chaser_obs: jax.Array,
+        evader_obs: jax.Array,
+    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
         chaser_input = (
             jnp.asarray(chaser_obs, dtype=jnp.float32)[None, None, :],
             jnp.zeros((1, 1), dtype=bool),
@@ -46,15 +71,36 @@ class DualPolicyRunner:
             jnp.asarray(evader_obs, dtype=jnp.float32)[None, None, :],
             jnp.zeros((1, 1), dtype=bool),
         )
-        self.chaser_hstate, chaser_pi, _ = self.chaser_policy.apply(
-            self.chaser_params, self.chaser_hstate, chaser_input
+        next_chaser_hstate, chaser_pi, _ = self.chaser_policy.apply(
+            chaser_params, chaser_hstate, chaser_input
         )
-        self.evader_hstate, evader_pi, _ = self.evader_policy.apply(
-            self.evader_params, self.evader_hstate, evader_input
+        next_evader_hstate, evader_pi, _ = self.evader_policy.apply(
+            evader_params, evader_hstate, evader_input
+        )
+        return (
+            next_chaser_hstate,
+            next_evader_hstate,
+            jnp.clip(chaser_pi.loc[0, 0], -1.0, 1.0),
+            jnp.clip(evader_pi.loc[0, 0], -1.0, 1.0),
+        )
+
+    def step(self, chaser_obs: jax.Array, evader_obs: jax.Array) -> DualPolicyOutputs:
+        (
+            self.chaser_hstate,
+            self.evader_hstate,
+            chaser_action,
+            evader_action,
+        ) = self._step_fn(
+            self.chaser_params,
+            self.evader_params,
+            self.chaser_hstate,
+            self.evader_hstate,
+            jnp.asarray(chaser_obs, dtype=jnp.float32),
+            jnp.asarray(evader_obs, dtype=jnp.float32),
         )
         return DualPolicyOutputs(
-            chaser_action=jnp.clip(chaser_pi.loc[0, 0], -1.0, 1.0),
-            evader_action=jnp.clip(evader_pi.loc[0, 0], -1.0, 1.0),
+            chaser_action=chaser_action,
+            evader_action=evader_action,
         )
 
 

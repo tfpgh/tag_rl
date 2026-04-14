@@ -265,47 +265,6 @@ class BoardTracker:
                 )
             center = tuple(detection.center_px.astype(int))
             cv2.circle(frame, center, 4, (0, 0, 255), -1)
-            cv2.putText(
-                frame,
-                f"id={detection.tag_id}",
-                (center[0] + 8, center[1] - 8),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                RAW_OVERLAY_COLOR,
-                2,
-            )
-
-        stats = (
-            f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
-            f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
-            f" | loop {board_state.stats.loop_ms:.1f}ms | tags {board_state.stats.visible_tags}"
-        )
-        cv2.putText(
-            frame,
-            stats,
-            (10, 25),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            RAW_OVERLAY_COLOR,
-            2,
-        )
-        calibration_text = (
-            "CALIBRATED"
-            if board_state.calibration.valid
-            else (
-                "CALIBRATING "
-                f"{board_state.calibration.samples_collected}/{board_state.calibration.required_samples}"
-            )
-        )
-        cv2.putText(
-            frame,
-            calibration_text,
-            (10, 55),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.75,
-            CALIBRATED_COLOR if board_state.calibration.valid else CALIBRATING_COLOR,
-            2,
-        )
 
     def _draw_arena_overlay(self, frame: np.ndarray, board_state: BoardState) -> None:
         self._draw_arena_bounds(frame)
@@ -313,28 +272,6 @@ class BoardTracker:
         self._draw_pose(frame, board_state.evader, "Evader", EVADER_COLOR)
         for obstacle in board_state.obstacles:
             self._draw_obstacle(frame, obstacle)
-
-        stats = (
-            f"FPS {board_state.stats.fps:.1f} | cap {board_state.stats.capture_ms:.1f}ms"
-            f" | det {board_state.stats.detector_ms:.1f}ms | track {board_state.stats.tracking_ms:.1f}ms"
-            f" | loop {board_state.stats.loop_ms:.1f}ms | px/m {board_state.calibration.pixels_per_m:.1f}"
-        )
-        cv2.rectangle(
-            frame,
-            (0, 0),
-            (self.layout.frame_width, self.layout.stats_height),
-            HEADER_BG_COLOR,
-            thickness=-1,
-        )
-        cv2.putText(
-            frame,
-            stats,
-            (10, 24),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            HEADER_TEXT_COLOR,
-            2,
-        )
 
     def _draw_arena_bounds(self, frame: np.ndarray) -> None:
         top = self.layout.stats_height + self.layout.buffer_px
@@ -351,15 +288,6 @@ class BoardTracker:
         color: tuple[int, int, int],
     ) -> None:
         if pose is None:
-            cv2.putText(
-                frame,
-                f"{label}: missing",
-                (10, self.layout.frame_height - (50 if label == "Chaser" else 20)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                color,
-                2,
-            )
             return
         center = self._world_to_view(pose.x_m, pose.y_m)
         heading = (

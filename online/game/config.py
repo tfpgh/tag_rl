@@ -44,7 +44,7 @@ class RuntimeActionConfig:
 
 @dataclass(slots=True)
 class GameRuntimeConfig:
-    checkpoint_path: str
+    checkpoint_path: str = "runs/slow_checkpoint.pkl"
     tracker: TrackerConfig = field(default_factory=TrackerConfig)
     chaser: RobotEndpointConfig = field(
         default_factory=lambda: RobotEndpointConfig(
@@ -68,6 +68,8 @@ class GameRuntimeConfig:
     target_loss_timeout_s: float = 0.20
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8000
+    render_hz: float = 8.0
+    dashboard_frame_width: int = 1280
     jpeg_quality: int = 80
     modes: RuntimeModeConfig = field(default_factory=RuntimeModeConfig)
     phases: RuntimePhaseConfig = field(default_factory=RuntimePhaseConfig)

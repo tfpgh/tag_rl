@@ -1,0 +1,85 @@
+{
+  "created_at": "2026-04-14T18:44:19.573152",
+  "teleop": {
+    "robot_ip": "192.168.1.5",
+    "udp_port": 8888,
+    "send_hz": 20.0,
+    "linear_step": 0.15,
+    "angular_step": 0.015,
+    "linear_max": 1.0,
+    "angular_max": 1.0,
+    "robot_tag_id": 4,
+    "run_label": "tag_game_eval_game014_chaser"
+  },
+  "camera": {
+    "device_index": 0,
+    "backend": null,
+    "frame_width": 1280,
+    "frame_height": 720,
+    "fps": 60,
+    "mjpg": false,
+    "buffer_size": 1,
+    "auto_exposure": 1.0,
+    "exposure": 15.0
+  },
+  "detector": {
+    "family": "tagStandard41h12",
+    "threads": 12,
+    "quad_decimate": 1.0
+  },
+  "arena": {
+    "corner_tag_ids": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "chaser_tag_id": 4,
+    "evader_tag_id": 5,
+    "obstacle_tag_ids": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "tag_size_m": 0.1,
+    "tag_center_width_m": 2.3384,
+    "tag_center_height_m": 1.1192,
+    "obstacle_size_m": 0.2
+  },
+  "world_units": "meters",
+  "tracker": {
+    "calibration_frames": 10,
+    "use_roi_tracking": true,
+    "roi_padding_scale": 2.0,
+    "min_roi_size_px": 100,
+    "max_roi_size_px": 600
+  },
+  "collection": {
+    "mode": "game",
+    "split": "eval",
+    "created_at": "2026-04-14T18:44:19.576989",
+    "checkpoint_path": "runs/weird_forward_checkpoint.pkl",
+    "game_index": 14,
+    "closed_at": "2026-04-14T18:44:23.299754",
+    "end_reason": "tagged",
+    "last_recorded_monotonic_time": 83332.055986346
+  },
+  "game": {
+    "match_duration_s": null,
+    "action_output_scale": 1.0,
+    "chaser": {
+      "name": "chaser",
+      "robot_ip": "192.168.1.5",
+      "udp_port": 8888,
+      "tag_id": 4
+    },
+    "evader": {
+      "name": "evader",
+      "robot_ip": "192.168.1.4",
+      "udp_port": 8888,
+      "tag_id": 5
+    },
+    "initial_visible_tags": 7
+  }
+}

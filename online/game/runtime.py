@@ -60,10 +60,16 @@ class TagGameRuntime:
             "chaser": RobotCommand(0.0, 0.0).as_dict(),
             "evader": RobotCommand(0.0, 0.0).as_dict(),
         }
+        self._latest_filtered_action = {
+            "chaser": RobotCommand(0.0, 0.0).as_dict(),
+            "evader": RobotCommand(0.0, 0.0).as_dict(),
+        }
         self._latest_final_action = {
             "chaser": RobotCommand(0.0, 0.0).as_dict(),
             "evader": RobotCommand(0.0, 0.0).as_dict(),
         }
+        self._smoothed_chaser = RobotCommand(0.0, 0.0)
+        self._smoothed_evader = RobotCommand(0.0, 0.0)
         self._latest_observation: LiveObservations | None = None
         self._last_ready_time: float | None = None
         self._events: deque[RuntimeEvent] = deque(maxlen=20)
@@ -103,6 +109,7 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
+                self._reset_smoothed_commands()
                 self._status = "System disarmed"
                 self._push_event("disarmed")
             elif action == actions.start:
@@ -111,6 +118,7 @@ class TagGameRuntime:
                     self._phase = phases.active
                     self._match_start_monotonic = None
                     self.policy_runner.reset()
+                    self._reset_smoothed_commands()
                     self._status = "Waiting for first active tick"
                     self._push_event("game_started")
             elif action == actions.stop:
@@ -118,12 +126,14 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
+                self._reset_smoothed_commands()
                 self._status = "Game stopped"
                 self._push_event("game_stopped")
             elif action == actions.reset:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
+                self._reset_smoothed_commands()
                 self._status = "Game state reset"
                 self._push_event("game_reset")
             elif action == actions.estop:
@@ -131,6 +141,7 @@ class TagGameRuntime:
                 self._phase = phases.stopped
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
+                self._reset_smoothed_commands()
                 self._status = "Emergency stop engaged"
                 self._push_event("estop")
             elif action == actions.clear_estop:
@@ -138,6 +149,7 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self.policy_runner.reset()
+                self._reset_smoothed_commands()
                 self._status = "Emergency stop cleared"
                 self._push_event("estop_cleared")
             else:
@@ -240,9 +252,12 @@ class TagGameRuntime:
             self._mode = modes.armed
             self._phase = phases.ready
             self.policy_runner.reset()
+            self._reset_smoothed_commands()
             self._status = reason
             self._push_event("tracking_not_ready")
 
+        target_chaser = RobotCommand(0.0, 0.0)
+        target_evader = RobotCommand(0.0, 0.0)
         final_chaser = RobotCommand(0.0, 0.0)
         final_evader = RobotCommand(0.0, 0.0)
         raw_chaser = RobotCommand(0.0, 0.0)
@@ -275,24 +290,34 @@ class TagGameRuntime:
                     left=float(jax.device_get(outputs.evader_action[0])),
                     right=float(jax.device_get(outputs.evader_action[1])),
                 )
-                final_chaser, final_evader, terminal_reason = self._apply_game_rules(
+                target_chaser, target_evader, terminal_reason = self._apply_game_rules(
                     now, board_state, raw_chaser, raw_evader
                 )
                 if terminal_reason is not None:
                     self._mode = modes.armed
                     self._status = terminal_reason
                     self.policy_runner.reset()
+                    self._reset_smoothed_commands()
 
         if self._mode == modes.estop:
-            final_chaser = RobotCommand(0.0, 0.0)
-            final_evader = RobotCommand(0.0, 0.0)
+            target_chaser = RobotCommand(0.0, 0.0)
+            target_evader = RobotCommand(0.0, 0.0)
             self._phase = phases.stopped
+
+        final_chaser = self._smooth_command(self._smoothed_chaser, target_chaser)
+        final_evader = self._smooth_command(self._smoothed_evader, target_evader)
+        self._smoothed_chaser = final_chaser
+        self._smoothed_evader = final_evader
 
         self.controller.send(final_chaser, final_evader)
         self._latest_observation = observations
         self._latest_raw_action = {
             "chaser": raw_chaser.as_dict(),
             "evader": raw_evader.as_dict(),
+        }
+        self._latest_filtered_action = {
+            "chaser": final_chaser.as_dict(),
+            "evader": final_evader.as_dict(),
         }
         self._latest_final_action = {
             "chaser": final_chaser.as_dict(),
@@ -366,6 +391,25 @@ class TagGameRuntime:
         scale = self.config.action_output_scale
         return RobotCommand(left=command.left * scale, right=command.right * scale)
 
+    def _smooth_command(
+        self, previous: RobotCommand, target: RobotCommand
+    ) -> RobotCommand:
+        alpha = self.config.action_smoothing_alpha
+        max_delta = self.config.action_max_delta_per_tick
+        blended_left = previous.left + alpha * (target.left - previous.left)
+        blended_right = previous.right + alpha * (target.right - previous.right)
+        limited_left = self._limit_delta(previous.left, blended_left, max_delta)
+        limited_right = self._limit_delta(previous.right, blended_right, max_delta)
+        return RobotCommand(left=limited_left, right=limited_right)
+
+    def _limit_delta(self, previous: float, target: float, max_delta: float) -> float:
+        return max(previous - max_delta, min(previous + max_delta, target))
+
+    def _reset_smoothed_commands(self) -> None:
+        zero = RobotCommand(0.0, 0.0)
+        self._smoothed_chaser = zero
+        self._smoothed_evader = zero
+
     def _build_snapshot(
         self, now: float, board_state, ready: bool, ready_reason: str
     ) -> dict[str, Any]:
@@ -399,6 +443,8 @@ class TagGameRuntime:
                 "ready_reason": ready_reason,
                 "control_hz": self.control_hz,
                 "action_output_scale": self.config.action_output_scale,
+                "action_smoothing_alpha": self.config.action_smoothing_alpha,
+                "action_max_delta_per_tick": self.config.action_max_delta_per_tick,
                 "frame_age_s": frame_age,
             },
             "game": {
@@ -423,6 +469,8 @@ class TagGameRuntime:
                 "evader_pose": evader_pose,
                 "chaser_command_raw": self._latest_raw_action["chaser"],
                 "evader_command_raw": self._latest_raw_action["evader"],
+                "chaser_command_filtered": self._latest_filtered_action["chaser"],
+                "evader_command_filtered": self._latest_filtered_action["evader"],
                 "chaser_command_sent": self._latest_final_action["chaser"],
                 "evader_command_sent": self._latest_final_action["evader"],
             },

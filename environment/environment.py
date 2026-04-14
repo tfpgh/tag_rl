@@ -675,12 +675,14 @@ class TagEnvironment:
         distance_shaping = (
             state.prev_distance - config.distance_shaping_gamma * distance
         )
+        forward_motion_scale = config.forward_motion_reward_scale
 
         chaser_reward = (
             config.win_reward * tagged
             - config.win_reward * time_up
             + config.chaser_time_reward
             + config.distance_shaping_scale * distance_shaping
+            + forward_motion_scale * chaser.forward_velocity
             - config.collision_penalty * chaser_collision
         )
         evader_reward = (
@@ -688,6 +690,7 @@ class TagEnvironment:
             + config.win_reward * time_up
             + config.evader_time_reward
             - config.distance_shaping_scale * distance_shaping
+            + forward_motion_scale * evader.forward_velocity
             - config.collision_penalty * evader_collision
         )
 

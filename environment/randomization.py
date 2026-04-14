@@ -201,7 +201,12 @@ def _sample_agent_dynamics(
             scale,
             dyn.back_emf_scale_nominal,
         ),
-        motor_balance=_sample_centered(balance_rng, dyn.motor_balance_delta_max, scale),
+        motor_balance=_sample_centered(
+            balance_rng,
+            dyn.motor_balance_delta_max,
+            scale,
+            dyn.motor_balance_nominal,
+        ),
         motor_time_constant_seconds=_sample_scale(
             time_constant_rng,
             dyn.motor_time_constant_seconds_min,

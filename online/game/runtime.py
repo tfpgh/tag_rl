@@ -459,19 +459,19 @@ class TagGameRuntime:
         raw_view, arena_view = self.tracker.render_debug_views(frame, board_state)
         raw_view = self._scale_frame(raw_view)
         arena_view = self._scale_frame(arena_view)
-        target_height = min(raw_view.shape[0], arena_view.shape[0])
+        target_width = min(raw_view.shape[1], arena_view.shape[1])
         raw_small = cv2.resize(
             raw_view,
-            (int(raw_view.shape[1] * target_height / raw_view.shape[0]), target_height),
+            (target_width, int(raw_view.shape[0] * target_width / raw_view.shape[1])),
         )
         arena_small = cv2.resize(
             arena_view,
             (
-                int(arena_view.shape[1] * target_height / arena_view.shape[0]),
-                target_height,
+                target_width,
+                int(arena_view.shape[0] * target_width / arena_view.shape[1]),
             ),
         )
-        combined = cv2.hconcat([raw_small, arena_small])
+        combined = cv2.vconcat([raw_small, arena_small])
         ok, encoded = cv2.imencode(
             ".jpg", combined, [int(cv2.IMWRITE_JPEG_QUALITY), self.config.jpeg_quality]
         )

@@ -136,11 +136,11 @@ class PipelineRandomizationConfig:
 @dataclass
 class CurriculumConfig:
     enabled: bool = True
-    layout_start: float = 0.10
-    pipeline_start: float = 0.15
-    dynamics_start: float = 0.15
-    full_progress: float = 0.70
-    exponent: float = 1.0
+    layout_start: float = 0.05
+    pipeline_start: float = 0.10
+    dynamics_start: float = 0.10
+    full_progress: float = 0.50
+    exponent: float = 1.5
 
 
 @dataclass

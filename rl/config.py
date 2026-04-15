@@ -23,7 +23,7 @@ class RLConfig:
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
 
-    checkpoint_interval: int = 50
+    checkpoint_interval: int = 25
     seed: int = 0
 
     @property

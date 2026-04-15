@@ -7,7 +7,7 @@ class ArenaConfig:
     arena_width: float = 2.24
     arena_height: float = 1.02
     agent_radius: float = 0.05
-    agent_z: float = 0.030004  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.0052034854888916)
+    agent_z: float = 0.029975  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.003749132156372)
     tag_distance_factor: float = 1.05
     n_rays: int = 128
     action_frequency: int = 20
@@ -28,7 +28,7 @@ class RewardConfig:
     collision_penalty: float = 5.0
     distance_shaping_scale: float = 0.0
     distance_shaping_gamma: float = 0.99
-    forward_motion_reward_scale: float = 0.003
+    forward_motion_reward_scale: float = 0.0
 
 
 @dataclass
@@ -47,77 +47,77 @@ class DynamicsRandomizationConfig:
     chassis_mass_scale_min: float = 0.9
     chassis_mass_scale_max: float = 1.1
     # CoM offset — x/z centered from sysid, y kept centered at 0
-    com_offset_x_nominal: float = 0.014766989275813103
+    com_offset_x_nominal: float = 0.014703182503581047
     com_offset_x_delta: float = 0.008
-    com_offset_z_nominal: float = 0.00449208403006196
+    com_offset_z_nominal: float = -0.00038700297591276467
     com_offset_z_delta: float = 0.006
     com_offset_y_max: float = 0.003
     # Geometry scales centered from sysid with conservative, still-wide ranges
-    track_width_scale_nominal: float = 0.9436746835708618
-    track_width_scale_min: float = 0.90
-    track_width_scale_max: float = 0.99
-    wheel_radius_scale_nominal: float = 0.9925053119659424
-    wheel_radius_scale_min: float = 0.95
-    wheel_radius_scale_max: float = 1.04
+    track_width_scale_nominal: float = 1.001953125
+    track_width_scale_min: float = 0.95
+    track_width_scale_max: float = 1.05
+    wheel_radius_scale_nominal: float = 1.003749132156372
+    wheel_radius_scale_min: float = 0.96
+    wheel_radius_scale_max: float = 1.05
     # Wheel friction scales
-    wheel_slide_friction_scale_nominal: float = 1.4310381412506104
+    wheel_slide_friction_scale_nominal: float = 1.41664457321167
     wheel_slide_friction_scale_min: float = 1.10
-    wheel_slide_friction_scale_max: float = 1.85
-    wheel_torsional_friction_scale_nominal: float = 0.8624259233474731
-    wheel_torsional_friction_scale_min: float = 0.65
-    wheel_torsional_friction_scale_max: float = 1.15
-    wheel_rolling_friction_scale_nominal: float = 0.5791873931884766
-    wheel_rolling_friction_scale_min: float = 0.40
-    wheel_rolling_friction_scale_max: float = 0.85
+    wheel_slide_friction_scale_max: float = 1.90
+    wheel_torsional_friction_scale_nominal: float = 0.3538326621055603
+    wheel_torsional_friction_scale_min: float = 0.20
+    wheel_torsional_friction_scale_max: float = 0.80
+    wheel_rolling_friction_scale_nominal: float = 1.2203694581985474
+    wheel_rolling_friction_scale_min: float = 0.80
+    wheel_rolling_friction_scale_max: float = 1.70
     # Shared chassis/bumper floor-contact slide friction scale
-    body_contact_friction_scale_nominal: float = 0.48394379019737244
+    body_contact_friction_scale_nominal: float = 0.6012741923332214
     body_contact_friction_scale_min: float = 0.30
-    body_contact_friction_scale_max: float = 0.80
+    body_contact_friction_scale_max: float = 1.20
     # Caster geometry/contact
-    caster_radius_scale_nominal: float = 0.8935249447822571
-    caster_radius_scale_min: float = 0.84
-    caster_radius_scale_max: float = 0.95
+    caster_radius_scale_nominal: float = 0.849507212638855
+    caster_radius_scale_min: float = 0.78
+    caster_radius_scale_max: float = 0.92
     # Caster offset
-    caster_offset_x_nominal: float = 0.0015350662870332599
-    caster_offset_x_delta: float = 0.006
-    caster_slide_friction_scale_nominal: float = 1.385314702987671
-    caster_slide_friction_scale_min: float = 1.00
-    caster_slide_friction_scale_max: float = 1.90
-    caster_torsional_friction_scale_nominal: float = 1.95026433467865
-    caster_torsional_friction_scale_min: float = 1.30
-    caster_torsional_friction_scale_max: float = 2.80
+    caster_offset_x_nominal: float = -0.0013577864738181233
+    caster_offset_x_delta: float = 0.008
+    caster_slide_friction_scale_nominal: float = 2.8258633613586426
+    caster_slide_friction_scale_min: float = 1.60
+    caster_slide_friction_scale_max: float = 3.60
+    caster_torsional_friction_scale_nominal: float = 2.3276596069335938
+    caster_torsional_friction_scale_min: float = 1.40
+    caster_torsional_friction_scale_max: float = 3.10
     # Wheel joint and motor terms
-    wheel_joint_damping_scale_nominal: float = 0.4852498769760132
-    wheel_joint_damping_scale_min: float = 0.25
-    wheel_joint_damping_scale_max: float = 0.90
+    wheel_joint_damping_scale_nominal: float = 2.0157265663146973
+    wheel_joint_damping_scale_min: float = 1.00
+    wheel_joint_damping_scale_max: float = 3.00
     # Keep randomized, but in the small low-friction regime sysid consistently prefers
-    wheel_joint_frictionloss_scale_nominal: float = 0.039026010781526566
-    wheel_joint_frictionloss_scale_min: float = 0.02
-    wheel_joint_frictionloss_scale_max: float = 0.08
-    wheel_armature_scale_nominal: float = 0.6193044781684875
-    wheel_armature_scale_min: float = 0.40
-    wheel_armature_scale_max: float = 1.10
-    motor_strength_scale_nominal: float = 1.0985187292099
-    motor_strength_scale_min: float = 0.85
-    motor_strength_scale_max: float = 1.45
-    back_emf_scale_nominal: float = 0.9941931366920471
-    back_emf_scale_min: float = 0.75
-    back_emf_scale_max: float = 1.30
-    # Motor balance — keep centered at 0 since it is robot-specific
-    motor_balance_nominal: float = 0.0
+    wheel_joint_frictionloss_scale_nominal: float = 0.02858835831284523
+    wheel_joint_frictionloss_scale_min: float = 0.01
+    wheel_joint_frictionloss_scale_max: float = 0.06
+    wheel_armature_scale_nominal: float = 2.4349827766418457
+    wheel_armature_scale_min: float = 1.20
+    wheel_armature_scale_max: float = 3.50
+    motor_strength_scale_nominal: float = 0.9232254028320312
+    motor_strength_scale_min: float = 0.70
+    motor_strength_scale_max: float = 1.30
+    back_emf_scale_nominal: float = 0.6901412010192871
+    back_emf_scale_min: float = 0.50
+    back_emf_scale_max: float = 1.00
+    # Motor balance remains robot-specific, but still centered on the fitted nominal
+    motor_balance_nominal: float = -0.020708676427602768
     motor_balance_delta_max: float = 0.14
     # Motor time constant
-    motor_time_constant_seconds_nominal: float = 0.04410379007458687
-    motor_time_constant_seconds_min: float = 0.025
-    motor_time_constant_seconds_max: float = 0.065
+    motor_time_constant_seconds_nominal: float = 0.02839946746826172
+    motor_time_constant_seconds_min: float = 0.015
+    motor_time_constant_seconds_max: float = 0.050
 
 
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    nominal_action_delay_substeps: int = 6
+    nominal_action_delay_substeps: int = 7
     action_delay_substeps_delta: int = 3
-    nominal_observation_delay_substeps: int = 7
+    nominal_observation_delay_substeps: int = 5
     observation_delay_substeps_delta: int = 3
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002
@@ -131,10 +131,10 @@ class PipelineRandomizationConfig:
 @dataclass
 class CurriculumConfig:
     enabled: bool = True
-    layout_start: float = 0.05
-    pipeline_start: float = 0.10
+    layout_start: float = 0.10
+    pipeline_start: float = 0.15
     dynamics_start: float = 0.15
-    full_progress: float = 0.75
+    full_progress: float = 0.70
     exponent: float = 1.0
 
 

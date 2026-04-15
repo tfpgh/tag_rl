@@ -207,6 +207,7 @@ def _sample_agent_dynamics(
             scale,
             dyn.motor_balance_nominal,
         ),
+        motor_deadzone=jnp.asarray(0.0, dtype=jnp.float32),
         motor_time_constant_seconds=_sample_scale(
             time_constant_rng,
             dyn.motor_time_constant_seconds_min,

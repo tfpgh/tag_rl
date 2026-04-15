@@ -250,6 +250,7 @@ def build_domain_and_pipeline_from_physical(
         ),
         back_emf_scale=jnp.asarray(resolved["back_emf_scale"], dtype=jnp.float32),
         motor_balance=jnp.asarray(resolved["motor_balance"], dtype=jnp.float32),
+        motor_deadzone=jnp.asarray(0.0, dtype=jnp.float32),
         motor_time_constant_seconds=jnp.asarray(
             resolved["motor_time_constant_seconds"], dtype=jnp.float32
         ),

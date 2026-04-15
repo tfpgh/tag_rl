@@ -364,7 +364,7 @@ def sample_layout_state(
 
     obstacle_half_extent = config.obstacle_width / 2
     obstacle_clearance_radius = jnp.sqrt(2.0) * obstacle_half_extent
-    obstacle_margin = obstacle_clearance_radius
+    obstacle_margin = obstacle_half_extent
     obstacle_lower = jnp.array(
         [
             -(config.arena_width / 2) + obstacle_margin,

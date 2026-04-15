@@ -16,12 +16,12 @@ class ArenaConfig:
     tag_distance_factor: float = 1.05
     n_rays: int = 128
     action_frequency: int = 20
-    episode_max_length: int = 20
+    episode_max_length: int = 40
     chaser_freeze_seconds: int = 2
     agent_max_linear_velocity: float = 1.35
     agent_max_angular_velocity: float = 31.0
-    minimum_starting_separation: float = 0.13
-    wall_margin_factor: float = 1.5
+    minimum_starting_separation: float = 0.12
+    wall_margin_factor: float = 1.05
     action_scale: float = 1.0
 
 
@@ -38,11 +38,11 @@ class RewardConfig:
 
 @dataclass
 class LayoutRandomizationConfig:
-    max_obstacles: int = 4
+    max_obstacles: int = 6
     obstacle_width: float = 0.20
     obstacle_candidate_pool: int = 64
     spawn_candidate_pool: int = 64
-    obstacle_separation_factor: float = 1.4
+    obstacle_separation_factor: float = 1.0
 
 
 @dataclass

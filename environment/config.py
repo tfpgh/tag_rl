@@ -1,5 +1,10 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any
+
+
+def _filtered_dataclass_kwargs(cls: type, payload: dict[str, Any]) -> dict[str, Any]:
+    valid_names = {item.name for item in fields(cls)}
+    return {key: value for key, value in payload.items() if key in valid_names}
 
 
 @dataclass
@@ -156,18 +161,35 @@ class EnvironmentConfig:
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "EnvironmentConfig":
         return cls(
-            arena=ArenaConfig(**payload.get("arena", {})),
-            rewards=RewardConfig(**payload.get("rewards", {})),
+            arena=ArenaConfig(
+                **_filtered_dataclass_kwargs(ArenaConfig, payload.get("arena", {}))
+            ),
+            rewards=RewardConfig(
+                **_filtered_dataclass_kwargs(RewardConfig, payload.get("rewards", {}))
+            ),
             layout_randomization=LayoutRandomizationConfig(
-                **payload.get("layout_randomization", {})
+                **_filtered_dataclass_kwargs(
+                    LayoutRandomizationConfig,
+                    payload.get("layout_randomization", {}),
+                )
             ),
             dynamics_randomization=DynamicsRandomizationConfig(
-                **payload.get("dynamics_randomization", {})
+                **_filtered_dataclass_kwargs(
+                    DynamicsRandomizationConfig,
+                    payload.get("dynamics_randomization", {}),
+                )
             ),
             pipeline_randomization=PipelineRandomizationConfig(
-                **payload.get("pipeline_randomization", {})
+                **_filtered_dataclass_kwargs(
+                    PipelineRandomizationConfig,
+                    payload.get("pipeline_randomization", {}),
+                )
             ),
-            curriculum=CurriculumConfig(**payload.get("curriculum", {})),
+            curriculum=CurriculumConfig(
+                **_filtered_dataclass_kwargs(
+                    CurriculumConfig, payload.get("curriculum", {})
+                )
+            ),
         )
 
     @property

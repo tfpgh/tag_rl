@@ -6,7 +6,7 @@ class RLConfig:
     num_envs: int = 16384
     num_steps: int = 128
 
-    total_timesteps: int = int(1e9)
+    total_timesteps: int = int(3e9)
 
     hidden_size: int = 256
 

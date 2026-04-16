@@ -28,9 +28,9 @@ class ArenaConfig:
 @dataclass
 class RewardConfig:
     win_reward: float = 1.0
-    chaser_time_reward: float = -0.004
-    evader_time_reward: float = 0.004
-    collision_penalty: float = 5.0
+    chaser_time_reward: float = -0.01
+    evader_time_reward: float = 0.01
+    collision_penalty: float = 10.0
     distance_shaping_scale: float = 0.0
     distance_shaping_gamma: float = 0.99
     forward_motion_reward_scale: float = 0.0

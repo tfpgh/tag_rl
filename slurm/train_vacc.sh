@@ -18,4 +18,8 @@ export PYTHONUNBUFFERED=1
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_FLAGS=--xla_gpu_triton_gemm_any=true
 
+module load cuda/12.9.1
+
+uv sync --extra cuda
+
 uv run -m rl.train --num-devices 8

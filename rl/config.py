@@ -3,10 +3,10 @@ from dataclasses import dataclass
 
 @dataclass
 class RLConfig:
-    num_envs: int = 131072
+    num_envs: int = 262_144
     num_steps: int = 128
 
-    total_timesteps: int = int(10e9)
+    total_timesteps: int = int(2e10)
 
     hidden_size: int = 256
 
@@ -15,7 +15,7 @@ class RLConfig:
     lr_decay_start_fraction: float = 0.7
     final_lr_scale: float = 0.1
     update_epochs: int = 4
-    num_minibatches: int = 32
+    num_minibatches: int = 256
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2

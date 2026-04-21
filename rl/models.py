@@ -1,12 +1,11 @@
 import functools
-import math
 from typing import Sequence
 
 import distrax
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-from flax.linen.initializers import constant, orthogonal
+from flax.linen.initializers import constant, normal, variance_scaling
 
 
 class ScannedRNN(nn.Module):
@@ -77,7 +76,7 @@ class _ActorCriticBase(nn.Module):
         embedding = self._embed(obs)
         embedding = nn.Dense(
             features=self.hidden_size,
-            kernel_init=orthogonal(math.sqrt(2.0)),
+            kernel_init=variance_scaling(2.0, "fan_in", "truncated_normal"),
             bias_init=constant(0.0),
         )(embedding)
         embedding = nn.relu(embedding)
@@ -88,13 +87,13 @@ class _ActorCriticBase(nn.Module):
 
         actor_mean = nn.Dense(
             features=self.hidden_size,
-            kernel_init=orthogonal(2),
+            kernel_init=variance_scaling(2.0, "fan_in", "truncated_normal"),
             bias_init=constant(0.0),
         )(embedding)
         actor_mean = nn.relu(actor_mean)
         actor_mean = nn.Dense(
             features=self.action_dim[0],
-            kernel_init=orthogonal(0.01),
+            kernel_init=normal(0.01),
             bias_init=constant(0.0),
         )(actor_mean)
         actor_log_std = self.param("log_std", constant(-1.0), self.action_dim)
@@ -106,12 +105,14 @@ class _ActorCriticBase(nn.Module):
 
         critic = nn.Dense(
             features=self.hidden_size,
-            kernel_init=orthogonal(2),
+            kernel_init=variance_scaling(2.0, "fan_in", "truncated_normal"),
             bias_init=constant(0.0),
         )(embedding)
         critic = nn.relu(critic)
         critic = nn.Dense(
-            features=1, kernel_init=orthogonal(1.0), bias_init=constant(0.0)
+            features=1,
+            kernel_init=variance_scaling(1.0, "fan_in", "truncated_normal"),
+            bias_init=constant(0.0),
         )(critic)
 
         return hidden, pi, jnp.squeeze(critic, axis=-1)

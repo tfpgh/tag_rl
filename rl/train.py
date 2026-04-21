@@ -337,6 +337,7 @@ def main() -> None:
         )
         progress_array = jnp.full((len(devices),), progress, dtype=jnp.float32)
         runner_state, metrics = step_pmap(runner_state, progress_array)
+        metrics = jax.block_until_ready(metrics)
         global_step = (update + 1) * rl_config.timesteps_per_update
         current_lr = float(learning_rate_for_update(rl_config, update))
 

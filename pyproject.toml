@@ -22,7 +22,7 @@ dependencies = [
     "uvicorn[standard]>=0.35.0",
     "numpy>=2.4.3",
     "tensorboard>=2.20.0",
-    "setuptools>=82.0.1",
+    "setuptools<82",
 ]
 
 [project.optional-dependencies]

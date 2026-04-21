@@ -8,8 +8,8 @@
 #SBATCH --ntasks=1
 #SBATCH --time=1-00:00:00
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=32gb
-#SBATCH --gpus=8
+#SBATCH --mem=64gb
+#SBATCH --gpus=4
 #SBATCH --constraint=GPU_SKU:RTX6000
 
 
@@ -18,8 +18,8 @@ export PYTHONUNBUFFERED=1
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_FLAGS=--xla_gpu_triton_gemm_any=true
 
-module load cuda/12.9.1
+module load cuda/13.0.2
 
-uv sync --extra cuda
+uv sync --extra cuda13
 
-uv run -m rl.train --num-devices 8
+uv run -m rl.train --num-devices 4

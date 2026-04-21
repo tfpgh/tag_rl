@@ -21,6 +21,7 @@ dependencies = [
     "jax>=0.9.1",
     "uvicorn[standard]>=0.35.0",
     "numpy>=2.4.3",
+    "tensorboard>=2.20.0",
 ]
 
 [project.optional-dependencies]

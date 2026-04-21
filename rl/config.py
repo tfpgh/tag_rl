@@ -3,10 +3,10 @@ from dataclasses import dataclass
 
 @dataclass
 class RLConfig:
-    num_envs: int = 65_536
+    num_envs: int = 131_072
     num_steps: int = 128
 
-    total_timesteps: int = int(5e8)
+    total_timesteps: int = int(2e10)
 
     hidden_size: int = 256
 

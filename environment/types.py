@@ -118,3 +118,5 @@ class TagEnvironmentStepInfo(NamedTuple):
     evader_motor_balance: jax.Array
     chaser_motor_strength_scale: jax.Array
     evader_motor_strength_scale: jax.Array
+    physics_invalid: jax.Array
+    reward_invalid: jax.Array

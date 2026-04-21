@@ -90,10 +90,16 @@ def auto_reset_step(
         info,
     ) = env.step(state, chaser_action, evader_action, step_rng)
 
-    # Guard against DR-induced physics instability: if the sim produces non-finite
-    # observations, treat this step as a forced terminal transition with zero reward
-    # so the bad state never enters the trajectory buffer.
-    physics_ok = jnp.isfinite(chaser_obs).all() & jnp.isfinite(evader_obs).all()
+    # Guard against DR-induced physics instability before it can poison GAE/PPO.
+    physics_ok = (
+        jnp.isfinite(chaser_obs).all()
+        & jnp.isfinite(evader_obs).all()
+        & jnp.isfinite(chaser_reward)
+        & jnp.isfinite(evader_reward)
+        & jnp.isfinite(info.distance)
+        & ~info.physics_invalid
+        & ~info.reward_invalid
+    )
     chaser_reward = jnp.where(physics_ok, chaser_reward, jnp.float32(0.0))
     evader_reward = jnp.where(physics_ok, evader_reward, jnp.float32(0.0))
     effective_done = done | ~physics_ok
@@ -107,7 +113,15 @@ def auto_reset_step(
     state, chaser_obs, evader_obs = jax.lax.cond(
         effective_done, reset_branch, continue_branch, operand=None
     )
-    return state, chaser_obs, evader_obs, chaser_reward, evader_reward, effective_done, info
+    return (
+        state,
+        chaser_obs,
+        evader_obs,
+        chaser_reward,
+        evader_reward,
+        effective_done,
+        info,
+    )
 
 
 def collect_trajectories(

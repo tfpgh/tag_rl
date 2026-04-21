@@ -37,6 +37,11 @@ def _wrap_angle(angle: jax.Array) -> jax.Array:
     return jnp.arctan2(jnp.sin(angle), jnp.cos(angle))
 
 
+def _finite_or(value: jax.Array, fallback: jax.Array | float) -> jax.Array:
+    fallback_value = jnp.asarray(fallback, dtype=value.dtype)
+    return jnp.where(jnp.isfinite(value), value, fallback_value)
+
+
 class TagEnvironment:
     def __init__(self, config: EnvironmentConfig) -> None:
         config.validate()
@@ -661,7 +666,30 @@ class TagEnvironment:
         obstacle_active = state.obstacle_active
         chaser, evader = self._agent_pair_kinematics(mjx_data)
         distance = jnp.linalg.norm(chaser.position_xy - evader.position_xy)
-        tagged = distance < self.tag_distance
+        qpos_finite = jnp.isfinite(mjx_data.qpos).all()
+        qvel_finite = jnp.isfinite(mjx_data.qvel).all()
+        ctrl_finite = jnp.isfinite(mjx_data.ctrl).all()
+        distance_finite = jnp.isfinite(distance)
+        chaser_forward_velocity_finite = jnp.isfinite(chaser.forward_velocity)
+        evader_forward_velocity_finite = jnp.isfinite(evader.forward_velocity)
+        physics_valid = (
+            qpos_finite
+            & qvel_finite
+            & ctrl_finite
+            & distance_finite
+            & chaser_forward_velocity_finite
+            & evader_forward_velocity_finite
+        )
+
+        safe_distance = _finite_or(distance, state.prev_distance)
+        safe_chaser_forward_velocity = _finite_or(
+            chaser.forward_velocity, jnp.float32(0.0)
+        )
+        safe_evader_forward_velocity = _finite_or(
+            evader.forward_velocity, jnp.float32(0.0)
+        )
+
+        tagged = safe_distance < self.tag_distance
         chaser_collision, evader_collision = self._collision_flags(
             chaser.position_xy,
             evader.position_xy,
@@ -673,7 +701,7 @@ class TagEnvironment:
         done = tagged | time_up | chaser_collision | evader_collision
 
         distance_shaping = (
-            state.prev_distance - config.distance_shaping_gamma * distance
+            state.prev_distance - config.distance_shaping_gamma * safe_distance
         )
         forward_motion_scale = config.forward_motion_reward_scale
 
@@ -682,7 +710,7 @@ class TagEnvironment:
             - config.win_reward * time_up
             + config.chaser_time_reward
             + config.distance_shaping_scale * distance_shaping
-            + forward_motion_scale * chaser.forward_velocity
+            + forward_motion_scale * safe_chaser_forward_velocity
             - config.collision_penalty * chaser_collision
         )
         evader_reward = (
@@ -690,16 +718,17 @@ class TagEnvironment:
             + config.win_reward * time_up
             + config.evader_time_reward
             - config.distance_shaping_scale * distance_shaping
-            + forward_motion_scale * evader.forward_velocity
+            + forward_motion_scale * safe_evader_forward_velocity
             - config.collision_penalty * evader_collision
         )
+        reward_valid = jnp.isfinite(chaser_reward) & jnp.isfinite(evader_reward)
 
         interim_state = state._replace(
             mjx_data=mjx_data,
             action_buffer=action_buffer,
             last_applied_actions=applied_actions,
             step_count=step_count,
-            prev_distance=distance,
+            prev_distance=safe_distance,
         )
         delayed_observations = self._select_delayed(
             observation_buffer, state.pipeline_params.observation_delay_substeps
@@ -734,6 +763,8 @@ class TagEnvironment:
             evader_motor_balance=state.domain_params.evader.motor_balance,
             chaser_motor_strength_scale=state.domain_params.chaser.motor_strength_scale,
             evader_motor_strength_scale=state.domain_params.evader.motor_strength_scale,
+            physics_invalid=~physics_valid,
+            reward_invalid=~reward_valid,
         )
         return (
             new_state,

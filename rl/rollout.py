@@ -270,7 +270,7 @@ def split_agent_trajectories(
 ) -> tuple[AgentTransition, AgentTransition]:
     chaser_traj = AgentTransition(
         done=traj_batch.done,
-        action=traj_batch.chaser_action,
+        action=traj_batch.chaser_action_raw,
         value=traj_batch.chaser_value,
         reward=traj_batch.chaser_reward,
         log_prob=traj_batch.chaser_log_prob,
@@ -278,7 +278,7 @@ def split_agent_trajectories(
     )
     evader_traj = AgentTransition(
         done=traj_batch.done,
-        action=traj_batch.evader_action,
+        action=traj_batch.evader_action_raw,
         value=traj_batch.evader_value,
         reward=traj_batch.evader_reward,
         log_prob=traj_batch.evader_log_prob,

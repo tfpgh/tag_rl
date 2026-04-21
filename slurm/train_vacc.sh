@@ -19,6 +19,7 @@ export XLA_PYTHON_CLIENT_PREALLOCATE=false
 export XLA_FLAGS=--xla_gpu_triton_gemm_any=true
 
 module load cuda/13.0.2
+module load cudnn/9.17.1-cuda13
 
 uv sync --extra cuda13
 

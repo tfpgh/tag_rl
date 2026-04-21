@@ -9,7 +9,7 @@
 #SBATCH --time=1-00:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64gb
-#SBATCH --gpus=4
+#SBATCH --gpus=8
 #SBATCH --constraint=GPU_SKU:RTX6000
 
 
@@ -22,4 +22,4 @@ module load cuda/13.0.2
 
 uv sync --extra cuda13
 
-uv run -m rl.train --num-devices 4
+uv run -m rl.train --num-devices 8

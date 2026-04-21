@@ -10,6 +10,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32gb
 #SBATCH --gpus=1
+#SBATCH --constraint=GPU_ANY
 
 
 export TQDM_MININTERVAL=15

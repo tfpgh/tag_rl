@@ -19,4 +19,4 @@ export XLA_FLAGS=--xla_gpu_triton_gemm_any=true
 
 uv sync --extra cuda13
 
-uv run -m sysid.fit --data-root data --output-dir runs/sysid_$SLURM_JOB_ID --generations 10000 --population-size 4096 --sigma 0.8
+uv run -m sysid.fit --data-root data --output-dir runs/sysid_$SLURM_JOB_ID --generations 10000 --population-size 256 --sigma 0.25

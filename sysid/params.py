@@ -96,14 +96,14 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "command_delay_substeps",
-        ParamBounds(0.0, 10.0),
-        5.0,
+        ParamBounds(0.0, 20.0),
+        10.0,
         PARAM_TRANSFORM_INTEGER,
     ),
     ParamSpec(
         "observation_delay_substeps",
-        ParamBounds(0.0, 10.0),
-        5.0,
+        ParamBounds(0.0, 20.0),
+        10.0,
         PARAM_TRANSFORM_INTEGER,
     ),
 )

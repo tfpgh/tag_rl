@@ -13,7 +13,7 @@ class ArenaConfig:
     arena_height: float = 1.02
     agent_radius: float = 0.05
     agent_z: float = 0.029975  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.003749132156372)
-    tag_distance_factor: float = 1.15
+    tag_distance_factor: float = 1.2
     n_rays: int = 128
     action_frequency: int = 20
     episode_max_length: int = 40
@@ -34,7 +34,7 @@ class RewardConfig:
     distance_shaping_scale: float = 0.0
     distance_shaping_gamma: float = 0.99
     forward_motion_reward_scale: float = 0.0
-    action_smoothing_scale: float = 0.001
+    action_smoothing_scale: float = 0.005
 
 
 @dataclass

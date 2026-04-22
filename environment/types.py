@@ -38,6 +38,10 @@ class AgentDynamicsParams(NamedTuple):
     motor_balance: jax.Array
     motor_deadzone: jax.Array  # deprecated, kept for checkpoint compatibility
     motor_time_constant_seconds: jax.Array
+    motor_curve_sharpness: jax.Array
+    traction_slip_threshold: jax.Array
+    traction_loss_strength: jax.Array
+    traction_min_scale: jax.Array
 
 
 class DomainParams(NamedTuple):

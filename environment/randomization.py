@@ -80,7 +80,11 @@ def _sample_agent_dynamics(
         back_emf_rng,
         balance_rng,
         time_constant_rng,
-    ) = random.split(rng, 21)
+        curve_sharpness_rng,
+        slip_threshold_rng,
+        traction_loss_rng,
+        traction_min_scale_rng,
+    ) = random.split(rng, 25)
 
     return AgentDynamicsParams(
         mass_scale=_sample_scale(
@@ -214,6 +218,34 @@ def _sample_agent_dynamics(
             dyn.motor_time_constant_seconds_max,
             scale,
             dyn.motor_time_constant_seconds_nominal,
+        ),
+        motor_curve_sharpness=_sample_scale(
+            curve_sharpness_rng,
+            dyn.motor_curve_sharpness_min,
+            dyn.motor_curve_sharpness_max,
+            scale,
+            dyn.motor_curve_sharpness_nominal,
+        ),
+        traction_slip_threshold=_sample_scale(
+            slip_threshold_rng,
+            dyn.traction_slip_threshold_min,
+            dyn.traction_slip_threshold_max,
+            scale,
+            dyn.traction_slip_threshold_nominal,
+        ),
+        traction_loss_strength=_sample_scale(
+            traction_loss_rng,
+            dyn.traction_loss_strength_min,
+            dyn.traction_loss_strength_max,
+            scale,
+            dyn.traction_loss_strength_nominal,
+        ),
+        traction_min_scale=_sample_scale(
+            traction_min_scale_rng,
+            dyn.traction_min_scale_min,
+            dyn.traction_min_scale_max,
+            scale,
+            dyn.traction_min_scale_nominal,
         ),
     )
 

@@ -116,6 +116,19 @@ class DynamicsRandomizationConfig:
     motor_time_constant_seconds_nominal: float = 0.02839946746826172
     motor_time_constant_seconds_min: float = 0.015
     motor_time_constant_seconds_max: float = 0.050
+    # Smooth high-command actuator compression and launch-slip attenuation.
+    motor_curve_sharpness_nominal: float = 1.5
+    motor_curve_sharpness_min: float = 0.0
+    motor_curve_sharpness_max: float = 4.0
+    traction_slip_threshold_nominal: float = 0.20
+    traction_slip_threshold_min: float = 0.05
+    traction_slip_threshold_max: float = 0.45
+    traction_loss_strength_nominal: float = 1.5
+    traction_loss_strength_min: float = 0.0
+    traction_loss_strength_max: float = 4.0
+    traction_min_scale_nominal: float = 0.55
+    traction_min_scale_min: float = 0.20
+    traction_min_scale_max: float = 1.0
 
 
 @dataclass
@@ -385,6 +398,17 @@ class EnvironmentConfig:
             or dyn.motor_time_constant_seconds_max < 0
         ):
             raise ValueError("motor time constants must be nonnegative")
+        if dyn.motor_curve_sharpness_min < 0 or dyn.motor_curve_sharpness_max < 0:
+            raise ValueError("motor curve sharpness must be nonnegative")
+        if dyn.traction_slip_threshold_min < 0 or dyn.traction_slip_threshold_max < 0:
+            raise ValueError("traction slip thresholds must be nonnegative")
+        if dyn.traction_loss_strength_min < 0 or dyn.traction_loss_strength_max < 0:
+            raise ValueError("traction loss strengths must be nonnegative")
+        if not (
+            0 < dyn.traction_min_scale_min <= 1.0
+            and 0 < dyn.traction_min_scale_max <= 1.0
+        ):
+            raise ValueError("traction min scales must be in (0, 1]")
         if (
             dyn.com_offset_x_delta < 0
             or dyn.com_offset_z_delta < 0

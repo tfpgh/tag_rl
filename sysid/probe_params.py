@@ -17,6 +17,7 @@ from environment.config import EnvironmentConfig
 from sysid.dataset import WindowConfig, load_dataset_splits
 from sysid.evaluator import SysIdEvaluator
 from sysid.params import (
+    DEFAULT_PHYSICAL_PARAMS,
     PARAM_BOUNDS,
     PARAM_NAMES,
     PARAM_SPEC_BY_NAME,
@@ -66,7 +67,10 @@ def _load_params(path: Path) -> dict[str, float]:
         payload = payload["global_best"]["params"]
     elif "generation_best" in payload and "params" in payload["generation_best"]:
         payload = payload["generation_best"]["params"]
-    return {name: float(payload[name]) for name in PARAM_NAMES}
+    return {
+        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
+        for name in PARAM_NAMES
+    }
 
 
 def _load_params_from_history(path: Path, source: str) -> dict[str, float]:
@@ -93,7 +97,10 @@ def _load_params_from_history(path: Path, source: str) -> dict[str, float]:
         payload = rows[-1]["global_best"]["params"]
     else:
         raise ValueError(f"Unsupported history source: {source}")
-    return {name: float(payload[name]) for name in PARAM_NAMES}
+    return {
+        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
+        for name in PARAM_NAMES
+    }
 
 
 def _to_latent(physical: dict[str, float]) -> jax.Array:

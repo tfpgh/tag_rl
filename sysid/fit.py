@@ -15,6 +15,7 @@ from sysid.cma_es import CMAES
 from sysid.dataset import WindowConfig, load_dataset_splits
 from sysid.evaluator import SysIdEvaluator
 from sysid.params import (
+    DEFAULT_PHYSICAL_PARAMS,
     LATENT_DIM,
     PARAM_BOUNDS,
     PARAM_NAMES,
@@ -78,7 +79,10 @@ def _load_physical_params(path: Path) -> dict[str, float]:
         payload = payload["global_best"]["params"]
     elif "generation_best" in payload and "params" in payload["generation_best"]:
         payload = payload["generation_best"]["params"]
-    return {name: float(payload[name]) for name in PARAM_NAMES}
+    return {
+        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
+        for name in PARAM_NAMES
+    }
 
 
 def parse_args() -> argparse.Namespace:

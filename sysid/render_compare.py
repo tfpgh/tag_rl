@@ -21,6 +21,7 @@ import mujoco
 import numpy as np
 from mujoco import mjx
 
+from environment.actuation import shape_agent_actions
 from environment.mjcf import generate_mjcf
 from environment.randomization import randomize_model
 from online.app.render_run import (
@@ -41,7 +42,10 @@ from online.app.render_run import (
     set_agent_pose,
 )
 from sysid.evaluator import SysIdEvaluator
-from sysid.params import build_domain_and_pipeline_from_physical
+from sysid.params import (
+    DEFAULT_PHYSICAL_PARAMS,
+    build_domain_and_pipeline_from_physical,
+)
 
 REAL_COLOR = (110, 185, 255)
 SIM_COLOR = (255, 176, 90)
@@ -102,17 +106,15 @@ def _extract_physical_params(path: Path) -> dict[str, float]:
     else:
         payload = json.loads(text)
     if "best_params" in payload:
-        return {key: float(value) for key, value in payload["best_params"].items()}
-    if "global_best" in payload and "params" in payload["global_best"]:
-        return {
-            key: float(value) for key, value in payload["global_best"]["params"].items()
-        }
-    if "generation_best" in payload and "params" in payload["generation_best"]:
-        return {
-            key: float(value)
-            for key, value in payload["generation_best"]["params"].items()
-        }
-    return {key: float(value) for key, value in payload.items()}
+        payload = payload["best_params"]
+    elif "global_best" in payload and "params" in payload["global_best"]:
+        payload = payload["global_best"]["params"]
+    elif "generation_best" in payload and "params" in payload["generation_best"]:
+        payload = payload["generation_best"]["params"]
+    return {
+        key: float(payload.get(key, DEFAULT_PHYSICAL_PARAMS[key]))
+        for key in DEFAULT_PHYSICAL_PARAMS
+    }
 
 
 def _iter_samples(run_dir: Path) -> list[dict[str, Any]]:
@@ -293,6 +295,15 @@ def _simulate_target_poses(
             jnp.roll(action_buffer, shift=-1, axis=0).at[-1].set(proposed_action)
         )
         delayed_action = action_buffer[-1 - pipeline_params.action_delay_substeps]
+        delayed_action = shape_agent_actions(
+            delayed_action,
+            data.qpos,
+            data.qvel,
+            domain_params.chaser,
+            evaluator.env.model_indices.chaser,
+            evaluator.qpos_slices.chaser_root,
+            evaluator.dof_slices.chaser_root,
+        )
         data = data.replace(
             ctrl=jnp.concatenate([delayed_action, jnp.zeros((2,), dtype=jnp.float32)])
         )
@@ -412,6 +423,10 @@ def _world_to_panel(
     return px, py
 
 
+def _is_finite_pose(pose: PoseState | None) -> bool:
+    return pose is not None and np.isfinite([pose.x_m, pose.y_m, pose.yaw_rad]).all()
+
+
 def _draw_panel(
     frame: np.ndarray,
     sample: dict[str, Any],
@@ -486,7 +501,8 @@ def _draw_panel(
     def draw_trail(
         trail: deque[tuple[float, float]], color: tuple[int, int, int]
     ) -> None:
-        if len(trail) < 2:
+        finite_trail = [(x, y) for x, y in trail if np.isfinite([x, y]).all()]
+        if len(finite_trail) < 2:
             return
         pts = np.array(
             [
@@ -499,7 +515,7 @@ def _draw_panel(
                     env_config.arena_width,
                     env_config.arena_height,
                 )
-                for x, y in trail
+                for x, y in finite_trail
             ],
             dtype=np.int32,
         )
@@ -511,7 +527,7 @@ def _draw_panel(
     def draw_pose(
         pose: PoseState | None, color: tuple[int, int, int], label: str, row: int
     ) -> None:
-        if pose is None:
+        if not _is_finite_pose(pose):
             cv2.putText(
                 frame,
                 f"{label}: missing",
@@ -701,85 +717,93 @@ def _render_run(
     for _ in range(max(1, int(round(args.fps)))):
         writer.append_data(title_card)
 
-    for index, (sample, sim_pose_array) in enumerate(
-        zip(samples, simulated, strict=True), start=1
-    ):
-        qpos = np.zeros(model.nq, dtype=np.float64)
-        qvel = np.zeros(model.nv, dtype=np.float64)
+    try:
+        for index, (sample, sim_pose_array) in enumerate(
+            zip(samples, simulated, strict=True), start=1
+        ):
+            qpos = np.zeros(model.nq, dtype=np.float64)
+            qvel = np.zeros(model.nv, dtype=np.float64)
 
-        real_pose = pose_from_record(
-            sample.get("target_robot"), real_pose, hold_last_pose
-        )
-        sim_pose = PoseState(
-            x_m=float(sim_pose_array[0]),
-            y_m=float(sim_pose_array[1]),
-            yaw_rad=float(sim_pose_array[2]),
-        )
-
-        set_agent_pose(qpos, qpos_slices.chaser_root, real_pose, env_config.agent_z)
-        set_agent_pose(qpos, qpos_slices.evader_root, sim_pose, env_config.agent_z)
-        mocap_pos, mocap_quat = obstacle_mocap_buffers(model, sample)
-
-        data.qpos[:] = qpos
-        data.qvel[:] = qvel
-        if model.nmocap > 0:
-            data.mocap_pos[:] = mocap_pos
-            data.mocap_quat[:] = mocap_quat
-        mujoco.mj_forward(model, data)
-        renderer.update_scene(data, camera=camera)
-        frame = renderer.render().copy()
-
-        current_errors: dict[str, float] | None = None
-        if real_pose is not None:
-            real_trail.append((real_pose.x_m, real_pose.y_m))
-            pos_err = float(
-                np.hypot(sim_pose.x_m - real_pose.x_m, sim_pose.y_m - real_pose.y_m)
+            real_pose = pose_from_record(
+                sample.get("target_robot"), real_pose, hold_last_pose
             )
-            yaw_err = float(
-                np.degrees(
-                    np.arctan2(
-                        np.sin(sim_pose.yaw_rad - real_pose.yaw_rad),
-                        np.cos(sim_pose.yaw_rad - real_pose.yaw_rad),
+            sim_pose = PoseState(
+                x_m=float(sim_pose_array[0]),
+                y_m=float(sim_pose_array[1]),
+                yaw_rad=float(sim_pose_array[2]),
+            )
+            if not _is_finite_pose(sim_pose):
+                print(
+                    f"Skipping invalid simulated pose in {run_dir.name} at frame {index}/{len(samples)}"
+                )
+                sim_pose = None
+
+            set_agent_pose(qpos, qpos_slices.chaser_root, real_pose, env_config.agent_z)
+            set_agent_pose(qpos, qpos_slices.evader_root, sim_pose, env_config.agent_z)
+            mocap_pos, mocap_quat = obstacle_mocap_buffers(model, sample)
+
+            data.qpos[:] = qpos
+            data.qvel[:] = qvel
+            if model.nmocap > 0:
+                data.mocap_pos[:] = mocap_pos
+                data.mocap_quat[:] = mocap_quat
+            mujoco.mj_forward(model, data)
+            renderer.update_scene(data, camera=camera)
+            frame = renderer.render().copy()
+
+            current_errors: dict[str, float] | None = None
+            if _is_finite_pose(real_pose):
+                real_trail.append((real_pose.x_m, real_pose.y_m))
+            if _is_finite_pose(real_pose) and _is_finite_pose(sim_pose):
+                pos_err = float(
+                    np.hypot(sim_pose.x_m - real_pose.x_m, sim_pose.y_m - real_pose.y_m)
+                )
+                yaw_err = float(
+                    np.degrees(
+                        np.arctan2(
+                            np.sin(sim_pose.yaw_rad - real_pose.yaw_rad),
+                            np.cos(sim_pose.yaw_rad - real_pose.yaw_rad),
+                        )
                     )
                 )
+                running_pos_errs.append(pos_err)
+                running_yaw_errs.append(abs(yaw_err))
+                current_errors = {
+                    "position_cm": pos_err * 100.0,
+                    "yaw_deg": abs(yaw_err),
+                }
+            if _is_finite_pose(sim_pose):
+                sim_trail.append((sim_pose.x_m, sim_pose.y_m))
+
+            draw_control_overlay(frame, sample)
+            _draw_panel(
+                frame,
+                sample,
+                real_pose,
+                sim_pose,
+                real_trail,
+                sim_trail,
+                env_config,
+                current_errors,
             )
-            running_pos_errs.append(pos_err)
-            running_yaw_errs.append(abs(yaw_err))
-            current_errors = {
-                "position_cm": pos_err * 100.0,
-                "yaw_deg": abs(yaw_err),
-            }
-        sim_trail.append((sim_pose.x_m, sim_pose.y_m))
-
-        draw_control_overlay(frame, sample)
-        _draw_panel(
-            frame,
-            sample,
-            real_pose,
-            sim_pose,
-            real_trail,
-            sim_trail,
-            env_config,
-            current_errors,
-        )
-        _draw_metrics_overlay(
-            frame,
-            current_errors,
-            {
-                "position_cm": (100.0 * float(np.mean(running_pos_errs)))
-                if running_pos_errs
-                else 0.0,
-                "yaw_deg": float(np.mean(running_yaw_errs))
-                if running_yaw_errs
-                else 0.0,
-            },
-            params_label,
-        )
-        writer.append_data(frame)
-        if index % 100 == 0 or index == len(samples):
-            print(f"Rendered {run_dir.name}: {index}/{len(samples)} frames")
-
-    renderer.close()
+            _draw_metrics_overlay(
+                frame,
+                current_errors,
+                {
+                    "position_cm": (100.0 * float(np.mean(running_pos_errs)))
+                    if running_pos_errs
+                    else 0.0,
+                    "yaw_deg": float(np.mean(running_yaw_errs))
+                    if running_yaw_errs
+                    else 0.0,
+                },
+                params_label,
+            )
+            writer.append_data(frame)
+            if index % 100 == 0 or index == len(samples):
+                print(f"Rendered {run_dir.name}: {index}/{len(samples)} frames")
+    finally:
+        renderer.close()
 
 
 def render_compare(args: argparse.Namespace) -> None:

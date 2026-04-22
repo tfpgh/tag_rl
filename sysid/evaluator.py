@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 from mujoco import mjx
 
+from environment.actuation import shape_agent_actions
 from environment.config import EnvironmentConfig
 from environment.environment import TagEnvironment
 from environment.mujoco_data import JointDofSlices, JointQposSlices, yaw_to_quaternion
@@ -405,6 +406,15 @@ class SysIdEvaluator:
                 jnp.roll(action_buffer, shift=-1, axis=0).at[-1].set(proposed_action)
             )
             delayed_action = action_buffer[-1 - pipeline_params.action_delay_substeps]
+            delayed_action = shape_agent_actions(
+                delayed_action,
+                data.qpos,
+                data.qvel,
+                domain_params.chaser,
+                self.env.model_indices.chaser,
+                self.qpos_slices.chaser_root,
+                self.dof_slices.chaser_root,
+            )
             data = data.replace(
                 ctrl=jnp.concatenate(
                     [delayed_action, jnp.zeros((2,), dtype=jnp.float32)]

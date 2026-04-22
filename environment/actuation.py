@@ -11,12 +11,11 @@ from environment.types import AgentDynamicsParams, AgentModelIndices
 def _motor_curve(command: jax.Array, sharpness: jax.Array) -> jax.Array:
     sharpness = jnp.maximum(jnp.asarray(sharpness, dtype=jnp.float32), 0.0)
     command = jnp.asarray(command, dtype=jnp.float32)
-    return jax.lax.cond(
-        sharpness < 1e-4,
-        lambda _: command,
-        lambda _: jnp.tanh(sharpness * command) / jnp.tanh(sharpness),
-        operand=None,
-    )
+    alpha = sharpness / (1.0 + sharpness)
+    magnitude = jnp.abs(command)
+    # Preserve endpoints and unit slope at zero while compressing mid/high inputs.
+    compressed = magnitude - alpha * magnitude * magnitude * (1.0 - magnitude)
+    return jnp.sign(command) * compressed
 
 
 def shape_agent_actions(

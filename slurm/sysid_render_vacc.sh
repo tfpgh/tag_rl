@@ -12,11 +12,6 @@
 #SBATCH --gpus=1
 #SBATCH --constraint=GPU_ANY
 
-if [ "$#" -eq 0 ]; then
-    printf 'Usage: sbatch slurm/sysid_render_compare_vacc.sh --run-dir <path> --params <path> --output <path> [extra args...]\n' >&2
-    exit 1
-fi
-
 export TQDM_MININTERVAL=15
 export PYTHONUNBUFFERED=1
 export XLA_PYTHON_CLIENT_PREALLOCATE=false

@@ -56,7 +56,7 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "body_contact_friction_scale",
-        ParamBounds(0.25, 4.0),
+        ParamBounds(0.001, 4.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
@@ -74,13 +74,13 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "wheel_joint_damping_scale",
-        ParamBounds(0.01, 5.0),
+        ParamBounds(0.0001, 5.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_joint_frictionloss_scale",
-        ParamBounds(0.01, 5.0),
+        ParamBounds(0.0001, 5.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),

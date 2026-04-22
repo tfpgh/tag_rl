@@ -6,11 +6,16 @@ from typing import Literal, Mapping
 import jax
 import jax.numpy as jnp
 
+from environment.config import EnvironmentConfig
 from environment.types import AgentDynamicsParams, DomainParams, PipelineParams
 
 PARAM_TRANSFORM_LINEAR = "linear"
 PARAM_TRANSFORM_LOG = "log"
 PARAM_TRANSFORM_INTEGER = "integer"
+
+_DEFAULT_ENV_CONFIG = EnvironmentConfig()
+_DYNAMICS = _DEFAULT_ENV_CONFIG.dynamics_randomization
+_PIPELINE = _DEFAULT_ENV_CONFIG.pipeline_randomization
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,82 +33,130 @@ class ParamSpec:
 
 
 PARAM_SPECS: tuple[ParamSpec, ...] = (
-    ParamSpec("track_width_scale", ParamBounds(0.85, 1.15), 1.0, PARAM_TRANSFORM_LOG),
-    ParamSpec("wheel_radius_scale", ParamBounds(0.85, 1.15), 1.0, PARAM_TRANSFORM_LOG),
-    ParamSpec("caster_radius_scale", ParamBounds(0.70, 1.30), 1.0, PARAM_TRANSFORM_LOG),
     ParamSpec(
-        "caster_offset_x", ParamBounds(-0.020, 0.020), 0.0, PARAM_TRANSFORM_LINEAR
+        "track_width_scale",
+        ParamBounds(0.85, 1.15),
+        _DYNAMICS.track_width_scale_nominal,
+        PARAM_TRANSFORM_LOG,
     ),
-    ParamSpec("com_offset_x", ParamBounds(-0.040, 0.040), 0.0, PARAM_TRANSFORM_LINEAR),
-    ParamSpec("com_offset_z", ParamBounds(-0.030, 0.030), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec(
+        "wheel_radius_scale",
+        ParamBounds(0.85, 1.15),
+        _DYNAMICS.wheel_radius_scale_nominal,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_radius_scale",
+        ParamBounds(0.70, 1.30),
+        _DYNAMICS.caster_radius_scale_nominal,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_offset_x",
+        ParamBounds(-0.020, 0.020),
+        _DYNAMICS.caster_offset_x_nominal,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "com_offset_x",
+        ParamBounds(-0.040, 0.040),
+        _DYNAMICS.com_offset_x_nominal,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "com_offset_z",
+        ParamBounds(-0.030, 0.030),
+        _DYNAMICS.com_offset_z_nominal,
+        PARAM_TRANSFORM_LINEAR,
+    ),
     ParamSpec(
         "wheel_slide_friction_scale",
         ParamBounds(0.25, 4.0),
-        1.0,
+        _DYNAMICS.wheel_slide_friction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_torsional_friction_scale",
         ParamBounds(0.25, 4.0),
-        1.0,
+        _DYNAMICS.wheel_torsional_friction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_rolling_friction_scale",
         ParamBounds(0.25, 4.0),
-        1.0,
+        _DYNAMICS.wheel_rolling_friction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "body_contact_friction_scale",
         ParamBounds(0.001, 4.0),
-        1.0,
+        _DYNAMICS.body_contact_friction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "caster_slide_friction_scale",
         ParamBounds(0.25, 4.0),
-        1.0,
+        _DYNAMICS.caster_slide_friction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "caster_torsional_friction_scale",
         ParamBounds(0.25, 4.0),
-        1.0,
+        _DYNAMICS.caster_torsional_friction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_joint_damping_scale",
         ParamBounds(0.0001, 5.0),
-        1.0,
+        _DYNAMICS.wheel_joint_damping_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_joint_frictionloss_scale",
         ParamBounds(0.0001, 5.0),
-        1.0,
+        _DYNAMICS.wheel_joint_frictionloss_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
-    ParamSpec("wheel_armature_scale", ParamBounds(0.25, 5.0), 1.0, PARAM_TRANSFORM_LOG),
-    ParamSpec("motor_strength_scale", ParamBounds(0.25, 8.0), 1.0, PARAM_TRANSFORM_LOG),
-    ParamSpec("back_emf_scale", ParamBounds(0.25, 5.0), 1.0, PARAM_TRANSFORM_LOG),
-    ParamSpec("motor_balance", ParamBounds(-0.25, 0.25), 0.0, PARAM_TRANSFORM_LINEAR),
+    ParamSpec(
+        "wheel_armature_scale",
+        ParamBounds(0.25, 5.0),
+        _DYNAMICS.wheel_armature_scale_nominal,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "motor_strength_scale",
+        ParamBounds(0.25, 8.0),
+        _DYNAMICS.motor_strength_scale_nominal,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "back_emf_scale",
+        ParamBounds(0.25, 5.0),
+        _DYNAMICS.back_emf_scale_nominal,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "motor_balance",
+        ParamBounds(-0.25, 0.25),
+        _DYNAMICS.motor_balance_nominal,
+        PARAM_TRANSFORM_LINEAR,
+    ),
     ParamSpec(
         "motor_time_constant_seconds",
         ParamBounds(0.005, 0.100),
-        0.03,
+        _DYNAMICS.motor_time_constant_seconds_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "command_delay_substeps",
         ParamBounds(0.0, 20.0),
-        10.0,
+        float(_PIPELINE.nominal_action_delay_substeps),
         PARAM_TRANSFORM_INTEGER,
     ),
     ParamSpec(
         "observation_delay_substeps",
         ParamBounds(0.0, 20.0),
-        10.0,
+        float(_PIPELINE.nominal_observation_delay_substeps),
         PARAM_TRANSFORM_INTEGER,
     ),
 )

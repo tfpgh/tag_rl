@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
+
+if __name__ == "__main__" and sys.platform != "darwin":
+    os.environ.setdefault("MUJOCO_GL", "egl")
 
 import cv2
 import imageio

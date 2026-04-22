@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
 from collections import deque
 from pathlib import Path
 from typing import Any, cast
+
+if __name__ == "__main__" and sys.platform != "darwin":
+    os.environ.setdefault("MUJOCO_GL", "egl")
 
 from runtime import jax_setup as _jax_setup  # noqa: F401
 

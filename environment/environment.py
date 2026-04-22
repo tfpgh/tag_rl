@@ -30,7 +30,7 @@ from environment.types import (
 
 
 def observation_size(config: EnvironmentConfig) -> int:
-    return 1 + 2 * config.n_rays
+    return 1 + 2 * config.n_rays + 2
 
 
 def _wrap_angle(angle: jax.Array) -> jax.Array:
@@ -186,6 +186,7 @@ class TagEnvironment:
         measured_obstacle_yaws: jax.Array,
         obstacle_active: jax.Array,
         step_count: jax.Array,
+        prev_self_action: jax.Array,
     ) -> jax.Array:
         ray_distances, ray_types = raycast_scene(
             measured_self_position_xy,
@@ -200,7 +201,12 @@ class TagEnvironment:
         )
         episode_progress = step_count.astype(jnp.float32) / self.max_steps
         return jnp.concatenate(
-            [ray_distances, ray_types, jnp.array([episode_progress])]
+            [
+                ray_distances,
+                ray_types,
+                jnp.array([episode_progress]),
+                prev_self_action.astype(jnp.float32),
+            ]
         )
 
     def _compute_observation_pair_from_measurement(
@@ -211,6 +217,7 @@ class TagEnvironment:
         measured_obstacle_yaws: jax.Array,
         obstacle_active: jax.Array,
         step_count: jax.Array,
+        prev_actions: jax.Array,
     ) -> jax.Array:
         chaser_obs = self._compute_observation_from_measurement(
             measured_agent_positions_xy[0],
@@ -220,6 +227,7 @@ class TagEnvironment:
             measured_obstacle_yaws,
             obstacle_active,
             step_count,
+            prev_actions[0],
         )
         evader_obs = self._compute_observation_from_measurement(
             measured_agent_positions_xy[1],
@@ -229,6 +237,7 @@ class TagEnvironment:
             measured_obstacle_yaws,
             obstacle_active,
             step_count,
+            prev_actions[1],
         )
         return jnp.stack([chaser_obs, evader_obs], axis=0)
 
@@ -447,6 +456,7 @@ class TagEnvironment:
             ),
             action_buffer=self._empty_action_buffer(),
             last_applied_actions=jnp.zeros((2, 2), dtype=jnp.float32),
+            last_proposed_actions=jnp.zeros((2, 2), dtype=jnp.float32),
             last_measured_agent_positions_xy=true_agent_positions_xy,
             last_measured_agent_yaws=true_agent_yaws,
             last_measured_obstacle_positions_xy=obstacle_state.positions_xy,
@@ -471,6 +481,7 @@ class TagEnvironment:
             measured_obstacle_yaws,
             obstacle_state.active,
             jnp.int32(0),
+            jnp.zeros((2, 2), dtype=jnp.float32),
         )
         state = zero_state._replace(
             observation_buffer=self._filled_observation_buffer(observations),
@@ -499,14 +510,19 @@ class TagEnvironment:
     ]:
         config = self.config
 
-        chaser_action = jnp.clip(chaser_action, -1.0, 1.0) * config.arena.action_scale
-        evader_action = jnp.clip(evader_action, -1.0, 1.0) * config.arena.action_scale
-        proposed_actions = jnp.stack([chaser_action, evader_action], axis=0)
+        policy_actions = jnp.stack(
+            [
+                jnp.clip(chaser_action, -1.0, 1.0),
+                jnp.clip(evader_action, -1.0, 1.0),
+            ],
+            axis=0,
+        )
 
         is_frozen = state.step_count < self.freeze_steps
-        proposed_actions = proposed_actions.at[0].set(
-            jnp.where(is_frozen, jnp.zeros(2), proposed_actions[0])
+        policy_actions = policy_actions.at[0].set(
+            jnp.where(is_frozen, jnp.zeros(2), policy_actions[0])
         )
+        proposed_actions = policy_actions * config.arena.action_scale
         action_rng, measurement_rng = jax.random.split(rng)
         proposed_action_substeps, fallback_action_substeps = (
             self._prepare_action_substep_sequence(state, proposed_actions)
@@ -611,6 +627,7 @@ class TagEnvironment:
                 measured_obstacle_yaws,
                 state.obstacle_active,
                 state.step_count + 1,
+                policy_actions,
             )
             observation_buffer = self._push_buffer(
                 observation_buffer, current_observations
@@ -705,6 +722,9 @@ class TagEnvironment:
         )
         forward_motion_scale = config.forward_motion_reward_scale
 
+        action_rate = policy_actions - state.last_proposed_actions
+        action_rate_penalty = jnp.sum(action_rate * action_rate, axis=-1)
+
         chaser_reward = (
             config.win_reward * tagged
             - config.win_reward * time_up
@@ -712,6 +732,7 @@ class TagEnvironment:
             + config.distance_shaping_scale * distance_shaping
             + forward_motion_scale * safe_chaser_forward_velocity
             - config.collision_penalty * chaser_collision
+            - config.action_smoothing_scale * action_rate_penalty[0]
         )
         evader_reward = (
             -config.win_reward * tagged
@@ -720,6 +741,7 @@ class TagEnvironment:
             - config.distance_shaping_scale * distance_shaping
             + forward_motion_scale * safe_evader_forward_velocity
             - config.collision_penalty * evader_collision
+            - config.action_smoothing_scale * action_rate_penalty[1]
         )
         reward_valid = jnp.isfinite(chaser_reward) & jnp.isfinite(evader_reward)
 
@@ -727,6 +749,7 @@ class TagEnvironment:
             mjx_data=mjx_data,
             action_buffer=action_buffer,
             last_applied_actions=applied_actions,
+            last_proposed_actions=policy_actions,
             step_count=step_count,
             prev_distance=safe_distance,
         )

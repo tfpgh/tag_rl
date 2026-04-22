@@ -84,6 +84,10 @@ class TagGameRuntime:
             "evader": RobotCommand(0.0, 0.0).as_dict(),
         }
         self._latest_observation: LiveObservations | None = None
+        self._latest_policy_actions = {
+            "chaser": np.zeros(2, dtype=np.float32),
+            "evader": np.zeros(2, dtype=np.float32),
+        }
         self._last_ready_time: float | None = None
         self._events: deque[RuntimeEvent] = deque(maxlen=20)
         self._recording_frame_index = 0
@@ -109,6 +113,11 @@ class TagGameRuntime:
         self.controller.close()
         self.tracker.close()
 
+    def _reset_policy_state(self) -> None:
+        self.policy_runner.reset()
+        self._latest_policy_actions["chaser"] = np.zeros(2, dtype=np.float32)
+        self._latest_policy_actions["evader"] = np.zeros(2, dtype=np.float32)
+
     def handle_action(self, action: str) -> None:
         actions = self.config.actions
         modes = self.config.modes
@@ -125,7 +134,7 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self._match_step_count = 0
-                self.policy_runner.reset()
+                self._reset_policy_state()
                 self._status = "System disarmed"
                 self._push_event("disarmed")
             elif action == actions.start:
@@ -134,7 +143,7 @@ class TagGameRuntime:
                     self._phase = phases.active
                     self._match_start_monotonic = None
                     self._match_step_count = 0
-                    self.policy_runner.reset()
+                    self._reset_policy_state()
                     self._status = "Waiting for first active tick"
                     self._push_event("game_started")
             elif action == actions.stop:
@@ -143,7 +152,7 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self._match_step_count = 0
-                self.policy_runner.reset()
+                self._reset_policy_state()
                 self._status = "Game stopped"
                 self._push_event("game_stopped")
             elif action == actions.reset:
@@ -151,7 +160,7 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self._match_step_count = 0
-                self.policy_runner.reset()
+                self._reset_policy_state()
                 self._status = "Game state reset"
                 self._push_event("game_reset")
             elif action == actions.estop:
@@ -160,7 +169,7 @@ class TagGameRuntime:
                 self._phase = phases.stopped
                 self._match_start_monotonic = None
                 self._match_step_count = 0
-                self.policy_runner.reset()
+                self._reset_policy_state()
                 self._status = "Emergency stop engaged"
                 self._push_event("estop")
             elif action == actions.clear_estop:
@@ -168,7 +177,7 @@ class TagGameRuntime:
                 self._phase = phases.ready
                 self._match_start_monotonic = None
                 self._match_step_count = 0
-                self.policy_runner.reset()
+                self._reset_policy_state()
                 self._status = "Emergency stop cleared"
                 self._push_event("estop_cleared")
             elif action == actions.record_off:
@@ -299,7 +308,7 @@ class TagGameRuntime:
             self._mode = modes.armed
             self._phase = phases.ready
             self._match_step_count = 0
-            self.policy_runner.reset()
+            self._reset_policy_state()
             self._status = reason
             self._push_event("tracking_not_ready")
 
@@ -320,7 +329,12 @@ class TagGameRuntime:
                 self.recorder.start_game(board_state)
             episode_progress = self._episode_progress()
             observation_started = time.perf_counter()
-            observations = self.observation_builder.build(board_state, episode_progress)
+            observations = self.observation_builder.build(
+                board_state,
+                episode_progress,
+                self._latest_policy_actions["chaser"],
+                self._latest_policy_actions["evader"],
+            )
             self._last_observation_build_ms = (
                 time.perf_counter() - observation_started
             ) * 1000.0
@@ -328,7 +342,7 @@ class TagGameRuntime:
                 self._finish_recording("observation_build_failed")
                 self._mode = modes.armed
                 self._phase = phases.ready
-                self.policy_runner.reset()
+                self._reset_policy_state()
                 self._status = "Observation build failed"
                 self._push_event("observation_build_failed")
             else:
@@ -347,6 +361,12 @@ class TagGameRuntime:
                     left=float(outputs.evader_action[0]),
                     right=float(outputs.evader_action[1]),
                 )
+                self._latest_policy_actions["chaser"] = np.asarray(
+                    outputs.chaser_action, dtype=np.float32
+                )
+                self._latest_policy_actions["evader"] = np.asarray(
+                    outputs.evader_action, dtype=np.float32
+                )
                 target_chaser, target_evader, terminal_reason = self._apply_game_rules(
                     now, board_state, raw_chaser, raw_evader
                 )
@@ -355,7 +375,7 @@ class TagGameRuntime:
                     self._mode = modes.armed
                     self._match_step_count = 0
                     self._status = terminal_reason
-                    self.policy_runner.reset()
+                    self._reset_policy_state()
                 else:
                     self.recorder.record_step(
                         self._recording_frame_index,
@@ -560,7 +580,7 @@ class TagGameRuntime:
         ray_type = observation_host[n_rays : 2 * n_rays]
         return {
             "observation_ready": True,
-            "episode_progress": float(observation_host[-1]),
+            "episode_progress": float(observation_host[2 * n_rays]),
             "mean_ray_distance": float(np.mean(ray_dist)),
             "agent_hit_fraction": float(np.mean(ray_type)),
             "action": action,

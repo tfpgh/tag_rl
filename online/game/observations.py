@@ -48,6 +48,8 @@ class LiveObservationBuilder:
         self,
         board_state: BoardState,
         episode_progress: float,
+        last_chaser_action: jnp.ndarray,
+        last_evader_action: jnp.ndarray,
     ) -> LiveObservations | None:
         if not board_state.calibration.valid:
             return None
@@ -82,6 +84,8 @@ class LiveObservationBuilder:
             obstacle_yaws,
             obstacle_active,
             progress,
+            jnp.asarray(last_chaser_action, dtype=jnp.float32),
+            jnp.asarray(last_evader_action, dtype=jnp.float32),
         )
         return LiveObservations(chaser=chaser_obs, evader=evader_obs)
 
@@ -91,6 +95,7 @@ class LiveObservationBuilder:
         zero_positions = jnp.zeros((max_obstacles, 2), dtype=jnp.float32)
         zero_yaws = jnp.zeros((max_obstacles,), dtype=jnp.float32)
         zero_active = jnp.zeros((max_obstacles,), dtype=bool)
+        zero_action = jnp.zeros((2,), dtype=jnp.float32)
         self._build_fn(
             zero_pose,
             zero_pose,
@@ -98,6 +103,8 @@ class LiveObservationBuilder:
             zero_yaws,
             zero_active,
             jnp.asarray(0.0, dtype=jnp.float32),
+            zero_action,
+            zero_action,
         )
 
     def _build_impl(
@@ -108,6 +115,8 @@ class LiveObservationBuilder:
         obstacle_yaws: jax.Array,
         obstacle_active: jax.Array,
         episode_progress: jax.Array,
+        last_chaser_action: jax.Array,
+        last_evader_action: jax.Array,
     ) -> tuple[jax.Array, jax.Array]:
         chaser_dist, chaser_type = raycast_scene(
             chaser_pose[:2],
@@ -133,8 +142,8 @@ class LiveObservationBuilder:
         )
         progress = jnp.asarray([episode_progress], dtype=jnp.float32)
         return (
-            jnp.concatenate([chaser_dist, chaser_type, progress]),
-            jnp.concatenate([evader_dist, evader_type, progress]),
+            jnp.concatenate([chaser_dist, chaser_type, progress, last_chaser_action]),
+            jnp.concatenate([evader_dist, evader_type, progress, last_evader_action]),
         )
 
 
@@ -142,6 +151,8 @@ def build_live_observations(
     board_state: BoardState,
     env_config: EnvironmentConfig,
     episode_progress: float,
+    last_chaser_action: jnp.ndarray,
+    last_evader_action: jnp.ndarray,
 ) -> LiveObservations | None:
     if not board_state.calibration.valid:
         return None
@@ -158,6 +169,8 @@ def build_live_observations(
     ray_angles = jnp.linspace(0, 2 * jnp.pi, env_config.n_rays, endpoint=False)
     ray_directions = jnp.stack([jnp.cos(ray_angles), jnp.sin(ray_angles)], axis=-1)
     progress = jnp.asarray([episode_progress], dtype=jnp.float32)
+    chaser_prev = jnp.asarray(last_chaser_action, dtype=jnp.float32)
+    evader_prev = jnp.asarray(last_evader_action, dtype=jnp.float32)
 
     chaser_dist, chaser_type = raycast_scene(
         _pose_xy(chaser),
@@ -182,6 +195,6 @@ def build_live_observations(
         env_config,
     )
     return LiveObservations(
-        chaser=jnp.concatenate([chaser_dist, chaser_type, progress]),
-        evader=jnp.concatenate([evader_dist, evader_type, progress]),
+        chaser=jnp.concatenate([chaser_dist, chaser_type, progress, chaser_prev]),
+        evader=jnp.concatenate([evader_dist, evader_type, progress, evader_prev]),
     )

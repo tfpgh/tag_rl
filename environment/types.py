@@ -88,6 +88,7 @@ class TagEnvironmentState(NamedTuple):
     observation_buffer: jax.Array
     action_buffer: jax.Array
     last_applied_actions: jax.Array
+    last_proposed_actions: jax.Array
     last_measured_agent_positions_xy: jax.Array
     last_measured_agent_yaws: jax.Array
     last_measured_obstacle_positions_xy: jax.Array

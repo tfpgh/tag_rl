@@ -34,6 +34,7 @@ class RewardConfig:
     distance_shaping_scale: float = 0.0
     distance_shaping_gamma: float = 0.99
     forward_motion_reward_scale: float = 0.0
+    action_smoothing_scale: float = 0.001
 
 
 @dataclass
@@ -271,6 +272,10 @@ class EnvironmentConfig:
     @property
     def forward_motion_reward_scale(self) -> float:
         return self.rewards.forward_motion_reward_scale
+
+    @property
+    def action_smoothing_scale(self) -> float:
+        return self.rewards.action_smoothing_scale
 
     @property
     def max_obstacles(self) -> int:

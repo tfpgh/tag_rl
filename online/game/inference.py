@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from environment.config import EnvironmentConfig
+from environment.environment import observation_size
 from rl.checkpoints import load_checkpoint_configs, load_policy_params
 from rl.models import ScannedRNN
 from rl.policy import build_policies
@@ -41,7 +42,7 @@ class DualPolicyRunner:
         self.evader_hstate = ScannedRNN.initialize_carry(1, self.hidden_size)
 
     def warmup(self) -> None:
-        obs_size = 2 * self.env_config.n_rays + 1
+        obs_size = observation_size(self.env_config)
         zero_obs = jnp.zeros((obs_size,), dtype=jnp.float32)
         chaser_hstate, evader_hstate, _, _ = self._step_fn(
             self.chaser_params,

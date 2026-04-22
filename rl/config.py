@@ -6,16 +6,16 @@ class RLConfig:
     num_envs: int = 65_536
     num_steps: int = 128
 
-    total_timesteps: int = int(3e9)
+    total_timesteps: int = int(5e9)
 
     hidden_size: int = 256
 
     lr: float = 3e-4
-    anneal_lr: bool = True
+    anneal_lr: bool = False
     lr_decay_start_fraction: float = 0.7
     final_lr_scale: float = 0.001
     update_epochs: int = 4
-    num_minibatches: int = 128
+    num_minibatches: int = 64
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2

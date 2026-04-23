@@ -223,21 +223,29 @@ def physical_to_latent(params: Mapping[str, jax.Array | float | int]) -> jax.Arr
 
 def resolve_physical_params(
     params: Mapping[str, jax.Array | float | int],
-) -> dict[str, float]:
-    resolved = dict(DEFAULT_PHYSICAL_PARAMS)
+) -> dict[str, jax.Array | float]:
+    resolved: dict[str, jax.Array | float] = {
+        name: jnp.asarray(value, dtype=jnp.float32)
+        for name, value in DEFAULT_PHYSICAL_PARAMS.items()
+    }
     for name, value in params.items():
-        resolved[name] = float(value)
+        resolved[name] = jnp.asarray(value, dtype=jnp.float32)
     if "traction_scale" not in params and "wheel_slide_friction_scale" in params:
-        resolved["traction_scale"] = float(params["wheel_slide_friction_scale"])
+        resolved["traction_scale"] = jnp.asarray(
+            params["wheel_slide_friction_scale"], dtype=jnp.float32
+        )
     if "turn_scrub_scale" not in params:
         torsion = params.get("wheel_torsional_friction_scale")
         rolling = params.get("wheel_rolling_friction_scale")
         if torsion is not None and rolling is not None:
-            resolved["turn_scrub_scale"] = 0.5 * (float(torsion) + float(rolling))
+            resolved["turn_scrub_scale"] = 0.5 * (
+                jnp.asarray(torsion, dtype=jnp.float32)
+                + jnp.asarray(rolling, dtype=jnp.float32)
+            )
         elif torsion is not None:
-            resolved["turn_scrub_scale"] = float(torsion)
+            resolved["turn_scrub_scale"] = jnp.asarray(torsion, dtype=jnp.float32)
         elif rolling is not None:
-            resolved["turn_scrub_scale"] = float(rolling)
+            resolved["turn_scrub_scale"] = jnp.asarray(rolling, dtype=jnp.float32)
     return resolved
 
 

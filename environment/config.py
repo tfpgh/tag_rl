@@ -60,31 +60,31 @@ class DynamicsRandomizationConfig:
     com_offset_y_max: float = 0.003
     # Geometry scales centered from the latest evader-only sysid fit while
     # preserving the current randomization span wherever it remains valid.
-    track_width_scale_nominal: float = 0.9495015740394592
-    track_width_scale_min: float = 0.90
+    track_width_scale_nominal: float = 0.9207258820533752
+    track_width_scale_min: float = 0.86
     track_width_scale_max: float = 1.00
-    wheel_radius_scale_nominal: float = 1.0124750137329102
-    wheel_radius_scale_min: float = 0.98
+    wheel_radius_scale_nominal: float = 1.0047537088394165
+    wheel_radius_scale_min: float = 0.96
     wheel_radius_scale_max: float = 1.05
     # Simplified wheel-ground model: one longitudinal traction scale and one
     # turn scrub scale. Legacy wheel friction fields remain below for now but
     # are no longer the primary training/sysid knobs.
-    traction_scale_nominal: float = 0.8493017554283142
-    traction_scale_min: float = 0.70
+    traction_scale_nominal: float = 0.8315610289573669
+    traction_scale_min: float = 0.60
     traction_scale_max: float = 1.40
-    turn_scrub_scale_nominal: float = 0.68
-    turn_scrub_scale_min: float = 0.35
-    turn_scrub_scale_max: float = 1.10
+    turn_scrub_scale_nominal: float = 0.9665983319282532
+    turn_scrub_scale_min: float = 0.50
+    turn_scrub_scale_max: float = 1.50
     # Legacy wheel friction scales kept for compatibility.
-    wheel_slide_friction_scale_nominal: float = 0.8493017554283142
-    wheel_slide_friction_scale_min: float = 0.70
+    wheel_slide_friction_scale_nominal: float = 0.8315610289573669
+    wheel_slide_friction_scale_min: float = 0.60
     wheel_slide_friction_scale_max: float = 1.40
-    wheel_torsional_friction_scale_nominal: float = 0.4432120621204376
-    wheel_torsional_friction_scale_min: float = 0.25
-    wheel_torsional_friction_scale_max: float = 0.80
-    wheel_rolling_friction_scale_nominal: float = 0.9172959923744202
-    wheel_rolling_friction_scale_min: float = 0.60
-    wheel_rolling_friction_scale_max: float = 1.30
+    wheel_torsional_friction_scale_nominal: float = 0.9665983319282532
+    wheel_torsional_friction_scale_min: float = 0.50
+    wheel_torsional_friction_scale_max: float = 1.50
+    wheel_rolling_friction_scale_nominal: float = 0.9665983319282532
+    wheel_rolling_friction_scale_min: float = 0.50
+    wheel_rolling_friction_scale_max: float = 1.50
     # Shared chassis/bumper floor-contact slide friction scale
     body_contact_friction_scale_nominal: float = 0.6012741923332214
     body_contact_friction_scale_min: float = 0.30
@@ -113,19 +113,19 @@ class DynamicsRandomizationConfig:
     wheel_armature_scale_nominal: float = 2.4349827766418457
     wheel_armature_scale_min: float = 1.20
     wheel_armature_scale_max: float = 3.50
-    motor_strength_scale_nominal: float = 0.89215087890625
-    motor_strength_scale_min: float = 0.65
-    motor_strength_scale_max: float = 1.10
-    back_emf_scale_nominal: float = 0.681670606136322
-    back_emf_scale_min: float = 0.50
-    back_emf_scale_max: float = 0.90
+    motor_strength_scale_nominal: float = 0.9941380620002747
+    motor_strength_scale_min: float = 0.70
+    motor_strength_scale_max: float = 1.30
+    back_emf_scale_nominal: float = 0.7814494371414185
+    back_emf_scale_min: float = 0.55
+    back_emf_scale_max: float = 1.05
     # Motor balance remains robot-specific, but still centered on the fitted nominal
-    motor_balance_nominal: float = 0.0008906715665943921
+    motor_balance_nominal: float = -0.008113667368888855
     motor_balance_delta_max: float = 0.14
     # Motor time constant
-    motor_time_constant_seconds_nominal: float = 0.010217090137302876
+    motor_time_constant_seconds_nominal: float = 0.015150192193686962
     motor_time_constant_seconds_min: float = 0.008
-    motor_time_constant_seconds_max: float = 0.025
+    motor_time_constant_seconds_max: float = 0.035
     # Smooth high-command actuator compression and launch-slip attenuation.
     motor_curve_sharpness_nominal: float = 0.0
     motor_curve_sharpness_min: float = 0.0
@@ -145,8 +145,8 @@ class DynamicsRandomizationConfig:
 class PipelineRandomizationConfig:
     enabled: bool = True
     nominal_action_delay_substeps: int = 0
-    action_delay_substeps_delta: int = 4
-    nominal_observation_delay_substeps: int = 12
+    action_delay_substeps_delta: int = 6
+    nominal_observation_delay_substeps: int = 11
     observation_delay_substeps_delta: int = 4
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002
@@ -164,7 +164,7 @@ class CurriculumConfig:
     pipeline_start: float = 0.10
     dynamics_start: float = 0.10
     full_progress: float = 0.50
-    exponent: float = 1.5
+    exponent: float = 1.0
 
 
 @dataclass

@@ -58,23 +58,24 @@ class DynamicsRandomizationConfig:
     com_offset_z_nominal: float = -0.00038700297591276467
     com_offset_z_delta: float = 0.006
     com_offset_y_max: float = 0.003
-    # Geometry scales centered from sysid with conservative, still-wide ranges
-    track_width_scale_nominal: float = 1.001953125
-    track_width_scale_min: float = 0.95
-    track_width_scale_max: float = 1.05
-    wheel_radius_scale_nominal: float = 1.003749132156372
-    wheel_radius_scale_min: float = 0.96
+    # Geometry scales centered from the latest evader-only sysid fit while
+    # preserving the current randomization span wherever it remains valid.
+    track_width_scale_nominal: float = 0.9495015740394592
+    track_width_scale_min: float = 0.90
+    track_width_scale_max: float = 1.00
+    wheel_radius_scale_nominal: float = 1.0124750137329102
+    wheel_radius_scale_min: float = 0.98
     wheel_radius_scale_max: float = 1.05
     # Wheel friction scales
-    wheel_slide_friction_scale_nominal: float = 1.41664457321167
-    wheel_slide_friction_scale_min: float = 1.10
-    wheel_slide_friction_scale_max: float = 1.90
-    wheel_torsional_friction_scale_nominal: float = 0.3538326621055603
-    wheel_torsional_friction_scale_min: float = 0.20
+    wheel_slide_friction_scale_nominal: float = 0.8493017554283142
+    wheel_slide_friction_scale_min: float = 0.70
+    wheel_slide_friction_scale_max: float = 1.40
+    wheel_torsional_friction_scale_nominal: float = 0.4432120621204376
+    wheel_torsional_friction_scale_min: float = 0.25
     wheel_torsional_friction_scale_max: float = 0.80
-    wheel_rolling_friction_scale_nominal: float = 1.2203694581985474
-    wheel_rolling_friction_scale_min: float = 0.80
-    wheel_rolling_friction_scale_max: float = 1.70
+    wheel_rolling_friction_scale_nominal: float = 0.9172959923744202
+    wheel_rolling_friction_scale_min: float = 0.60
+    wheel_rolling_friction_scale_max: float = 1.30
     # Shared chassis/bumper floor-contact slide friction scale
     body_contact_friction_scale_nominal: float = 0.6012741923332214
     body_contact_friction_scale_min: float = 0.30
@@ -103,29 +104,29 @@ class DynamicsRandomizationConfig:
     wheel_armature_scale_nominal: float = 2.4349827766418457
     wheel_armature_scale_min: float = 1.20
     wheel_armature_scale_max: float = 3.50
-    motor_strength_scale_nominal: float = 0.9232254028320312
-    motor_strength_scale_min: float = 0.70
-    motor_strength_scale_max: float = 1.30
-    back_emf_scale_nominal: float = 0.6901412010192871
+    motor_strength_scale_nominal: float = 0.89215087890625
+    motor_strength_scale_min: float = 0.65
+    motor_strength_scale_max: float = 1.10
+    back_emf_scale_nominal: float = 0.681670606136322
     back_emf_scale_min: float = 0.50
-    back_emf_scale_max: float = 1.00
+    back_emf_scale_max: float = 0.90
     # Motor balance remains robot-specific, but still centered on the fitted nominal
-    motor_balance_nominal: float = -0.020708676427602768
+    motor_balance_nominal: float = 0.0008906715665943921
     motor_balance_delta_max: float = 0.14
     # Motor time constant
-    motor_time_constant_seconds_nominal: float = 0.02839946746826172
-    motor_time_constant_seconds_min: float = 0.015
-    motor_time_constant_seconds_max: float = 0.050
+    motor_time_constant_seconds_nominal: float = 0.010217090137302876
+    motor_time_constant_seconds_min: float = 0.008
+    motor_time_constant_seconds_max: float = 0.025
     # Smooth high-command actuator compression and launch-slip attenuation.
-    motor_curve_sharpness_nominal: float = 1.5
+    motor_curve_sharpness_nominal: float = 0.0
     motor_curve_sharpness_min: float = 0.0
-    motor_curve_sharpness_max: float = 4.0
-    traction_slip_threshold_nominal: float = 0.20
-    traction_slip_threshold_min: float = 0.05
-    traction_slip_threshold_max: float = 0.45
-    traction_loss_strength_nominal: float = 1.5
+    motor_curve_sharpness_max: float = 3.0
+    traction_slip_threshold_nominal: float = 0.12944123148918152
+    traction_slip_threshold_min: float = 0.08
+    traction_slip_threshold_max: float = 0.35
+    traction_loss_strength_nominal: float = 0.0
     traction_loss_strength_min: float = 0.0
-    traction_loss_strength_max: float = 4.0
+    traction_loss_strength_max: float = 3.0
     traction_min_scale_nominal: float = 0.55
     traction_min_scale_min: float = 0.20
     traction_min_scale_max: float = 1.0
@@ -134,10 +135,10 @@ class DynamicsRandomizationConfig:
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    nominal_action_delay_substeps: int = 7
-    action_delay_substeps_delta: int = 3
-    nominal_observation_delay_substeps: int = 5
-    observation_delay_substeps_delta: int = 3
+    nominal_action_delay_substeps: int = 0
+    action_delay_substeps_delta: int = 4
+    nominal_observation_delay_substeps: int = 12
+    observation_delay_substeps_delta: int = 4
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002
     frame_drop_probability_max: float = 0.02

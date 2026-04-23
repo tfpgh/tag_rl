@@ -18,7 +18,7 @@ def _motor_curve(command: jax.Array, sharpness: jax.Array) -> jax.Array:
     return jnp.sign(command) * compressed
 
 
-def shape_agent_actions(
+def shape_agent_actions_with_diagnostics(
     proposed_action: jax.Array,
     qpos: jax.Array,
     qvel: jax.Array,
@@ -26,7 +26,7 @@ def shape_agent_actions(
     agent_indices: AgentModelIndices,
     root_qpos_slice: slice,
     root_dof_slice: slice,
-) -> jax.Array:
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array, jax.Array, jax.Array]:
     shaped_action = _motor_curve(proposed_action, agent_params.motor_curve_sharpness)
 
     root_qpos = qpos[root_qpos_slice]
@@ -61,4 +61,32 @@ def shape_agent_actions(
     traction_loss = 1.0 / (1.0 + agent_params.traction_loss_strength * slip_ratio)
     traction_scale = jnp.maximum(agent_params.traction_min_scale, traction_loss)
     traction_scale = jnp.where(jnp.abs(shaped_action) > 1e-3, traction_scale, 1.0)
-    return jnp.clip(shaped_action * traction_scale, -1.0, 1.0)
+    final_action = jnp.clip(shaped_action * traction_scale, -1.0, 1.0)
+    return (
+        final_action,
+        shaped_action,
+        traction_scale,
+        slip_ratio,
+        wheel_ground_speed,
+        wheel_surface_speed,
+    )
+
+
+def shape_agent_actions(
+    proposed_action: jax.Array,
+    qpos: jax.Array,
+    qvel: jax.Array,
+    agent_params: AgentDynamicsParams,
+    agent_indices: AgentModelIndices,
+    root_qpos_slice: slice,
+    root_dof_slice: slice,
+) -> jax.Array:
+    return shape_agent_actions_with_diagnostics(
+        proposed_action,
+        qpos,
+        qvel,
+        agent_params,
+        agent_indices,
+        root_qpos_slice,
+        root_dof_slice,
+    )[0]

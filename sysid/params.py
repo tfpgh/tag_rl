@@ -6,12 +6,16 @@ from typing import Literal, Mapping
 import jax
 import jax.numpy as jnp
 
+from environment.config import EnvironmentConfig
 from environment.mjcf import MOTOR_TIME_CONSTANT_SECONDS
 from environment.types import AgentDynamicsParams, DomainParams, PipelineParams
 
 PARAM_TRANSFORM_LINEAR = "linear"
 PARAM_TRANSFORM_LOG = "log"
 PARAM_TRANSFORM_INTEGER = "integer"
+
+_ENV_CONFIG = EnvironmentConfig()
+_DYNAMICS = _ENV_CONFIG.dynamics_randomization
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,7 +185,24 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
 )
 
-FROZEN_PARAMS: dict[str, float] = {}
+# Temporary staged sysid setup: keep delay terms free, lock the main
+# compensation parameters to their current environment nominals.
+FROZEN_PARAMS: dict[str, float] = {
+    "caster_radius_scale": _DYNAMICS.caster_radius_scale_nominal,
+    "caster_offset_x": _DYNAMICS.caster_offset_x_nominal,
+    "com_offset_x": _DYNAMICS.com_offset_x_nominal,
+    "com_offset_z": _DYNAMICS.com_offset_z_nominal,
+    "body_contact_friction_scale": _DYNAMICS.body_contact_friction_scale_nominal,
+    "caster_slide_friction_scale": _DYNAMICS.caster_slide_friction_scale_nominal,
+    "caster_torsional_friction_scale": _DYNAMICS.caster_torsional_friction_scale_nominal,
+    "wheel_joint_damping_scale": _DYNAMICS.wheel_joint_damping_scale_nominal,
+    "wheel_joint_frictionloss_scale": _DYNAMICS.wheel_joint_frictionloss_scale_nominal,
+    "wheel_armature_scale": _DYNAMICS.wheel_armature_scale_nominal,
+    "motor_balance": _DYNAMICS.motor_balance_nominal,
+    "traction_min_scale": _DYNAMICS.traction_min_scale_nominal,
+}
+
+PARAM_SPECS = tuple(spec for spec in PARAM_SPECS if spec.name not in FROZEN_PARAMS)
 
 PARAM_NAMES = tuple(spec.name for spec in PARAM_SPECS)
 LATENT_DIM = len(PARAM_SPECS)
@@ -194,6 +215,7 @@ DEFAULT_PHYSICAL_PARAMS = {
     for spec in PARAM_SPECS
     if spec.transform != PARAM_TRANSFORM_INTEGER
 }
+DEFAULT_PHYSICAL_PARAMS.update(FROZEN_PARAMS)
 DEFAULT_PHYSICAL_PARAMS["command_delay_substeps"] = 0.0
 DEFAULT_PHYSICAL_PARAMS["observation_delay_substeps"] = 0.0
 

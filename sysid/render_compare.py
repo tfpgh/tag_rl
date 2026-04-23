@@ -45,6 +45,7 @@ from sysid.evaluator import SysIdEvaluator
 from sysid.params import (
     DEFAULT_PHYSICAL_PARAMS,
     build_domain_and_pipeline_from_physical,
+    resolve_physical_params,
 )
 
 REAL_COLOR = (110, 185, 255)
@@ -111,10 +112,7 @@ def _extract_physical_params(path: Path) -> dict[str, float]:
         payload = payload["global_best"]["params"]
     elif "generation_best" in payload and "params" in payload["generation_best"]:
         payload = payload["generation_best"]["params"]
-    return {
-        key: float(payload.get(key, DEFAULT_PHYSICAL_PARAMS[key]))
-        for key in DEFAULT_PHYSICAL_PARAMS
-    }
+    return resolve_physical_params(payload)
 
 
 def _iter_samples(run_dir: Path) -> list[dict[str, Any]]:

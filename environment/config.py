@@ -66,7 +66,16 @@ class DynamicsRandomizationConfig:
     wheel_radius_scale_nominal: float = 1.0124750137329102
     wheel_radius_scale_min: float = 0.98
     wheel_radius_scale_max: float = 1.05
-    # Wheel friction scales
+    # Simplified wheel-ground model: one longitudinal traction scale and one
+    # turn scrub scale. Legacy wheel friction fields remain below for now but
+    # are no longer the primary training/sysid knobs.
+    traction_scale_nominal: float = 0.8493017554283142
+    traction_scale_min: float = 0.70
+    traction_scale_max: float = 1.40
+    turn_scrub_scale_nominal: float = 0.68
+    turn_scrub_scale_min: float = 0.35
+    turn_scrub_scale_max: float = 1.10
+    # Legacy wheel friction scales kept for compatibility.
     wheel_slide_friction_scale_nominal: float = 0.8493017554283142
     wheel_slide_friction_scale_min: float = 0.70
     wheel_slide_friction_scale_max: float = 1.40
@@ -342,6 +351,10 @@ class EnvironmentConfig:
             raise ValueError("track width scales must be positive")
         if dyn.wheel_radius_scale_min <= 0 or dyn.wheel_radius_scale_max <= 0:
             raise ValueError("wheel radius scales must be positive")
+        if dyn.traction_scale_min <= 0 or dyn.traction_scale_max <= 0:
+            raise ValueError("traction scales must be positive")
+        if dyn.turn_scrub_scale_min <= 0 or dyn.turn_scrub_scale_max <= 0:
+            raise ValueError("turn scrub scales must be positive")
         if (
             dyn.wheel_slide_friction_scale_min <= 0
             or dyn.wheel_slide_friction_scale_max <= 0

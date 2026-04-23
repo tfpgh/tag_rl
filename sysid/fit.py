@@ -21,6 +21,7 @@ from sysid.params import (
     PARAM_NAMES,
     latent_to_physical,
     physical_to_latent,
+    resolve_physical_params,
 )
 from sysid.types import EvaluationSummary
 
@@ -79,10 +80,8 @@ def _load_physical_params(path: Path) -> dict[str, float]:
         payload = payload["global_best"]["params"]
     elif "generation_best" in payload and "params" in payload["generation_best"]:
         payload = payload["generation_best"]["params"]
-    return {
-        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
-        for name in PARAM_NAMES
-    }
+    resolved = resolve_physical_params(payload)
+    return {name: float(resolved[name]) for name in PARAM_NAMES}
 
 
 def parse_args() -> argparse.Namespace:

@@ -22,6 +22,8 @@ class AgentDynamicsParams(NamedTuple):
     com_offset_xyz: jax.Array
     track_width_scale: jax.Array
     wheel_radius_scale: jax.Array
+    traction_scale: jax.Array
+    turn_scrub_scale: jax.Array
     wheel_slide_friction_scale: jax.Array
     wheel_torsional_friction_scale: jax.Array
     wheel_rolling_friction_scale: jax.Array

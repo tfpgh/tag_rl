@@ -58,6 +58,20 @@ def _sample_agent_dynamics(
     rng: jax.Array, config: EnvironmentConfig, scale: jax.Array
 ) -> AgentDynamicsParams:
     dyn = config.dynamics_randomization
+    traction_scale = _sample_scale(
+        random.fold_in(rng, 1),
+        dyn.traction_scale_min,
+        dyn.traction_scale_max,
+        scale,
+        dyn.traction_scale_nominal,
+    )
+    turn_scrub_scale = _sample_scale(
+        random.fold_in(rng, 2),
+        dyn.turn_scrub_scale_min,
+        dyn.turn_scrub_scale_max,
+        scale,
+        dyn.turn_scrub_scale_nominal,
+    )
     (
         mass_rng,
         com_x_rng,
@@ -92,13 +106,9 @@ def _sample_agent_dynamics(
         ),
         com_offset_xyz=jnp.array(
             [
-                _sample_centered(
-                    com_x_rng, dyn.com_offset_x_delta, scale, dyn.com_offset_x_nominal
-                ),
-                _sample_centered(com_y_rng, dyn.com_offset_y_max, scale),
-                _sample_centered(
-                    com_z_rng, dyn.com_offset_z_delta, scale, dyn.com_offset_z_nominal
-                ),
+                dyn.com_offset_x_nominal,
+                jnp.asarray(0.0, dtype=jnp.float32),
+                dyn.com_offset_z_nominal,
             ]
         ),
         track_width_scale=_sample_scale(
@@ -115,81 +125,32 @@ def _sample_agent_dynamics(
             scale,
             dyn.wheel_radius_scale_nominal,
         ),
-        wheel_slide_friction_scale=_sample_scale(
-            wheel_slide_friction_rng,
-            dyn.wheel_slide_friction_scale_min,
-            dyn.wheel_slide_friction_scale_max,
-            scale,
-            dyn.wheel_slide_friction_scale_nominal,
+        traction_scale=traction_scale,
+        turn_scrub_scale=turn_scrub_scale,
+        wheel_slide_friction_scale=traction_scale,
+        wheel_torsional_friction_scale=turn_scrub_scale,
+        wheel_rolling_friction_scale=turn_scrub_scale,
+        body_contact_friction_scale=jnp.asarray(
+            dyn.body_contact_friction_scale_nominal, dtype=jnp.float32
         ),
-        wheel_torsional_friction_scale=_sample_scale(
-            wheel_torsional_friction_rng,
-            dyn.wheel_torsional_friction_scale_min,
-            dyn.wheel_torsional_friction_scale_max,
-            scale,
-            dyn.wheel_torsional_friction_scale_nominal,
+        caster_radius_scale=jnp.asarray(
+            dyn.caster_radius_scale_nominal, dtype=jnp.float32
         ),
-        wheel_rolling_friction_scale=_sample_scale(
-            wheel_rolling_friction_rng,
-            dyn.wheel_rolling_friction_scale_min,
-            dyn.wheel_rolling_friction_scale_max,
-            scale,
-            dyn.wheel_rolling_friction_scale_nominal,
+        caster_offset_x=jnp.asarray(dyn.caster_offset_x_nominal, dtype=jnp.float32),
+        caster_slide_friction_scale=jnp.asarray(
+            dyn.caster_slide_friction_scale_nominal, dtype=jnp.float32
         ),
-        body_contact_friction_scale=_sample_scale(
-            body_contact_friction_rng,
-            dyn.body_contact_friction_scale_min,
-            dyn.body_contact_friction_scale_max,
-            scale,
-            dyn.body_contact_friction_scale_nominal,
+        caster_torsional_friction_scale=jnp.asarray(
+            dyn.caster_torsional_friction_scale_nominal, dtype=jnp.float32
         ),
-        caster_radius_scale=_sample_scale(
-            caster_radius_rng,
-            dyn.caster_radius_scale_min,
-            dyn.caster_radius_scale_max,
-            scale,
-            dyn.caster_radius_scale_nominal,
+        wheel_joint_damping_scale=jnp.asarray(
+            dyn.wheel_joint_damping_scale_nominal, dtype=jnp.float32
         ),
-        caster_offset_x=_sample_centered(
-            caster_offset_rng,
-            dyn.caster_offset_x_delta,
-            scale,
-            dyn.caster_offset_x_nominal,
+        wheel_joint_frictionloss_scale=jnp.asarray(
+            dyn.wheel_joint_frictionloss_scale_nominal, dtype=jnp.float32
         ),
-        caster_slide_friction_scale=_sample_scale(
-            caster_slide_friction_rng,
-            dyn.caster_slide_friction_scale_min,
-            dyn.caster_slide_friction_scale_max,
-            scale,
-            dyn.caster_slide_friction_scale_nominal,
-        ),
-        caster_torsional_friction_scale=_sample_scale(
-            caster_torsional_friction_rng,
-            dyn.caster_torsional_friction_scale_min,
-            dyn.caster_torsional_friction_scale_max,
-            scale,
-            dyn.caster_torsional_friction_scale_nominal,
-        ),
-        wheel_joint_damping_scale=_sample_scale(
-            wheel_damping_rng,
-            dyn.wheel_joint_damping_scale_min,
-            dyn.wheel_joint_damping_scale_max,
-            scale,
-            dyn.wheel_joint_damping_scale_nominal,
-        ),
-        wheel_joint_frictionloss_scale=_sample_scale(
-            wheel_frictionloss_rng,
-            dyn.wheel_joint_frictionloss_scale_min,
-            dyn.wheel_joint_frictionloss_scale_max,
-            scale,
-            dyn.wheel_joint_frictionloss_scale_nominal,
-        ),
-        wheel_armature_scale=_sample_scale(
-            wheel_armature_rng,
-            dyn.wheel_armature_scale_min,
-            dyn.wheel_armature_scale_max,
-            scale,
-            dyn.wheel_armature_scale_nominal,
+        wheel_armature_scale=jnp.asarray(
+            dyn.wheel_armature_scale_nominal, dtype=jnp.float32
         ),
         motor_strength_scale=_sample_scale(
             strength_rng,
@@ -219,33 +180,17 @@ def _sample_agent_dynamics(
             scale,
             dyn.motor_time_constant_seconds_nominal,
         ),
-        motor_curve_sharpness=_sample_scale(
-            curve_sharpness_rng,
-            dyn.motor_curve_sharpness_min,
-            dyn.motor_curve_sharpness_max,
-            scale,
-            dyn.motor_curve_sharpness_nominal,
+        motor_curve_sharpness=jnp.asarray(
+            dyn.motor_curve_sharpness_nominal, dtype=jnp.float32
         ),
-        traction_slip_threshold=_sample_scale(
-            slip_threshold_rng,
-            dyn.traction_slip_threshold_min,
-            dyn.traction_slip_threshold_max,
-            scale,
-            dyn.traction_slip_threshold_nominal,
+        traction_slip_threshold=jnp.asarray(
+            dyn.traction_slip_threshold_nominal, dtype=jnp.float32
         ),
-        traction_loss_strength=_sample_scale(
-            traction_loss_rng,
-            dyn.traction_loss_strength_min,
-            dyn.traction_loss_strength_max,
-            scale,
-            dyn.traction_loss_strength_nominal,
+        traction_loss_strength=jnp.asarray(
+            dyn.traction_loss_strength_nominal, dtype=jnp.float32
         ),
-        traction_min_scale=_sample_scale(
-            traction_min_scale_rng,
-            dyn.traction_min_scale_min,
-            dyn.traction_min_scale_max,
-            scale,
-            dyn.traction_min_scale_nominal,
+        traction_min_scale=jnp.asarray(
+            dyn.traction_min_scale_nominal, dtype=jnp.float32
         ),
     )
 
@@ -646,9 +591,9 @@ def _apply_agent_dynamics(
                 1e-6,
                 jnp.asarray(
                     [
-                        base_friction[0] * agent_params.wheel_slide_friction_scale,
-                        base_friction[1] * agent_params.wheel_torsional_friction_scale,
-                        base_friction[2] * agent_params.wheel_rolling_friction_scale,
+                        base_friction[0] * agent_params.traction_scale,
+                        base_friction[1] * agent_params.turn_scrub_scale,
+                        base_friction[2] * agent_params.turn_scrub_scale,
                     ],
                     dtype=jnp.float32,
                 ),

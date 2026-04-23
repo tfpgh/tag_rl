@@ -22,15 +22,14 @@ from sysid.params import (
     PARAM_NAMES,
     PARAM_SPEC_BY_NAME,
     physical_to_latent,
+    resolve_physical_params,
 )
 
 CORE_SWEEP_PARAMS = [
     "track_width_scale",
     "wheel_radius_scale",
-    "wheel_slide_friction_scale",
-    "wheel_torsional_friction_scale",
-    "wheel_rolling_friction_scale",
-    "body_contact_friction_scale",
+    "traction_scale",
+    "turn_scrub_scale",
     "motor_strength_scale",
     "back_emf_scale",
     "motor_balance",
@@ -39,17 +38,7 @@ CORE_SWEEP_PARAMS = [
     "observation_delay_substeps",
 ]
 
-SECONDARY_SWEEP_PARAMS = [
-    "caster_radius_scale",
-    "caster_offset_x",
-    "caster_slide_friction_scale",
-    "caster_torsional_friction_scale",
-    "wheel_joint_damping_scale",
-    "wheel_joint_frictionloss_scale",
-    "wheel_armature_scale",
-    "com_offset_x",
-    "com_offset_z",
-]
+SECONDARY_SWEEP_PARAMS: list[str] = []
 
 
 def _load_params(path: Path) -> dict[str, float]:
@@ -67,10 +56,8 @@ def _load_params(path: Path) -> dict[str, float]:
         payload = payload["global_best"]["params"]
     elif "generation_best" in payload and "params" in payload["generation_best"]:
         payload = payload["generation_best"]["params"]
-    return {
-        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
-        for name in PARAM_NAMES
-    }
+    resolved = resolve_physical_params(payload)
+    return {name: float(resolved[name]) for name in PARAM_NAMES}
 
 
 def _load_params_from_history(path: Path, source: str) -> dict[str, float]:
@@ -97,10 +84,8 @@ def _load_params_from_history(path: Path, source: str) -> dict[str, float]:
         payload = rows[-1]["global_best"]["params"]
     else:
         raise ValueError(f"Unsupported history source: {source}")
-    return {
-        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
-        for name in PARAM_NAMES
-    }
+    resolved = resolve_physical_params(payload)
+    return {name: float(resolved[name]) for name in PARAM_NAMES}
 
 
 def _to_latent(physical: dict[str, float]) -> jax.Array:
@@ -243,23 +228,19 @@ def _build_probe_groups(
         for obs in obs_values
     ]
 
-    friction_values = _local_values_for_param(
-        "wheel_slide_friction_scale", base, 5, local_fraction
-    )
-    torsional_values = _local_values_for_param(
-        "wheel_torsional_friction_scale", base, 5, local_fraction
-    )
-    groups["grid:wheel_slide_vs_torsion"] = [
+    traction_values = _local_values_for_param("traction_scale", base, 5, local_fraction)
+    scrub_values = _local_values_for_param("turn_scrub_scale", base, 5, local_fraction)
+    groups["grid:traction_vs_scrub"] = [
         {
-            "label": f"wheel_slide={friction} torsion={torsion}",
+            "label": f"traction={traction} scrub={scrub}",
             "params": _candidate(
                 base,
-                wheel_slide_friction_scale=friction,
-                wheel_torsional_friction_scale=torsion,
+                traction_scale=traction,
+                turn_scrub_scale=scrub,
             ),
         }
-        for friction in friction_values
-        for torsion in torsional_values
+        for traction in traction_values
+        for scrub in scrub_values
     ]
 
     strength_values = _local_values_for_param(
@@ -297,8 +278,8 @@ def _build_probe_groups(
         {"label": "com_offset_x=0", "params": _candidate(base, com_offset_x=0.0)},
         {"label": "com_offset_z=0", "params": _candidate(base, com_offset_z=0.0)},
         {
-            "label": "wheel_torsion=1.0",
-            "params": _candidate(base, wheel_torsional_friction_scale=1.0),
+            "label": "turn_scrub=1.0",
+            "params": _candidate(base, turn_scrub_scale=1.0),
         },
         {
             "label": "motor_lag=0",

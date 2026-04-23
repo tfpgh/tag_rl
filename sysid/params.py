@@ -7,7 +7,6 @@ import jax
 import jax.numpy as jnp
 
 from environment.config import EnvironmentConfig
-from environment.mjcf import MOTOR_TIME_CONSTANT_SECONDS
 from environment.types import AgentDynamicsParams, DomainParams, PipelineParams
 
 PARAM_TRANSFORM_LINEAR = "linear"
@@ -16,6 +15,7 @@ PARAM_TRANSFORM_INTEGER = "integer"
 
 _ENV_CONFIG = EnvironmentConfig()
 _DYNAMICS = _ENV_CONFIG.dynamics_randomization
+_PIPELINE = _ENV_CONFIG.pipeline_randomization
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,170 +35,85 @@ class ParamSpec:
 PARAM_SPECS: tuple[ParamSpec, ...] = (
     ParamSpec(
         "track_width_scale",
-        ParamBounds(0.85, 1.15),
-        1.0,
+        ParamBounds(0.88, 1.02),
+        _DYNAMICS.track_width_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_radius_scale",
-        ParamBounds(0.85, 1.15),
-        1.0,
+        ParamBounds(0.96, 1.07),
+        _DYNAMICS.wheel_radius_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
-        "caster_radius_scale",
-        ParamBounds(0.70, 1.30),
-        1.0,
+        "traction_scale",
+        ParamBounds(0.50, 1.70),
+        _DYNAMICS.traction_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
-        "caster_offset_x",
-        ParamBounds(-0.020, 0.020),
-        0.0,
-        PARAM_TRANSFORM_LINEAR,
-    ),
-    ParamSpec(
-        "com_offset_x",
-        ParamBounds(-0.040, 0.040),
-        0.0,
-        PARAM_TRANSFORM_LINEAR,
-    ),
-    ParamSpec(
-        "com_offset_z",
-        ParamBounds(-0.030, 0.030),
-        0.0,
-        PARAM_TRANSFORM_LINEAR,
-    ),
-    ParamSpec(
-        "wheel_slide_friction_scale",
-        ParamBounds(0.25, 4.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "wheel_torsional_friction_scale",
-        ParamBounds(0.25, 4.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "wheel_rolling_friction_scale",
-        ParamBounds(0.25, 4.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "body_contact_friction_scale",
-        ParamBounds(0.001, 4.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "caster_slide_friction_scale",
-        ParamBounds(0.25, 4.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "caster_torsional_friction_scale",
-        ParamBounds(0.25, 4.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "wheel_joint_damping_scale",
-        ParamBounds(0.0001, 5.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "wheel_joint_frictionloss_scale",
-        ParamBounds(0.0001, 5.0),
-        1.0,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "wheel_armature_scale",
-        ParamBounds(0.25, 5.0),
-        1.0,
+        "turn_scrub_scale",
+        ParamBounds(0.30, 1.40),
+        _DYNAMICS.turn_scrub_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "motor_strength_scale",
-        ParamBounds(0.25, 8.0),
-        1.0,
+        ParamBounds(0.55, 1.25),
+        _DYNAMICS.motor_strength_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "back_emf_scale",
-        ParamBounds(0.25, 5.0),
-        1.0,
+        ParamBounds(0.45, 1.00),
+        _DYNAMICS.back_emf_scale_nominal,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "motor_balance",
-        ParamBounds(-0.25, 0.25),
-        0.0,
+        ParamBounds(-0.12, 0.12),
+        _DYNAMICS.motor_balance_nominal,
         PARAM_TRANSFORM_LINEAR,
     ),
     ParamSpec(
         "motor_time_constant_seconds",
-        ParamBounds(0.005, 0.100),
-        MOTOR_TIME_CONSTANT_SECONDS,
+        ParamBounds(0.006, 0.035),
+        _DYNAMICS.motor_time_constant_seconds_nominal,
         PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "motor_curve_sharpness",
-        ParamBounds(0.0, 8.0),
-        0.0,
-        PARAM_TRANSFORM_LINEAR,
-    ),
-    ParamSpec(
-        "traction_slip_threshold",
-        ParamBounds(0.01, 1.0),
-        0.2,
-        PARAM_TRANSFORM_LOG,
-    ),
-    ParamSpec(
-        "traction_loss_strength",
-        ParamBounds(0.0, 10.0),
-        0.0,
-        PARAM_TRANSFORM_LINEAR,
-    ),
-    ParamSpec(
-        "traction_min_scale",
-        ParamBounds(0.05, 1.0),
-        1.0,
-        PARAM_TRANSFORM_LINEAR,
     ),
     ParamSpec(
         "command_delay_substeps",
-        ParamBounds(0.0, 20.0),
-        0.0,
+        ParamBounds(0.0, 8.0),
+        float(_PIPELINE.nominal_action_delay_substeps),
         PARAM_TRANSFORM_INTEGER,
     ),
     ParamSpec(
         "observation_delay_substeps",
-        ParamBounds(0.0, 20.0),
-        0.0,
+        ParamBounds(4.0, 20.0),
+        float(_PIPELINE.nominal_observation_delay_substeps),
         PARAM_TRANSFORM_INTEGER,
     ),
 )
 
-# Temporary staged sysid setup: keep delay terms free, lock the main
-# compensation parameters to their current environment nominals.
+# Simplified sysid setup: keep a compact, physically meaningful active set and
+# lock legacy compensation parameters to environment nominals for now.
 FROZEN_PARAMS: dict[str, float] = {
     "caster_radius_scale": _DYNAMICS.caster_radius_scale_nominal,
     "caster_offset_x": _DYNAMICS.caster_offset_x_nominal,
     "com_offset_x": _DYNAMICS.com_offset_x_nominal,
     "com_offset_z": _DYNAMICS.com_offset_z_nominal,
+    "wheel_slide_friction_scale": _DYNAMICS.traction_scale_nominal,
+    "wheel_torsional_friction_scale": _DYNAMICS.turn_scrub_scale_nominal,
+    "wheel_rolling_friction_scale": _DYNAMICS.turn_scrub_scale_nominal,
     "body_contact_friction_scale": _DYNAMICS.body_contact_friction_scale_nominal,
     "caster_slide_friction_scale": _DYNAMICS.caster_slide_friction_scale_nominal,
     "caster_torsional_friction_scale": _DYNAMICS.caster_torsional_friction_scale_nominal,
     "wheel_joint_damping_scale": _DYNAMICS.wheel_joint_damping_scale_nominal,
     "wheel_joint_frictionloss_scale": _DYNAMICS.wheel_joint_frictionloss_scale_nominal,
     "wheel_armature_scale": _DYNAMICS.wheel_armature_scale_nominal,
-    "motor_balance": _DYNAMICS.motor_balance_nominal,
+    "motor_curve_sharpness": _DYNAMICS.motor_curve_sharpness_nominal,
+    "traction_slip_threshold": _DYNAMICS.traction_slip_threshold_nominal,
+    "traction_loss_strength": _DYNAMICS.traction_loss_strength_nominal,
     "traction_min_scale": _DYNAMICS.traction_min_scale_nominal,
 }
 
@@ -216,8 +131,12 @@ DEFAULT_PHYSICAL_PARAMS = {
     if spec.transform != PARAM_TRANSFORM_INTEGER
 }
 DEFAULT_PHYSICAL_PARAMS.update(FROZEN_PARAMS)
-DEFAULT_PHYSICAL_PARAMS["command_delay_substeps"] = 0.0
-DEFAULT_PHYSICAL_PARAMS["observation_delay_substeps"] = 0.0
+DEFAULT_PHYSICAL_PARAMS["command_delay_substeps"] = float(
+    _PIPELINE.nominal_action_delay_substeps
+)
+DEFAULT_PHYSICAL_PARAMS["observation_delay_substeps"] = float(
+    _PIPELINE.nominal_observation_delay_substeps
+)
 
 
 def _signed_sigmoid(x: jax.Array) -> jax.Array:
@@ -302,10 +221,30 @@ def physical_to_latent(params: Mapping[str, jax.Array | float | int]) -> jax.Arr
     return jnp.stack(latent, axis=0)
 
 
+def resolve_physical_params(
+    params: Mapping[str, jax.Array | float | int],
+) -> dict[str, float]:
+    resolved = dict(DEFAULT_PHYSICAL_PARAMS)
+    for name, value in params.items():
+        resolved[name] = float(value)
+    if "traction_scale" not in params and "wheel_slide_friction_scale" in params:
+        resolved["traction_scale"] = float(params["wheel_slide_friction_scale"])
+    if "turn_scrub_scale" not in params:
+        torsion = params.get("wheel_torsional_friction_scale")
+        rolling = params.get("wheel_rolling_friction_scale")
+        if torsion is not None and rolling is not None:
+            resolved["turn_scrub_scale"] = 0.5 * (float(torsion) + float(rolling))
+        elif torsion is not None:
+            resolved["turn_scrub_scale"] = float(torsion)
+        elif rolling is not None:
+            resolved["turn_scrub_scale"] = float(rolling)
+    return resolved
+
+
 def build_domain_and_pipeline_from_physical(
     params: Mapping[str, jax.Array | float | int],
 ) -> tuple[DomainParams, PipelineParams]:
-    resolved = {**FROZEN_PARAMS, **params}
+    resolved = resolve_physical_params(params)
     agent = AgentDynamicsParams(
         mass_scale=jnp.asarray(1.0, dtype=jnp.float32),
         com_offset_xyz=jnp.array(
@@ -316,14 +255,16 @@ def build_domain_and_pipeline_from_physical(
         wheel_radius_scale=jnp.asarray(
             resolved["wheel_radius_scale"], dtype=jnp.float32
         ),
+        traction_scale=jnp.asarray(resolved["traction_scale"], dtype=jnp.float32),
+        turn_scrub_scale=jnp.asarray(resolved["turn_scrub_scale"], dtype=jnp.float32),
         wheel_slide_friction_scale=jnp.asarray(
-            resolved["wheel_slide_friction_scale"], dtype=jnp.float32
+            resolved["traction_scale"], dtype=jnp.float32
         ),
         wheel_torsional_friction_scale=jnp.asarray(
-            resolved["wheel_torsional_friction_scale"], dtype=jnp.float32
+            resolved["turn_scrub_scale"], dtype=jnp.float32
         ),
         wheel_rolling_friction_scale=jnp.asarray(
-            resolved["wheel_rolling_friction_scale"], dtype=jnp.float32
+            resolved["turn_scrub_scale"], dtype=jnp.float32
         ),
         body_contact_friction_scale=jnp.asarray(
             resolved["body_contact_friction_scale"], dtype=jnp.float32

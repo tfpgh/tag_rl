@@ -25,6 +25,7 @@ from sysid.params import (
     PARAM_NAMES,
     build_domain_and_pipeline,
     physical_to_latent,
+    resolve_physical_params,
 )
 from sysid.types import WindowBatch
 
@@ -97,10 +98,7 @@ def _load_params(path: Path, history_source: str) -> dict[str, float]:
             payload = payload["global_best"]["params"]
         elif "generation_best" in payload and "params" in payload["generation_best"]:
             payload = payload["generation_best"]["params"]
-    return {
-        name: float(payload.get(name, DEFAULT_PHYSICAL_PARAMS[name]))
-        for name in DEFAULT_PHYSICAL_PARAMS
-    }
+    return resolve_physical_params(payload)
 
 
 def _wrap_angle(angle: np.ndarray) -> np.ndarray:

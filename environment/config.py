@@ -34,12 +34,12 @@ class RewardConfig:
     distance_shaping_scale: float = 0.0
     distance_shaping_gamma: float = 0.99
     forward_motion_reward_scale: float = 0.0
-    action_smoothing_scale: float = 0.005
+    action_smoothing_scale: float = 0.01
 
 
 @dataclass
 class LayoutRandomizationConfig:
-    max_obstacles: int = 6
+    max_obstacles: int = 8
     obstacle_width: float = 0.20
     obstacle_candidate_pool: int = 64
     spawn_candidate_pool: int = 64

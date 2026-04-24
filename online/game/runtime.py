@@ -89,6 +89,8 @@ class TagGameRuntime:
             "evader": np.zeros(2, dtype=np.float32),
         }
         self._last_ready_time: float | None = None
+        self._prev_chaser_xy: np.ndarray | None = None
+        self._prev_evader_xy: np.ndarray | None = None
         self._events: deque[RuntimeEvent] = deque(maxlen=20)
         self._recording_frame_index = 0
         self._push_event("runtime_initialized")
@@ -117,6 +119,8 @@ class TagGameRuntime:
         self.policy_runner.reset()
         self._latest_policy_actions["chaser"] = np.zeros(2, dtype=np.float32)
         self._latest_policy_actions["evader"] = np.zeros(2, dtype=np.float32)
+        self._prev_chaser_xy = None
+        self._prev_evader_xy = None
 
     def handle_action(self, action: str) -> None:
         actions = self.config.actions
@@ -452,13 +456,29 @@ class TagGameRuntime:
             chaser = RobotCommand(0.0, 0.0)
         if board_state.chaser is None or board_state.evader is None:
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Tracking lost"
-        distance = float(
-            np.hypot(
-                board_state.chaser.x_m - board_state.evader.x_m,
-                board_state.chaser.y_m - board_state.evader.y_m,
-            )
+        chaser_xy = np.array(
+            [board_state.chaser.x_m, board_state.chaser.y_m], dtype=np.float64
         )
-        if distance < self.tag_distance:
+        evader_xy = np.array(
+            [board_state.evader.x_m, board_state.evader.y_m], dtype=np.float64
+        )
+        # Min separation across the linear segment between samples — catches tags that
+        # would otherwise fall between control ticks at the current ~22 Hz tracking rate.
+        r1 = chaser_xy - evader_xy
+        if self._prev_chaser_xy is not None and self._prev_evader_xy is not None:
+            r0 = self._prev_chaser_xy - self._prev_evader_xy
+            dr = r1 - r0
+            denom = float(np.dot(dr, dr))
+            if denom > 0.0:
+                s = float(np.clip(-np.dot(r0, dr) / denom, 0.0, 1.0))
+                min_gap = float(np.linalg.norm(r0 + s * dr))
+            else:
+                min_gap = float(np.linalg.norm(r1))
+        else:
+            min_gap = float(np.linalg.norm(r1))
+        self._prev_chaser_xy = chaser_xy
+        self._prev_evader_xy = evader_xy
+        if min_gap < self.tag_distance:
             self._phase = self.config.phases.tagged
             self._push_event("tagged")
             return RobotCommand(0.0, 0.0), RobotCommand(0.0, 0.0), "Tagged"

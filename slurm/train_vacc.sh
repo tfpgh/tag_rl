@@ -4,6 +4,7 @@
 #SBATCH --output=logs/%j.out
 #SBATCH --mail-type=ALL
 #SBATCH --partition=nvgpu
+#SBATCH --nodelist=r6node01
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=1-00:00:00

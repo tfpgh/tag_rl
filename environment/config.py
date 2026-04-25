@@ -22,7 +22,7 @@ class ArenaConfig:
     agent_max_angular_velocity: float = 31.0
     minimum_starting_separation: float = 0.12
     wall_margin_factor: float = 1.05
-    action_scale: float = 1.0
+    action_scale: float = 0.75
 
 
 @dataclass

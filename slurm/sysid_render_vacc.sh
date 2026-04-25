@@ -19,4 +19,4 @@ export XLA_FLAGS=--xla_gpu_triton_gemm_any=true
 
 uv sync --extra cuda13
 
-uv run -m sysid.render_compare --run-dir data/eval/games/20260422_144034_tag_game_eval_game015_evader --params runs/sysid_4000533/history.jsonl --output render_compare.mp4
+uv run -m sysid.render_compare --run-dir data/eval --params runs/sysid_4000533/history.jsonl --output render_compare.mp4

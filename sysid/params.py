@@ -35,62 +35,62 @@ class ParamSpec:
 PARAM_SPECS: tuple[ParamSpec, ...] = (
     ParamSpec(
         "track_width_scale",
-        ParamBounds(0.80, 1.20),
-        _DYNAMICS.track_width_scale_nominal,
+        ParamBounds(0.75, 1.25),
+        1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "wheel_radius_scale",
-        ParamBounds(0.96, 1.07),
-        _DYNAMICS.wheel_radius_scale_nominal,
+        ParamBounds(0.85, 1.15),
+        1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "traction_scale",
-        ParamBounds(0.30, 2.0),
-        _DYNAMICS.traction_scale_nominal,
+        ParamBounds(0.25, 1.75),
+        1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "turn_scrub_scale",
-        ParamBounds(0.20, 1.80),
-        _DYNAMICS.turn_scrub_scale_nominal,
+        ParamBounds(0.25, 1.75),
+        1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "motor_strength_scale",
-        ParamBounds(0.30, 1.75),
-        _DYNAMICS.motor_strength_scale_nominal,
+        ParamBounds(0.25, 1.75),
+        1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "back_emf_scale",
-        ParamBounds(0.30, 2.0),
-        _DYNAMICS.back_emf_scale_nominal,
+        ParamBounds(0.25, 1.75),
+        1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "motor_balance",
         ParamBounds(-0.15, 0.15),
-        _DYNAMICS.motor_balance_nominal,
+        0.0,
         PARAM_TRANSFORM_LINEAR,
     ),
     ParamSpec(
         "motor_time_constant_seconds",
-        ParamBounds(0.002, 0.070),
-        _DYNAMICS.motor_time_constant_seconds_nominal,
+        ParamBounds(0.001, 0.080),
+        0.01,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "command_delay_substeps",
         ParamBounds(0.0, 10.0),
-        float(_PIPELINE.nominal_action_delay_substeps),
+        0.0,
         PARAM_TRANSFORM_INTEGER,
     ),
     ParamSpec(
         "observation_delay_substeps",
-        ParamBounds(2.0, 22.0),
-        float(_PIPELINE.nominal_observation_delay_substeps),
+        ParamBounds(0.0, 22.0),
+        0.0,
         PARAM_TRANSFORM_INTEGER,
     ),
 )
@@ -131,12 +131,8 @@ DEFAULT_PHYSICAL_PARAMS = {
     if spec.transform != PARAM_TRANSFORM_INTEGER
 }
 DEFAULT_PHYSICAL_PARAMS.update(FROZEN_PARAMS)
-DEFAULT_PHYSICAL_PARAMS["command_delay_substeps"] = float(
-    _PIPELINE.nominal_action_delay_substeps
-)
-DEFAULT_PHYSICAL_PARAMS["observation_delay_substeps"] = float(
-    _PIPELINE.nominal_observation_delay_substeps
-)
+DEFAULT_PHYSICAL_PARAMS["command_delay_substeps"] = float(0.0)
+DEFAULT_PHYSICAL_PARAMS["observation_delay_substeps"] = float(0.0)
 
 
 def _signed_sigmoid(x: jax.Array) -> jax.Array:

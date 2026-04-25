@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections import deque
 from pathlib import Path
 from typing import Any, cast
@@ -16,14 +17,10 @@ from runtime import jax_setup as _jax_setup  # noqa: F401
 import cv2
 import imageio
 import jax
-import jax.numpy as jnp
 import mujoco
 import numpy as np
-from mujoco import mjx
 
-from environment.actuation import shape_agent_actions
 from environment.mjcf import generate_mjcf
-from environment.randomization import randomize_model
 from online.app.render_run import (
     DEFAULT_FPS,
     DEFAULT_HEIGHT,
@@ -43,10 +40,10 @@ from online.app.render_run import (
 )
 from sysid.evaluator import SysIdEvaluator
 from sysid.params import (
-    DEFAULT_PHYSICAL_PARAMS,
-    build_domain_and_pipeline_from_physical,
+    physical_to_latent,
     resolve_physical_params,
 )
+from sysid.types import WindowBatch, WindowMetadata
 
 REAL_COLOR = (110, 185, 255)
 SIM_COLOR = (255, 176, 90)
@@ -250,92 +247,147 @@ def _estimate_initial_velocity(samples: list[dict[str, Any]]) -> np.ndarray:
     )
 
 
-def _simulate_target_poses(
-    evaluator: SysIdEvaluator,
-    physical_params: dict[str, float],
+def _segment_record(
+    run_dir: Path,
     samples: list[dict[str, Any]],
     commands: list[dict[str, Any]],
-) -> np.ndarray:
+    split: str = "render",
+) -> tuple[dict[str, np.ndarray], WindowMetadata]:
     visible = [sample for sample in samples if sample.get("target_robot") is not None]
     if not visible:
         raise ValueError("No target_robot poses available in selected samples")
     start_time = float(samples[0]["monotonic_time"])
     end_time = float(samples[-1]["monotonic_time"])
     command_substeps, initial_command = _build_command_substeps(
-        commands, start_time, end_time, evaluator.substep_dt_seconds
+        commands, start_time, end_time, 0.005
     )
-    first_pose = visible[0]["target_robot"]
-    initial_pose = jnp.array(
-        [first_pose["x_m"], first_pose["y_m"], first_pose["yaw_rad"]], dtype=jnp.float32
+    relative_times = np.asarray(
+        [sample["monotonic_time"] - start_time for sample in samples], dtype=np.float32
     )
-    initial_velocity = jnp.asarray(
-        _estimate_initial_velocity(samples), dtype=jnp.float32
-    )
-    domain_params, pipeline_params = build_domain_and_pipeline_from_physical(
-        physical_params
-    )
-    model = randomize_model(
-        evaluator.env.mjx_model, domain_params, evaluator.env.model_indices
-    )
-    data = evaluator._initial_data(model, initial_pose, initial_velocity)
-    action_buffer = jnp.repeat(
-        jnp.asarray(initial_command, dtype=jnp.float32)[None, :],
-        evaluator.action_buffer_len,
-        axis=0,
-    )
-    commands_jax = jnp.asarray(command_substeps, dtype=jnp.float32)
-
-    def substep(
-        carry: tuple[mjx.Data, jax.Array], proposed_action: jax.Array
-    ) -> tuple[tuple[mjx.Data, jax.Array], jax.Array]:
-        data, action_buffer = carry
-        action_buffer = (
-            jnp.roll(action_buffer, shift=-1, axis=0).at[-1].set(proposed_action)
-        )
-        delayed_action = action_buffer[-1 - pipeline_params.action_delay_substeps]
-        delayed_action = shape_agent_actions(
-            delayed_action,
-            data.qpos,
-            data.qvel,
-            domain_params.chaser,
-            evaluator.env.model_indices.chaser,
-            evaluator.qpos_slices.chaser_root,
-            evaluator.dof_slices.chaser_root,
-        )
-        data = data.replace(
-            ctrl=jnp.concatenate([delayed_action, jnp.zeros((2,), dtype=jnp.float32)])
-        )
-        data = mjx.step(model, data)
-        qpos = data.qpos[evaluator.qpos_slices.chaser_root]
-        qvel = data.qvel[evaluator.dof_slices.chaser_root]
-        pose = jnp.array(
+    target_pose = np.asarray(
+        [
             [
-                qpos[0],
-                qpos[1],
-                jnp.arctan2(
-                    2.0 * (qpos[3] * qpos[6] + qpos[4] * qpos[5]),
-                    1.0 - 2.0 * (qpos[5] * qpos[5] + qpos[6] * qpos[6]),
-                ),
-                qvel[0],
-                qvel[1],
-                qvel[5],
-            ],
-            dtype=jnp.float32,
+                sample["target_robot"]["x_m"],
+                sample["target_robot"]["y_m"],
+                sample["target_robot"]["yaw_rad"],
+            ]
+            for sample in samples
+        ],
+        dtype=np.float32,
+    )
+    translation = float(np.linalg.norm(target_pose[-1, :2] - target_pose[0, :2]))
+    yaw_change = float(
+        np.abs(
+            np.arctan2(
+                np.sin(target_pose[-1, 2] - target_pose[0, 2]),
+                np.cos(target_pose[-1, 2] - target_pose[0, 2]),
+            )
         )
-        return (data, action_buffer), pose
+    )
+    record = {
+        "relative_sample_times_s": relative_times,
+        "target_xy": target_pose[:, :2],
+        "target_yaw": target_pose[:, 2],
+        "score_mask": np.ones((len(samples),), dtype=np.bool_),
+        "command_substeps": command_substeps.astype(np.float32),
+        "initial_pose": target_pose[0].astype(np.float32),
+        "initial_velocity": _estimate_initial_velocity(samples).astype(np.float32),
+        "initial_command": initial_command.astype(np.float32),
+    }
+    metadata = WindowMetadata(
+        split=split,
+        run_name=run_dir.name,
+        start_time=start_time,
+        score_start_time=start_time,
+        end_time=end_time,
+        sample_count=len(samples),
+        command_mean_abs=float(np.mean(np.abs(command_substeps))),
+        command_max_abs=float(np.max(np.abs(command_substeps))),
+        translation_distance_m=translation,
+        yaw_change_rad=yaw_change,
+        maneuver="render",
+    )
+    return record, metadata
 
-    _, pose_history = jax.lax.scan(substep, (data, action_buffer), commands_jax)
-    relative_times = jnp.asarray(
-        [sample["monotonic_time"] - start_time for sample in samples], dtype=jnp.float32
+
+def _pack_window_records(
+    split: str, records: list[dict[str, np.ndarray]], metadata: list[WindowMetadata]
+) -> WindowBatch:
+    max_samples = max(len(record["relative_sample_times_s"]) for record in records)
+    max_substeps = max(len(record["command_substeps"]) for record in records)
+    num_windows = len(records)
+
+    relative_sample_times_s = np.zeros((num_windows, max_samples), dtype=np.float32)
+    target_xy = np.zeros((num_windows, max_samples, 2), dtype=np.float32)
+    target_yaw = np.zeros((num_windows, max_samples), dtype=np.float32)
+    sample_mask = np.zeros((num_windows, max_samples), dtype=np.bool_)
+    score_mask = np.zeros((num_windows, max_samples), dtype=np.bool_)
+    command_substeps = np.zeros((num_windows, max_substeps, 2), dtype=np.float32)
+    initial_pose = np.zeros((num_windows, 3), dtype=np.float32)
+    initial_velocity = np.zeros((num_windows, 3), dtype=np.float32)
+    initial_command = np.zeros((num_windows, 2), dtype=np.float32)
+
+    for index, record in enumerate(records):
+        sample_len = len(record["relative_sample_times_s"])
+        substep_len = len(record["command_substeps"])
+        relative_sample_times_s[index, :sample_len] = record["relative_sample_times_s"]
+        target_xy[index, :sample_len] = record["target_xy"]
+        target_yaw[index, :sample_len] = record["target_yaw"]
+        sample_mask[index, :sample_len] = True
+        score_mask[index, :sample_len] = record["score_mask"]
+        command_substeps[index, :substep_len] = record["command_substeps"]
+        if substep_len < max_substeps:
+            command_substeps[index, substep_len:] = record["command_substeps"][-1]
+        initial_pose[index] = record["initial_pose"]
+        initial_velocity[index] = record["initial_velocity"]
+        initial_command[index] = record["initial_command"]
+
+    return WindowBatch(
+        split=split,
+        relative_sample_times_s=relative_sample_times_s,
+        target_xy=target_xy,
+        target_yaw=target_yaw,
+        sample_mask=sample_mask,
+        score_mask=score_mask,
+        command_substeps=command_substeps,
+        initial_pose=initial_pose,
+        initial_velocity=initial_velocity,
+        initial_command=initial_command,
+        metadata=metadata,
     )
-    sample_indices = jnp.clip(
-        jnp.rint(relative_times / evaluator.substep_dt_seconds).astype(jnp.int32)
-        - 1
-        - pipeline_params.observation_delay_substeps,
-        0,
-        pose_history.shape[0] - 1,
+
+
+def _simulate_target_poses_segmented(
+    evaluator: SysIdEvaluator,
+    physical_params: dict[str, float],
+    run_dir: Path,
+    samples: list[dict[str, Any]],
+    commands: list[dict[str, Any]],
+    segment_seconds: float,
+    segment_records: list[dict[str, Any]] | None = None,
+) -> np.ndarray:
+    segments = (
+        _segment_samples_from_records(samples, segment_records)
+        if segment_records
+        else _segment_samples(samples, segment_seconds)
     )
-    return np.asarray(jax.device_get(pose_history[sample_indices]))
+    records: list[dict[str, np.ndarray]] = []
+    metadata: list[WindowMetadata] = []
+    for segment in segments:
+        record, item = _segment_record(run_dir, segment, commands)
+        records.append(record)
+        metadata.append(item)
+
+    batch = _pack_window_records("render", records, metadata)
+    prepared = evaluator.prepare_batch(batch)
+    latent = physical_to_latent(physical_params)
+    pose_eval = jax.jit(jax.vmap(evaluator._simulate_pose_history, in_axes=(None, 0)))
+    sampled_pose = np.asarray(jax.device_get(pose_eval(latent, prepared)))
+
+    simulated_segments = [
+        sampled_pose[index, batch.sample_mask[index]] for index in range(len(records))
+    ]
+    return np.concatenate(simulated_segments, axis=0)
 
 
 def _segment_samples(
@@ -385,26 +437,6 @@ def _segment_samples_from_records(
             continue
         sample_segments.append(samples[start_index:end_index])
     return sample_segments
-
-
-def _simulate_target_poses_segmented(
-    evaluator: SysIdEvaluator,
-    physical_params: dict[str, float],
-    samples: list[dict[str, Any]],
-    commands: list[dict[str, Any]],
-    segment_seconds: float,
-    segment_records: list[dict[str, Any]] | None = None,
-) -> np.ndarray:
-    segments = (
-        _segment_samples_from_records(samples, segment_records)
-        if segment_records
-        else _segment_samples(samples, segment_seconds)
-    )
-    simulated_segments = [
-        _simulate_target_poses(evaluator, physical_params, segment, commands)
-        for segment in segments
-    ]
-    return np.concatenate(simulated_segments, axis=0)
 
 
 def _world_to_panel(
@@ -664,6 +696,7 @@ def _render_run(
     params_label: str,
     run_dir: Path,
 ) -> None:
+    load_start = time.perf_counter()
     metadata = load_metadata(run_dir)
     all_samples = _iter_samples(run_dir)
     samples = selected_samples(
@@ -677,26 +710,41 @@ def _render_run(
         return
     commands = _load_jsonl(run_dir / "commands.jsonl")
     segment_records = _load_jsonl_if_exists(run_dir / "segments.jsonl")
+    load_seconds = time.perf_counter() - load_start
 
     max_logged_obstacles = max(len(sample.get("obstacles", [])) for sample in samples)
     env_config = build_env_config(metadata, max_logged_obstacles)
-    evaluator = SysIdEvaluator.create(
-        env_config,
-        num_substeps=int(
+    segment_samples = (
+        _segment_samples_from_records(samples, segment_records)
+        if segment_records
+        else _segment_samples(samples, args.segment_seconds)
+    )
+    if not segment_samples:
+        segment_samples = _segment_samples(samples, args.segment_seconds)
+    max_segment_substeps = max(
+        int(
             np.ceil(
-                (samples[-1]["monotonic_time"] - samples[0]["monotonic_time"]) / 0.005
+                (segment[-1]["monotonic_time"] - segment[0]["monotonic_time"]) / 0.005
             )
         )
-        + 1,
+        + 1
+        for segment in segment_samples
     )
+    evaluator = SysIdEvaluator.create(
+        env_config,
+        num_substeps=max_segment_substeps,
+    )
+    simulate_start = time.perf_counter()
     simulated = _simulate_target_poses_segmented(
         evaluator,
         params,
+        run_dir,
         samples,
         commands,
         args.segment_seconds,
         segment_records=segment_records,
     )
+    simulate_seconds = time.perf_counter() - simulate_start
 
     model = mujoco.MjModel.from_xml_string(generate_mjcf(env_config, mode="render"))
     data = mujoco.MjData(model)
@@ -716,11 +764,14 @@ def _render_run(
         writer.append_data(title_card)
 
     try:
+        render_start = time.perf_counter()
+        qpos = np.zeros(model.nq, dtype=np.float64)
+        qvel = np.zeros(model.nv, dtype=np.float64)
         for index, (sample, sim_pose_array) in enumerate(
             zip(samples, simulated, strict=True), start=1
         ):
-            qpos = np.zeros(model.nq, dtype=np.float64)
-            qvel = np.zeros(model.nv, dtype=np.float64)
+            qpos.fill(0.0)
+            qvel.fill(0.0)
 
             real_pose = pose_from_record(
                 sample.get("target_robot"), real_pose, hold_last_pose
@@ -800,8 +851,12 @@ def _render_run(
             writer.append_data(frame)
             if index % 100 == 0 or index == len(samples):
                 print(f"Rendered {run_dir.name}: {index}/{len(samples)} frames")
+        render_seconds = time.perf_counter() - render_start
     finally:
         renderer.close()
+    print(
+        f"{run_dir.name}: load={load_seconds:.2f}s simulate={simulate_seconds:.2f}s render={render_seconds:.2f}s"
+    )
 
 
 def render_compare(args: argparse.Namespace) -> None:

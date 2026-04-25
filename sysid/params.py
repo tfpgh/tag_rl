@@ -76,6 +76,102 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
+        "caster_radius_scale",
+        ParamBounds(0.5, 1.5),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_offset_x",
+        ParamBounds(-0.02, 0.02),
+        0.0,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "com_offset_x",
+        ParamBounds(-0.02, 0.02),
+        0.0,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "com_offset_z",
+        ParamBounds(-0.02, 0.02),
+        0.0,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "wheel_slide_friction_scale",
+        ParamBounds(0.25, 2.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_torsional_friction_scale",
+        ParamBounds(0.25, 2.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_rolling_friction_scale",
+        ParamBounds(0.25, 2.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_slide_friction_scale",
+        ParamBounds(0.25, 2.5),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "caster_torsional_friction_scale",
+        ParamBounds(0.25, 2.5),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_joint_damping_scale",
+        ParamBounds(0.25, 4.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_joint_frictionloss_scale",
+        ParamBounds(0.1, 4.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "wheel_armature_scale",
+        ParamBounds(0.25, 4.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "motor_curve_sharpness",
+        ParamBounds(0.0, 4.0),
+        0.0,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "traction_slip_threshold",
+        ParamBounds(0.05, 2.0),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
+        "traction_loss_strength",
+        ParamBounds(0.0, 4.0),
+        0.0,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
+        "traction_min_scale",
+        ParamBounds(0.25, 1.0),
+        1.0,
+        PARAM_TRANSFORM_LINEAR,
+    ),
+    ParamSpec(
         "motor_balance",
         ParamBounds(-0.15, 0.15),
         0.0,
@@ -101,28 +197,7 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
 )
 
-# Simplified sysid setup: keep a compact, physically meaningful active set and
-# lock legacy compensation parameters to environment nominals for now.
-FROZEN_PARAMS: dict[str, float] = {
-    "caster_radius_scale": 1.0,
-    "caster_offset_x": 0.0,
-    "com_offset_x": 0.0,
-    "com_offset_z": 0.0,
-    "wheel_slide_friction_scale": 1.0,
-    "wheel_torsional_friction_scale": 1.0,
-    "wheel_rolling_friction_scale": 1.0,
-    "caster_slide_friction_scale": 1.0,
-    "caster_torsional_friction_scale": 1.0,
-    "wheel_joint_damping_scale": 1.0,
-    "wheel_joint_frictionloss_scale": 1.0,
-    "wheel_armature_scale": 1.0,
-    "motor_curve_sharpness": 0.0,
-    "traction_slip_threshold": 1.0,
-    "traction_loss_strength": 0.0,
-    "traction_min_scale": 1.0,
-}
-
-PARAM_SPECS = tuple(spec for spec in PARAM_SPECS if spec.name not in FROZEN_PARAMS)
+FROZEN_PARAMS: dict[str, float] = {}
 
 PARAM_NAMES = tuple(spec.name for spec in PARAM_SPECS)
 LATENT_DIM = len(PARAM_SPECS)

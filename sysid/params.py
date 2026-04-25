@@ -70,6 +70,12 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
+        "body_contact_friction_scale",
+        ParamBounds(0.35, 1.75),
+        1.0,
+        PARAM_TRANSFORM_LOG,
+    ),
+    ParamSpec(
         "motor_balance",
         ParamBounds(-0.15, 0.15),
         0.0,
@@ -105,7 +111,6 @@ FROZEN_PARAMS: dict[str, float] = {
     "wheel_slide_friction_scale": _DYNAMICS.traction_scale_nominal,
     "wheel_torsional_friction_scale": _DYNAMICS.turn_scrub_scale_nominal,
     "wheel_rolling_friction_scale": _DYNAMICS.turn_scrub_scale_nominal,
-    "body_contact_friction_scale": _DYNAMICS.body_contact_friction_scale_nominal,
     "caster_slide_friction_scale": _DYNAMICS.caster_slide_friction_scale_nominal,
     "caster_torsional_friction_scale": _DYNAMICS.caster_torsional_friction_scale_nominal,
     "wheel_joint_damping_scale": _DYNAMICS.wheel_joint_damping_scale_nominal,

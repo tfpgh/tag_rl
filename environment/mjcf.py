@@ -56,7 +56,7 @@ def _agent_mjcf(
     <body name="{name}" pos="{starting_pos}">
         <freejoint name="{name}_root" />
         <inertial
-            pos="-0.004 0 -0.0035"
+            pos="-0.008 0 -0.0035"
             diaginertia="0.000101 0.000101 0.000170"
             mass="0.135"
         />

@@ -104,22 +104,22 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
 # Simplified sysid setup: keep a compact, physically meaningful active set and
 # lock legacy compensation parameters to environment nominals for now.
 FROZEN_PARAMS: dict[str, float] = {
-    "caster_radius_scale": _DYNAMICS.caster_radius_scale_nominal,
-    "caster_offset_x": _DYNAMICS.caster_offset_x_nominal,
-    "com_offset_x": _DYNAMICS.com_offset_x_nominal,
-    "com_offset_z": _DYNAMICS.com_offset_z_nominal,
-    "wheel_slide_friction_scale": _DYNAMICS.traction_scale_nominal,
-    "wheel_torsional_friction_scale": _DYNAMICS.turn_scrub_scale_nominal,
-    "wheel_rolling_friction_scale": _DYNAMICS.turn_scrub_scale_nominal,
-    "caster_slide_friction_scale": _DYNAMICS.caster_slide_friction_scale_nominal,
-    "caster_torsional_friction_scale": _DYNAMICS.caster_torsional_friction_scale_nominal,
-    "wheel_joint_damping_scale": _DYNAMICS.wheel_joint_damping_scale_nominal,
-    "wheel_joint_frictionloss_scale": _DYNAMICS.wheel_joint_frictionloss_scale_nominal,
-    "wheel_armature_scale": _DYNAMICS.wheel_armature_scale_nominal,
-    "motor_curve_sharpness": _DYNAMICS.motor_curve_sharpness_nominal,
-    "traction_slip_threshold": _DYNAMICS.traction_slip_threshold_nominal,
-    "traction_loss_strength": _DYNAMICS.traction_loss_strength_nominal,
-    "traction_min_scale": _DYNAMICS.traction_min_scale_nominal,
+    "caster_radius_scale": 1.0,
+    "caster_offset_x": 0.0,
+    "com_offset_x": 0.0,
+    "com_offset_z": 0.0,
+    "wheel_slide_friction_scale": 1.0,
+    "wheel_torsional_friction_scale": 1.0,
+    "wheel_rolling_friction_scale": 1.0,
+    "caster_slide_friction_scale": 1.0,
+    "caster_torsional_friction_scale": 1.0,
+    "wheel_joint_damping_scale": 1.0,
+    "wheel_joint_frictionloss_scale": 1.0,
+    "wheel_armature_scale": 1.0,
+    "motor_curve_sharpness": 0.0,
+    "traction_slip_threshold": 1.0,
+    "traction_loss_strength": 0.0,
+    "traction_min_scale": 1.0,
 }
 
 PARAM_SPECS = tuple(spec for spec in PARAM_SPECS if spec.name not in FROZEN_PARAMS)

@@ -57,7 +57,7 @@ def _agent_mjcf(
         <freejoint name="{name}_root" />
         <inertial
             pos="-0.0148 0 -0.009"
-            diaginertia="0.000101 0.000101 0.000170"
+            diaginertia="0.000101 0.000101 0.000255"
             mass="0.135"
         />
         <geom

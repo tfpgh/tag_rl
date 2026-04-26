@@ -42,9 +42,11 @@ WHEEL_RADIUS = 0.020
 CASTER_RADIUS = 0.004078  # baked: 0.0048 * caster_radius_scale_nominal(0.8495)
 WHEEL_HALF_WIDTH = 0.0020
 WHEEL_JOINT_DAMPING = 0.0002016  # baked: 0.0001 * wheel_joint_damping_scale_nominal
-WHEEL_JOINT_FRICTIONLOSS = 0.000715  # baked: 0.025 * wheel_joint_frictionloss_scale_nominal
+WHEEL_JOINT_FRICTIONLOSS = (
+    0.000715  # baked: 0.025 * wheel_joint_frictionloss_scale_nominal
+)
 WHEEL_JOINT_ARMATURE = 0.0000073  # baked: 3e-6 * wheel_armature_scale_nominal
-INERTIAL_POS_X = 0.006703  # baked: -0.008 + com_offset_x_nominal(0.014703)
+INERTIAL_POS_X = -0.018  # baked: -0.008 + com_offset_x_nominal(0.014703)
 INERTIAL_POS_Z = -0.003887  # baked: -0.0035 + com_offset_z_nominal(-0.000387)
 MOTOR_GAIN = 0.126
 MOTOR_BACK_EMF = -0.0015
@@ -62,8 +64,8 @@ def _agent_mjcf(
         <freejoint name="{name}_root" />
         <inertial
             pos="{INERTIAL_POS_X} 0 {INERTIAL_POS_Z}"
-            diaginertia="0.000101 0.000101 0.000170"
-            mass="0.135"
+            diaginertia="0.000130 0.000130 0.000220"
+            mass="0.180"
         />
         <geom
             name="{name}_chassis_base"

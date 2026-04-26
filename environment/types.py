@@ -91,6 +91,10 @@ class TagEnvironmentStepInfo(NamedTuple):
     time_up: jax.Array
     distance: jax.Array
     step_count: jax.Array
+    chaser_forward_velocity: jax.Array
+    chaser_angular_velocity: jax.Array
+    evader_forward_velocity: jax.Array
+    evader_angular_velocity: jax.Array
     obstacle_count: jax.Array
     chaser_collision: jax.Array
     evader_collision: jax.Array

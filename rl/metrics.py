@@ -48,6 +48,10 @@ def compute_training_metrics(
     evader_action_any_clipped = jnp.any(evader_action_clipped > 0, axis=-1).astype(
         jnp.float32
     )
+    chaser_forward_velocity = traj_batch.info.chaser_forward_velocity.astype(jnp.float32)
+    chaser_angular_velocity = traj_batch.info.chaser_angular_velocity.astype(jnp.float32)
+    evader_forward_velocity = traj_batch.info.evader_forward_velocity.astype(jnp.float32)
+    evader_angular_velocity = traj_batch.info.evader_angular_velocity.astype(jnp.float32)
     action_delay_substeps = traj_batch.info.action_delay_substeps.astype(jnp.float32)
     observation_delay_substeps = traj_batch.info.observation_delay_substeps.astype(
         jnp.float32
@@ -117,6 +121,14 @@ def compute_training_metrics(
         "chaser_action_mag_count": jnp.asarray(
             traj_batch.chaser_action.size, dtype=jnp.float32
         ),
+        "chaser_action_left_sum": traj_batch.chaser_action[..., 0].sum(),
+        "chaser_action_left_count": jnp.asarray(
+            traj_batch.chaser_action[..., 0].size, dtype=jnp.float32
+        ),
+        "chaser_action_right_sum": traj_batch.chaser_action[..., 1].sum(),
+        "chaser_action_right_count": jnp.asarray(
+            traj_batch.chaser_action[..., 1].size, dtype=jnp.float32
+        ),
         "chaser_action_clipped_sum": chaser_action_clipped.sum(),
         "chaser_action_clipped_count": jnp.asarray(
             chaser_action_clipped.size, dtype=jnp.float32
@@ -129,6 +141,14 @@ def compute_training_metrics(
         "evader_action_mag_count": jnp.asarray(
             traj_batch.evader_action.size, dtype=jnp.float32
         ),
+        "evader_action_left_sum": traj_batch.evader_action[..., 0].sum(),
+        "evader_action_left_count": jnp.asarray(
+            traj_batch.evader_action[..., 0].size, dtype=jnp.float32
+        ),
+        "evader_action_right_sum": traj_batch.evader_action[..., 1].sum(),
+        "evader_action_right_count": jnp.asarray(
+            traj_batch.evader_action[..., 1].size, dtype=jnp.float32
+        ),
         "evader_action_clipped_sum": evader_action_clipped.sum(),
         "evader_action_clipped_count": jnp.asarray(
             evader_action_clipped.size, dtype=jnp.float32
@@ -136,6 +156,22 @@ def compute_training_metrics(
         "evader_action_any_clipped_sum": evader_action_any_clipped.sum(),
         "evader_action_any_clipped_count": jnp.asarray(
             evader_action_any_clipped.size, dtype=jnp.float32
+        ),
+        "chaser_forward_velocity_sum": chaser_forward_velocity.sum(),
+        "chaser_forward_velocity_count": jnp.asarray(
+            chaser_forward_velocity.size, dtype=jnp.float32
+        ),
+        "chaser_angular_velocity_sum": chaser_angular_velocity.sum(),
+        "chaser_angular_velocity_count": jnp.asarray(
+            chaser_angular_velocity.size, dtype=jnp.float32
+        ),
+        "evader_forward_velocity_sum": evader_forward_velocity.sum(),
+        "evader_forward_velocity_count": jnp.asarray(
+            evader_forward_velocity.size, dtype=jnp.float32
+        ),
+        "evader_angular_velocity_sum": evader_angular_velocity.sum(),
+        "evader_angular_velocity_count": jnp.asarray(
+            evader_angular_velocity.size, dtype=jnp.float32
         ),
         "chaser_collision_term_sum": chaser_collision.sum(),
         "evader_collision_term_sum": evader_collision.sum(),
@@ -237,6 +273,22 @@ def compute_training_metrics(
         "chaser/mean_action_magnitude": safe_rate(
             metric_sums["chaser_action_mag_sum"], metric_sums["chaser_action_mag_count"]
         ),
+        "chaser/mean_left_action": safe_rate(
+            metric_sums["chaser_action_left_sum"],
+            metric_sums["chaser_action_left_count"],
+        ),
+        "chaser/mean_right_action": safe_rate(
+            metric_sums["chaser_action_right_sum"],
+            metric_sums["chaser_action_right_count"],
+        ),
+        "chaser/mean_forward_velocity": safe_rate(
+            metric_sums["chaser_forward_velocity_sum"],
+            metric_sums["chaser_forward_velocity_count"],
+        ),
+        "chaser/mean_angular_velocity": safe_rate(
+            metric_sums["chaser_angular_velocity_sum"],
+            metric_sums["chaser_angular_velocity_count"],
+        ),
         "chaser/action_clipped_fraction": safe_rate(
             metric_sums["chaser_action_clipped_sum"],
             metric_sums["chaser_action_clipped_count"],
@@ -247,6 +299,22 @@ def compute_training_metrics(
         ),
         "evader/mean_action_magnitude": safe_rate(
             metric_sums["evader_action_mag_sum"], metric_sums["evader_action_mag_count"]
+        ),
+        "evader/mean_left_action": safe_rate(
+            metric_sums["evader_action_left_sum"],
+            metric_sums["evader_action_left_count"],
+        ),
+        "evader/mean_right_action": safe_rate(
+            metric_sums["evader_action_right_sum"],
+            metric_sums["evader_action_right_count"],
+        ),
+        "evader/mean_forward_velocity": safe_rate(
+            metric_sums["evader_forward_velocity_sum"],
+            metric_sums["evader_forward_velocity_count"],
+        ),
+        "evader/mean_angular_velocity": safe_rate(
+            metric_sums["evader_angular_velocity_sum"],
+            metric_sums["evader_angular_velocity_count"],
         ),
         "evader/action_clipped_fraction": safe_rate(
             metric_sums["evader_action_clipped_sum"],

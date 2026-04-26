@@ -12,7 +12,7 @@ class ArenaConfig:
     arena_width: float = 2.24
     arena_height: float = 1.02
     agent_radius: float = 0.05
-    agent_z: float = 0.029975  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.003749132156372)
+    agent_z: float = 0.030121827030181884  # nominal: WHEEL_BODY_Z_OFFSET(0.0099) + WHEEL_RADIUS(0.020) * wheel_radius_scale_nominal(1.0110913515090942)
     tag_distance_factor: float = 1.05
     n_rays: int = 128
     action_frequency: int = 20
@@ -49,41 +49,41 @@ class LayoutRandomizationConfig:
 @dataclass
 class DynamicsRandomizationConfig:
     enabled: bool = True
-    # Geometry scales centered on the latest evader-only sysid fit.
-    track_width_scale_nominal: float = 0.9207258820533752
-    track_width_scale_min: float = 0.86
-    track_width_scale_max: float = 1.00
-    wheel_radius_scale_nominal: float = 1.0047537088394165
-    wheel_radius_scale_min: float = 0.96
+    # Geometry and dynamics centered on the latest sysid fit, with wide DR ranges.
+    track_width_scale_nominal: float = 1.0422232151031494
+    track_width_scale_min: float = 0.97
+    track_width_scale_max: float = 1.12
+    wheel_radius_scale_nominal: float = 1.0110913515090942
+    wheel_radius_scale_min: float = 0.97
     wheel_radius_scale_max: float = 1.05
     # Wheel-ground friction: longitudinal traction and turn-scrub.
-    traction_scale_nominal: float = 0.8315610289573669
-    traction_scale_min: float = 0.60
-    traction_scale_max: float = 1.40
-    turn_scrub_scale_nominal: float = 0.9665983319282532
-    turn_scrub_scale_min: float = 0.50
-    turn_scrub_scale_max: float = 1.50
+    traction_scale_nominal: float = 2.174974203109741
+    traction_scale_min: float = 1.55
+    traction_scale_max: float = 2.85
+    turn_scrub_scale_nominal: float = 1.5484225749969482
+    turn_scrub_scale_min: float = 1.10
+    turn_scrub_scale_max: float = 1.95
     # Motor terms.
-    motor_strength_scale_nominal: float = 0.9941380620002747
-    motor_strength_scale_min: float = 0.70
-    motor_strength_scale_max: float = 1.30
-    back_emf_scale_nominal: float = 0.7814494371414185
-    back_emf_scale_min: float = 0.55
-    back_emf_scale_max: float = 1.05
-    motor_balance_nominal: float = -0.008113667368888855
-    motor_balance_delta_max: float = 0.14
-    motor_time_constant_seconds_nominal: float = 0.015150192193686962
-    motor_time_constant_seconds_min: float = 0.008
+    motor_strength_scale_nominal: float = 1.786872148513794
+    motor_strength_scale_min: float = 1.40
+    motor_strength_scale_max: float = 2.20
+    back_emf_scale_nominal: float = 1.7278169393539429
+    back_emf_scale_min: float = 1.35
+    back_emf_scale_max: float = 2.15
+    motor_balance_nominal: float = 0.0
+    motor_balance_delta_max: float = 0.12
+    motor_time_constant_seconds_nominal: float = 0.023041656240820885
+    motor_time_constant_seconds_min: float = 0.015
     motor_time_constant_seconds_max: float = 0.035
 
 
 @dataclass
 class PipelineRandomizationConfig:
     enabled: bool = True
-    nominal_action_delay_substeps: int = 0
-    action_delay_substeps_delta: int = 6
-    nominal_observation_delay_substeps: int = 11
-    observation_delay_substeps_delta: int = 4
+    nominal_action_delay_substeps: int = 10
+    action_delay_substeps_delta: int = 2
+    nominal_observation_delay_substeps: int = 0
+    observation_delay_substeps_delta: int = 3
     max_stale_observation_steps: int = 1
     action_drop_probability_max: float = 0.002
     frame_drop_probability_max: float = 0.02

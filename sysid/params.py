@@ -42,7 +42,7 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "traction_scale",
-        ParamBounds(0.25, 1.75),
+        ParamBounds(0.1, 10.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
@@ -54,13 +54,13 @@ PARAM_SPECS: tuple[ParamSpec, ...] = (
     ),
     ParamSpec(
         "motor_strength_scale",
-        ParamBounds(0.25, 1.75),
+        ParamBounds(0.2, 3.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),
     ParamSpec(
         "back_emf_scale",
-        ParamBounds(0.25, 1.75),
+        ParamBounds(0.2, 3.0),
         1.0,
         PARAM_TRANSFORM_LOG,
     ),

@@ -277,24 +277,44 @@ def _segment_records(
     return records, metadata
 
 
-def _discover_run_dirs(split_dir: Path) -> list[Path]:
-    if not split_dir.exists():
-        return []
+def _is_run_dir(path: Path) -> bool:
+    return (path / "samples.jsonl").exists() and (path / "commands.jsonl").exists()
 
-    run_dirs: list[Path] = []
+
+def _infer_run_split(data_root: Path, run_dir: Path) -> str | None:
+    metadata_path = run_dir / "metadata.json"
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        collection = metadata.get("collection")
+        if isinstance(collection, dict):
+            split = collection.get("split")
+            if split in {"train", "eval"}:
+                return split
+
+    relative_parts = run_dir.relative_to(data_root).parts
+    for part in relative_parts:
+        if part in {"train", "eval"}:
+            return part
+    return None
+
+
+def _discover_run_dirs(data_root: Path) -> dict[str, list[Path]]:
+    run_dirs_by_split: dict[str, list[Path]] = {"train": [], "eval": []}
+    if not data_root.exists():
+        return run_dirs_by_split
+
     seen: set[Path] = set()
-    for candidate in [
-        split_dir,
-        *sorted(path for path in split_dir.rglob("*") if path.is_dir()),
-    ]:
-        if candidate in seen:
+    sample_paths = sorted(data_root.rglob("samples.jsonl"))
+    for sample_path in sample_paths:
+        run_dir = sample_path.parent
+        if run_dir in seen or not _is_run_dir(run_dir):
             continue
-        if (candidate / "samples.jsonl").exists() and (
-            candidate / "commands.jsonl"
-        ).exists():
-            run_dirs.append(candidate)
-            seen.add(candidate)
-    return run_dirs
+        seen.add(run_dir)
+        split = _infer_run_split(data_root, run_dir)
+        if split is None:
+            continue
+        run_dirs_by_split[split].append(run_dir)
+    return run_dirs_by_split
 
 
 def _window_records(
@@ -389,17 +409,18 @@ def load_dataset_splits(
     root: Path, config: WindowConfig | None = None
 ) -> DatasetSplits:
     cfg = config or WindowConfig()
+    run_dirs_by_split = _discover_run_dirs(root)
     train_records: list[dict[str, np.ndarray]] = []
     train_metadata: list[WindowMetadata] = []
     eval_records: list[dict[str, np.ndarray]] = []
     eval_metadata: list[WindowMetadata] = []
-    for run_dir in _discover_run_dirs(root / "train"):
+    for run_dir in run_dirs_by_split["train"]:
         records, metadata = _segment_records("train", run_dir, cfg)
         if not records:
             records, metadata = _window_records("train", run_dir, cfg)
         train_records.extend(records)
         train_metadata.extend(metadata)
-    for run_dir in _discover_run_dirs(root / "eval"):
+    for run_dir in run_dirs_by_split["eval"]:
         records, metadata = _segment_records("eval", run_dir, cfg)
         if not records:
             records, metadata = _window_records("eval", run_dir, cfg)

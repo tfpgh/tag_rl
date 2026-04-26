@@ -5,7 +5,6 @@ import jax.numpy as jnp
 import mujoco
 from mujoco import mjx
 
-from environment.actuation import shape_agent_actions
 from environment.config import EnvironmentConfig
 from environment.geometry import (
     circle_hits_any_obstacle,
@@ -592,25 +591,9 @@ class TagEnvironment:
                 ),
                 delayed_actions,
             )
-            chaser_actions = shape_agent_actions(
-                applied_actions[0],
-                data.qpos,
-                data.qvel,
-                state.domain_params.chaser,
-                self.model_indices.chaser,
-                self.joint_qpos_slices.chaser_root,
-                self.joint_dof_slices.chaser_root,
+            control_actions = jnp.concatenate(
+                [applied_actions[0], applied_actions[1]], axis=0
             )
-            evader_actions = shape_agent_actions(
-                applied_actions[1],
-                data.qpos,
-                data.qvel,
-                state.domain_params.evader,
-                self.model_indices.evader,
-                self.joint_qpos_slices.evader_root,
-                self.joint_dof_slices.evader_root,
-            )
-            control_actions = jnp.concatenate([chaser_actions, evader_actions], axis=0)
             data = data.replace(ctrl=control_actions)
             data = mjx.step(randomized_model, data)
 
@@ -799,8 +782,6 @@ class TagEnvironment:
             stale_observation_probability=state.pipeline_params.stale_observation_probability,
             position_noise_std=state.pipeline_params.position_noise_std,
             yaw_noise_std=state.pipeline_params.yaw_noise_std,
-            chaser_mass_scale=state.domain_params.chaser.mass_scale,
-            evader_mass_scale=state.domain_params.evader.mass_scale,
             chaser_motor_balance=state.domain_params.chaser.motor_balance,
             evader_motor_balance=state.domain_params.evader.motor_balance,
             chaser_motor_strength_scale=state.domain_params.chaser.motor_strength_scale,

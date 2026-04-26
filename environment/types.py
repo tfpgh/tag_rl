@@ -18,32 +18,14 @@ class ObstacleState(NamedTuple):
 
 
 class AgentDynamicsParams(NamedTuple):
-    mass_scale: jax.Array
-    com_offset_xyz: jax.Array
     track_width_scale: jax.Array
     wheel_radius_scale: jax.Array
     traction_scale: jax.Array
     turn_scrub_scale: jax.Array
-    wheel_slide_friction_scale: jax.Array
-    wheel_torsional_friction_scale: jax.Array
-    wheel_rolling_friction_scale: jax.Array
-    body_contact_friction_scale: jax.Array
-    caster_radius_scale: jax.Array
-    caster_offset_x: jax.Array
-    caster_slide_friction_scale: jax.Array
-    caster_torsional_friction_scale: jax.Array
-    wheel_joint_damping_scale: jax.Array
-    wheel_joint_frictionloss_scale: jax.Array
-    wheel_armature_scale: jax.Array
     motor_strength_scale: jax.Array
     back_emf_scale: jax.Array
     motor_balance: jax.Array
-    motor_deadzone: jax.Array  # deprecated, kept for checkpoint compatibility
     motor_time_constant_seconds: jax.Array
-    motor_curve_sharpness: jax.Array
-    traction_slip_threshold: jax.Array
-    traction_loss_strength: jax.Array
-    traction_min_scale: jax.Array
 
 
 class DomainParams(NamedTuple):
@@ -119,8 +101,6 @@ class TagEnvironmentStepInfo(NamedTuple):
     stale_observation_probability: jax.Array
     position_noise_std: jax.Array
     yaw_noise_std: jax.Array
-    chaser_mass_scale: jax.Array
-    evader_mass_scale: jax.Array
     chaser_motor_balance: jax.Array
     evader_motor_balance: jax.Array
     chaser_motor_strength_scale: jax.Array

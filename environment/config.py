@@ -49,96 +49,32 @@ class LayoutRandomizationConfig:
 @dataclass
 class DynamicsRandomizationConfig:
     enabled: bool = True
-    # Chassis mass — no sysid estimate, centered at 1.0
-    chassis_mass_scale_min: float = 0.9
-    chassis_mass_scale_max: float = 1.1
-    # CoM offset — x/z centered from sysid, y kept centered at 0
-    com_offset_x_nominal: float = 0.014703182503581047
-    com_offset_x_delta: float = 0.008
-    com_offset_z_nominal: float = -0.00038700297591276467
-    com_offset_z_delta: float = 0.006
-    com_offset_y_max: float = 0.003
-    # Geometry scales centered from the latest evader-only sysid fit while
-    # preserving the current randomization span wherever it remains valid.
+    # Geometry scales centered on the latest evader-only sysid fit.
     track_width_scale_nominal: float = 0.9207258820533752
     track_width_scale_min: float = 0.86
     track_width_scale_max: float = 1.00
     wheel_radius_scale_nominal: float = 1.0047537088394165
     wheel_radius_scale_min: float = 0.96
     wheel_radius_scale_max: float = 1.05
-    # Simplified wheel-ground model: one longitudinal traction scale and one
-    # turn scrub scale. Legacy wheel friction fields remain below for now but
-    # are no longer the primary training/sysid knobs.
+    # Wheel-ground friction: longitudinal traction and turn-scrub.
     traction_scale_nominal: float = 0.8315610289573669
     traction_scale_min: float = 0.60
     traction_scale_max: float = 1.40
     turn_scrub_scale_nominal: float = 0.9665983319282532
     turn_scrub_scale_min: float = 0.50
     turn_scrub_scale_max: float = 1.50
-    # Legacy wheel friction scales kept for compatibility.
-    wheel_slide_friction_scale_nominal: float = 0.8315610289573669
-    wheel_slide_friction_scale_min: float = 0.60
-    wheel_slide_friction_scale_max: float = 1.40
-    wheel_torsional_friction_scale_nominal: float = 0.9665983319282532
-    wheel_torsional_friction_scale_min: float = 0.50
-    wheel_torsional_friction_scale_max: float = 1.50
-    wheel_rolling_friction_scale_nominal: float = 0.9665983319282532
-    wheel_rolling_friction_scale_min: float = 0.50
-    wheel_rolling_friction_scale_max: float = 1.50
-    # Shared chassis/bumper floor-contact slide friction scale
-    body_contact_friction_scale_nominal: float = 0.6012741923332214
-    body_contact_friction_scale_min: float = 0.30
-    body_contact_friction_scale_max: float = 1.20
-    # Caster geometry/contact
-    caster_radius_scale_nominal: float = 0.849507212638855
-    caster_radius_scale_min: float = 0.78
-    caster_radius_scale_max: float = 0.92
-    # Caster offset
-    caster_offset_x_nominal: float = -0.0013577864738181233
-    caster_offset_x_delta: float = 0.008
-    caster_slide_friction_scale_nominal: float = 2.8258633613586426
-    caster_slide_friction_scale_min: float = 1.60
-    caster_slide_friction_scale_max: float = 3.60
-    caster_torsional_friction_scale_nominal: float = 2.3276596069335938
-    caster_torsional_friction_scale_min: float = 1.40
-    caster_torsional_friction_scale_max: float = 3.10
-    # Wheel joint and motor terms
-    wheel_joint_damping_scale_nominal: float = 2.0157265663146973
-    wheel_joint_damping_scale_min: float = 1.00
-    wheel_joint_damping_scale_max: float = 3.00
-    # Keep randomized, but in the small low-friction regime sysid consistently prefers
-    wheel_joint_frictionloss_scale_nominal: float = 0.02858835831284523
-    wheel_joint_frictionloss_scale_min: float = 0.01
-    wheel_joint_frictionloss_scale_max: float = 0.06
-    wheel_armature_scale_nominal: float = 2.4349827766418457
-    wheel_armature_scale_min: float = 1.20
-    wheel_armature_scale_max: float = 3.50
+    # Motor terms.
     motor_strength_scale_nominal: float = 0.9941380620002747
     motor_strength_scale_min: float = 0.70
     motor_strength_scale_max: float = 1.30
     back_emf_scale_nominal: float = 0.7814494371414185
     back_emf_scale_min: float = 0.55
     back_emf_scale_max: float = 1.05
-    # Motor balance remains robot-specific, but still centered on the fitted nominal
     motor_balance_nominal: float = -0.008113667368888855
     motor_balance_delta_max: float = 0.14
-    # Motor time constant
     motor_time_constant_seconds_nominal: float = 0.015150192193686962
     motor_time_constant_seconds_min: float = 0.008
     motor_time_constant_seconds_max: float = 0.035
-    # Smooth high-command actuator compression and launch-slip attenuation.
-    motor_curve_sharpness_nominal: float = 0.0
-    motor_curve_sharpness_min: float = 0.0
-    motor_curve_sharpness_max: float = 3.0
-    traction_slip_threshold_nominal: float = 0.12944123148918152
-    traction_slip_threshold_min: float = 0.08
-    traction_slip_threshold_max: float = 0.35
-    traction_loss_strength_nominal: float = 0.0
-    traction_loss_strength_min: float = 0.0
-    traction_loss_strength_max: float = 3.0
-    traction_min_scale_nominal: float = 0.55
-    traction_min_scale_min: float = 0.20
-    traction_min_scale_max: float = 1.0
 
 
 @dataclass
@@ -345,8 +281,6 @@ class EnvironmentConfig:
             raise ValueError("obstacle_separation_factor must be positive")
 
         dyn = self.dynamics_randomization
-        if dyn.chassis_mass_scale_min <= 0 or dyn.chassis_mass_scale_max <= 0:
-            raise ValueError("mass scales must be positive")
         if dyn.track_width_scale_min <= 0 or dyn.track_width_scale_max <= 0:
             raise ValueError("track width scales must be positive")
         if dyn.wheel_radius_scale_min <= 0 or dyn.wheel_radius_scale_max <= 0:
@@ -355,52 +289,6 @@ class EnvironmentConfig:
             raise ValueError("traction scales must be positive")
         if dyn.turn_scrub_scale_min <= 0 or dyn.turn_scrub_scale_max <= 0:
             raise ValueError("turn scrub scales must be positive")
-        if (
-            dyn.wheel_slide_friction_scale_min <= 0
-            or dyn.wheel_slide_friction_scale_max <= 0
-        ):
-            raise ValueError("wheel slide friction scales must be positive")
-        if (
-            dyn.wheel_torsional_friction_scale_min <= 0
-            or dyn.wheel_torsional_friction_scale_max <= 0
-        ):
-            raise ValueError("wheel torsional friction scales must be positive")
-        if (
-            dyn.wheel_rolling_friction_scale_min <= 0
-            or dyn.wheel_rolling_friction_scale_max <= 0
-        ):
-            raise ValueError("wheel rolling friction scales must be positive")
-        if (
-            dyn.body_contact_friction_scale_min <= 0
-            or dyn.body_contact_friction_scale_max <= 0
-        ):
-            raise ValueError("body contact friction scales must be positive")
-        if dyn.caster_radius_scale_min <= 0 or dyn.caster_radius_scale_max <= 0:
-            raise ValueError("caster radius scales must be positive")
-        if dyn.caster_offset_x_delta < 0:
-            raise ValueError("caster offset delta must be nonnegative")
-        if (
-            dyn.caster_slide_friction_scale_min <= 0
-            or dyn.caster_slide_friction_scale_max <= 0
-        ):
-            raise ValueError("caster slide friction scales must be positive")
-        if (
-            dyn.caster_torsional_friction_scale_min <= 0
-            or dyn.caster_torsional_friction_scale_max <= 0
-        ):
-            raise ValueError("caster torsional friction scales must be positive")
-        if (
-            dyn.wheel_joint_damping_scale_min <= 0
-            or dyn.wheel_joint_damping_scale_max <= 0
-        ):
-            raise ValueError("wheel joint damping scales must be positive")
-        if (
-            dyn.wheel_joint_frictionloss_scale_min <= 0
-            or dyn.wheel_joint_frictionloss_scale_max <= 0
-        ):
-            raise ValueError("wheel joint frictionloss scales must be positive")
-        if dyn.wheel_armature_scale_min <= 0 or dyn.wheel_armature_scale_max <= 0:
-            raise ValueError("wheel armature scales must be positive")
         if dyn.motor_strength_scale_min <= 0 or dyn.motor_strength_scale_max <= 0:
             raise ValueError("motor strength scales must be positive")
         if dyn.back_emf_scale_min <= 0 or dyn.back_emf_scale_max <= 0:
@@ -412,23 +300,6 @@ class EnvironmentConfig:
             or dyn.motor_time_constant_seconds_max < 0
         ):
             raise ValueError("motor time constants must be nonnegative")
-        if dyn.motor_curve_sharpness_min < 0 or dyn.motor_curve_sharpness_max < 0:
-            raise ValueError("motor curve sharpness must be nonnegative")
-        if dyn.traction_slip_threshold_min < 0 or dyn.traction_slip_threshold_max < 0:
-            raise ValueError("traction slip thresholds must be nonnegative")
-        if dyn.traction_loss_strength_min < 0 or dyn.traction_loss_strength_max < 0:
-            raise ValueError("traction loss strengths must be nonnegative")
-        if not (
-            0 < dyn.traction_min_scale_min <= 1.0
-            and 0 < dyn.traction_min_scale_max <= 1.0
-        ):
-            raise ValueError("traction min scales must be in (0, 1]")
-        if (
-            dyn.com_offset_x_delta < 0
-            or dyn.com_offset_z_delta < 0
-            or dyn.com_offset_y_max < 0
-        ):
-            raise ValueError("CoM offset limits must be nonnegative")
 
         pipe = self.pipeline_randomization
         if (

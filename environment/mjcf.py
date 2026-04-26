@@ -33,14 +33,19 @@ OBSTACLE_COLOR = "0.6 0.6 0.65 1"
 WHEEL_LATERAL_OFFSET = 0.037123
 WHEEL_BODY_Z_OFFSET = 0.0099  # wheel body is this far below robot root in MJCF
 CASTER_BODY_Z_OFFSET = 0.0251  # caster ball body is this far below robot root in MJCF
-CASTER_FRICTION = "0.12 0.0005 0.00002"
-BODY_CONTACT_FRICTION = "0.3 0.005 0.0001"
+# Static contact / joint values bake in the previous DR nominal centers for
+# parameters that are no longer randomized (chassis, caster, wheel-joint).
+CASTER_FRICTION = "0.339 0.001164 0.00004656"
+BODY_CONTACT_FRICTION = "0.180 0.005 0.0001"
+CASTER_OFFSET_X = -0.001358  # baked nominal caster X offset
 WHEEL_RADIUS = 0.020
-CASTER_RADIUS = 0.0048
+CASTER_RADIUS = 0.004078  # baked: 0.0048 * caster_radius_scale_nominal(0.8495)
 WHEEL_HALF_WIDTH = 0.0020
-WHEEL_JOINT_DAMPING = 0.0001
-WHEEL_JOINT_FRICTIONLOSS = 0.025
-WHEEL_JOINT_ARMATURE = 0.000003
+WHEEL_JOINT_DAMPING = 0.0002016  # baked: 0.0001 * wheel_joint_damping_scale_nominal
+WHEEL_JOINT_FRICTIONLOSS = 0.000715  # baked: 0.025 * wheel_joint_frictionloss_scale_nominal
+WHEEL_JOINT_ARMATURE = 0.0000073  # baked: 3e-6 * wheel_armature_scale_nominal
+INERTIAL_POS_X = 0.006703  # baked: -0.008 + com_offset_x_nominal(0.014703)
+INERTIAL_POS_Z = -0.003887  # baked: -0.0035 + com_offset_z_nominal(-0.000387)
 MOTOR_GAIN = 0.126
 MOTOR_BACK_EMF = -0.0015
 MOTOR_TIME_CONSTANT_SECONDS = 0.04
@@ -56,7 +61,7 @@ def _agent_mjcf(
     <body name="{name}" pos="{starting_pos}">
         <freejoint name="{name}_root" />
         <inertial
-            pos="-0.008 0 -0.0035"
+            pos="{INERTIAL_POS_X} 0 {INERTIAL_POS_Z}"
             diaginertia="0.000101 0.000101 0.000170"
             mass="0.135"
         />
@@ -138,7 +143,7 @@ def _agent_mjcf(
                 conaffinity="{CONTACTS["wheel"][1]}"
             />
         </body>
-        <body name="{name}_caster" pos="-0.037 0 -0.0251">
+        <body name="{name}_caster" pos="{-0.037 + CASTER_OFFSET_X} 0 -0.0251">
             <geom
                 name="{name}_caster_housing"
                 type="box"
@@ -159,7 +164,7 @@ def _agent_mjcf(
                 <geom
                     name="{name}_caster_ball_geom"
                     type="sphere"
-                    size="0.0048"
+                    size="{CASTER_RADIUS}"
                     mass="0.002"
                     group="{GEOM_GROUP_AGENT}"
                     rgba="0.6 0.6 0.6 1"

@@ -33,24 +33,32 @@ OBSTACLE_COLOR = "0.6 0.6 0.65 1"
 WHEEL_LATERAL_OFFSET = 0.037123
 WHEEL_BODY_Z_OFFSET = 0.0099  # wheel body is this far below robot root in MJCF
 CASTER_BODY_Z_OFFSET = 0.0251  # caster ball body is this far below robot root in MJCF
-# Static contact / joint values bake in the previous DR nominal centers for
-# parameters that are no longer randomized (chassis, caster, wheel-joint).
-CASTER_FRICTION = "0.339 0.001164 0.00004656"
-BODY_CONTACT_FRICTION = "0.180 0.005 0.0001"
-CASTER_OFFSET_X = -0.001358  # baked nominal caster X offset
+# First-principles physical constants. Values are set from component specs,
+# not sysid fits, so the simulator represents a nominal robot rather than a
+# specific calibrated unit.
+#
+# Caster: Pololu metal ball-bearing caster in plastic housing — steel ball
+# sliding on the floor surface.
+# Body: 3D-printed PLA chassis/bumper.
+CASTER_FRICTION = "0.20 0.005 0.0005"
+BODY_CONTACT_FRICTION = "0.40 0.005 0.0001"
+CASTER_OFFSET_X = 0.0
 WHEEL_RADIUS = 0.020
-CASTER_RADIUS = 0.004078  # baked: 0.0048 * caster_radius_scale_nominal(0.8495)
+CASTER_RADIUS = 0.0048
 WHEEL_HALF_WIDTH = 0.0020
-WHEEL_JOINT_DAMPING = 0.0002016  # baked: 0.0001 * wheel_joint_damping_scale_nominal
-WHEEL_JOINT_FRICTIONLOSS = (
-    0.000715  # baked: 0.025 * wheel_joint_frictionloss_scale_nominal
-)
-WHEEL_JOINT_ARMATURE = 0.0000073  # baked: 3e-6 * wheel_armature_scale_nominal
-INERTIAL_POS_X = -0.018  # baked: -0.008 + com_offset_x_nominal(0.014703)
-INERTIAL_POS_Z = -0.003887  # baked: -0.0035 + com_offset_z_nominal(-0.000387)
-MOTOR_GAIN = 0.126
-MOTOR_BACK_EMF = -0.0015
-MOTOR_TIME_CONSTANT_SECONDS = 0.04
+# Small N20 gearbox + plastic wheel on a steel shaft.
+WHEEL_JOINT_DAMPING = 0.0001  # viscous bearing/gearbox losses
+WHEEL_JOINT_FRICTIONLOSS = 0.001  # Coulomb friction at gearbox output
+WHEEL_JOINT_ARMATURE = 0.000008  # gearbox-reflected rotor inertia
+INERTIAL_POS_X = -0.018
+INERTIAL_POS_Z = -0.0038
+# Pololu N20 HP on 2S (7.4 V), 2.2 A stall, ~800 RPM (83.78 rad/s) free at
+# output. Stall torque T_stall = Kt * I_stall = (V_free/ω_free) * I_stall ≈
+# 0.194 N·m lossless; with ~85% gearbox efficiency → 0.165 N·m. Back-EMF
+# damping coefficient = -T_stall / ω_free.
+MOTOR_GAIN = 0.165
+MOTOR_BACK_EMF = -0.00197
+MOTOR_TIME_CONSTANT_SECONDS = 0.020
 
 CHASER_COLOR = "1 0.545 0.545 1"
 EVADER_COLOR = "0.435 0.702 0.722 1"

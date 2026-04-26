@@ -76,9 +76,9 @@ def parse_args() -> argparse.Namespace:
         help="Reset the simulated ghost to the recorded pose every N seconds. Use 0 to disable.",
     )
     parser.add_argument(
-        "--include-scripted",
+        "--games-only",
         action="store_true",
-        help="When --run-dir points to a dataset root, include non-game runs too.",
+        help="When --run-dir points to a dataset root, only include game runs.",
     )
     return parser.parse_args()
 
@@ -120,7 +120,7 @@ def _is_run_dir(path: Path) -> bool:
     return (path / "samples.jsonl").exists() and (path / "commands.jsonl").exists()
 
 
-def _discover_run_dirs(root: Path, include_scripted: bool) -> list[Path]:
+def _discover_run_dirs(root: Path, games_only: bool) -> list[Path]:
     run_dirs: list[Path] = []
     seen: set[Path] = set()
     for metadata_path in sorted(root.rglob("metadata.json")):
@@ -128,7 +128,7 @@ def _discover_run_dirs(root: Path, include_scripted: bool) -> list[Path]:
         if run_dir in seen or not _is_run_dir(run_dir):
             continue
         seen.add(run_dir)
-        if include_scripted:
+        if not games_only:
             run_dirs.append(run_dir)
             continue
         metadata = load_metadata(run_dir)
@@ -138,12 +138,12 @@ def _discover_run_dirs(root: Path, include_scripted: bool) -> list[Path]:
     return run_dirs
 
 
-def _resolve_run_dirs(path: Path, include_scripted: bool) -> list[Path]:
+def _resolve_run_dirs(path: Path, games_only: bool) -> list[Path]:
     if _is_run_dir(path):
         return [path]
     if not path.exists() or not path.is_dir():
         raise ValueError(f"Run path does not exist: {path}")
-    run_dirs = _discover_run_dirs(path, include_scripted)
+    run_dirs = _discover_run_dirs(path, games_only)
     if not run_dirs:
         raise ValueError(f"No renderable runs found under {path}")
     return run_dirs
@@ -860,7 +860,7 @@ def _render_run(
 
 
 def render_compare(args: argparse.Namespace) -> None:
-    run_dirs = _resolve_run_dirs(args.run_dir, args.include_scripted)
+    run_dirs = _resolve_run_dirs(args.run_dir, args.games_only)
     params = _extract_physical_params(args.params)
     params_label = f"Params: {args.params.name}"
 

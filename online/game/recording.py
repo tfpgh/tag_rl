@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from online.control.teleop import CommandEvent, CommandState
 from online.data.logger import RunLogger
 from online.game.config import GameRuntimeConfig
 from online.game.control import RobotCommand
+
+
+@dataclass(slots=True)
+class AgentInternalsSample:
+    value: float
+    action_mean: np.ndarray
+    action_stddev: np.ndarray
+    action_raw: np.ndarray
+    hidden_state: np.ndarray
+    observation: np.ndarray
 
 
 def _command_state(
@@ -48,7 +60,7 @@ class LiveGameRecorder:
         return self._active_split is not None
 
     def set_recording_split(self, split: str) -> None:
-        if split not in {"off", "train", "eval"}:
+        if split not in {"off", "train", "eval", "showcase"}:
             raise ValueError(f"Unsupported recording split: {split}")
         self._recording_split = split
 
@@ -93,6 +105,8 @@ class LiveGameRecorder:
         board_state: Any,
         chaser_command: RobotCommand,
         evader_command: RobotCommand,
+        chaser_internals: AgentInternalsSample | None = None,
+        evader_internals: AgentInternalsSample | None = None,
     ) -> None:
         if (
             not self.active
@@ -130,6 +144,31 @@ class LiveGameRecorder:
                 packets_sent=self._packets_sent,
             )
         )
+        if (
+            self._active_split == "showcase"
+            and chaser_internals is not None
+            and evader_internals is not None
+        ):
+            self._chaser_logger.log_policy_internals(
+                frame_index=frame_index,
+                monotonic_time=monotonic_time,
+                value=chaser_internals.value,
+                action_mean=chaser_internals.action_mean,
+                action_stddev=chaser_internals.action_stddev,
+                action_raw=chaser_internals.action_raw,
+                hidden_state=chaser_internals.hidden_state,
+                observation=chaser_internals.observation,
+            )
+            self._evader_logger.log_policy_internals(
+                frame_index=frame_index,
+                monotonic_time=monotonic_time,
+                value=evader_internals.value,
+                action_mean=evader_internals.action_mean,
+                action_stddev=evader_internals.action_stddev,
+                action_raw=evader_internals.action_raw,
+                hidden_state=evader_internals.hidden_state,
+                observation=evader_internals.observation,
+            )
 
     def finish_game(self, reason: str) -> list[str]:
         if not self.active:

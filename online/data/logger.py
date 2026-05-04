@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from online.control.teleop import CommandEvent, CommandState
 from online.core.config import TrackerConfig
 from online.core.state import BoardState, ObstacleState, Pose2D, TagDetection
@@ -58,8 +60,10 @@ class RunLogger:
         self.run_dir.mkdir(parents=True, exist_ok=False)
         self._samples_path = self.run_dir / "samples.jsonl"
         self._commands_path = self.run_dir / "commands.jsonl"
+        self._policy_internals_path = self.run_dir / "policy_internals.jsonl"
         self._samples_file = self._samples_path.open("w", encoding="utf-8")
         self._commands_file = self._commands_path.open("w", encoding="utf-8")
+        self._policy_internals_file: Any = None
         self._robot_tag_id = config.teleop.robot_tag_id
         self._chaser_tag_id = config.arena.chaser_tag_id
         self._evader_tag_id = config.arena.evader_tag_id
@@ -68,6 +72,9 @@ class RunLogger:
     def close(self) -> None:
         self._samples_file.close()
         self._commands_file.close()
+        if self._policy_internals_file is not None:
+            self._policy_internals_file.close()
+            self._policy_internals_file = None
 
     def log_sample(
         self,
@@ -106,6 +113,34 @@ class RunLogger:
     def log_command(self, event: CommandEvent) -> None:
         self._commands_file.write(json.dumps(asdict(event)) + "\n")
         self._commands_file.flush()
+
+    def log_policy_internals(
+        self,
+        frame_index: int,
+        monotonic_time: float,
+        value: float,
+        action_mean: np.ndarray,
+        action_stddev: np.ndarray,
+        action_raw: np.ndarray,
+        hidden_state: np.ndarray,
+        observation: np.ndarray,
+    ) -> None:
+        if self._policy_internals_file is None:
+            self._policy_internals_file = self._policy_internals_path.open(
+                "w", encoding="utf-8"
+            )
+        record = {
+            "frame_index": frame_index,
+            "monotonic_time": monotonic_time,
+            "value": float(value),
+            "action_mean": np.asarray(action_mean, dtype=np.float32).tolist(),
+            "action_stddev": np.asarray(action_stddev, dtype=np.float32).tolist(),
+            "action_raw": np.asarray(action_raw, dtype=np.float32).tolist(),
+            "hidden_state": np.asarray(hidden_state, dtype=np.float32).tolist(),
+            "observation": np.asarray(observation, dtype=np.float32).tolist(),
+        }
+        self._policy_internals_file.write(json.dumps(record) + "\n")
+        self._policy_internals_file.flush()
 
     def _target_pose(self, board_state: BoardState) -> Pose2D | None:
         if self._robot_tag_id == self._chaser_tag_id:

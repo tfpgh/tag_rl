@@ -43,6 +43,7 @@ class RuntimeActionConfig:
     record_off: str = "record_off"
     record_train: str = "record_train"
     record_eval: str = "record_eval"
+    record_showcase: str = "record_showcase"
 
 
 @dataclass(slots=True)

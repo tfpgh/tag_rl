@@ -14,7 +14,7 @@ from online.game.config import GameRuntimeConfig
 from online.game.control import DualRobotController, RobotCommand
 from online.game.inference import DualPolicyRunner, sync_live_env_config
 from online.game.observations import LiveObservationBuilder, LiveObservations
-from online.game.recording import LiveGameRecorder
+from online.game.recording import AgentInternalsSample, LiveGameRecorder
 from online.tracking.tracker import BoardTracker
 
 
@@ -197,6 +197,10 @@ class TagGameRuntime:
                 self.recorder.set_recording_split("eval")
                 self._status = "Recording armed for eval games"
                 self._push_event("recording_eval")
+            elif action == actions.record_showcase:
+                self.recorder.set_recording_split("showcase")
+                self._status = "Recording armed for showcase games"
+                self._push_event("recording_showcase")
             else:
                 raise ValueError(f"Unsupported action: {action}")
 
@@ -381,12 +385,42 @@ class TagGameRuntime:
                     self._status = terminal_reason
                     self._reset_policy_state()
                 else:
+                    chaser_internals = None
+                    evader_internals = None
+                    if (
+                        self.recorder.active
+                        and self.recorder.recording_split == "showcase"
+                    ):
+                        chaser_obs_host = np.asarray(
+                            jax.device_get(observations.chaser), dtype=np.float32
+                        )
+                        evader_obs_host = np.asarray(
+                            jax.device_get(observations.evader), dtype=np.float32
+                        )
+                        chaser_internals = AgentInternalsSample(
+                            value=outputs.chaser_value,
+                            action_mean=outputs.chaser_action_mean,
+                            action_stddev=outputs.chaser_action_stddev,
+                            action_raw=outputs.chaser_action,
+                            hidden_state=outputs.chaser_hidden_state,
+                            observation=chaser_obs_host,
+                        )
+                        evader_internals = AgentInternalsSample(
+                            value=outputs.evader_value,
+                            action_mean=outputs.evader_action_mean,
+                            action_stddev=outputs.evader_action_stddev,
+                            action_raw=outputs.evader_action,
+                            hidden_state=outputs.evader_hidden_state,
+                            observation=evader_obs_host,
+                        )
                     self.recorder.record_step(
                         self._recording_frame_index,
                         now,
                         board_state,
                         target_chaser,
                         target_evader,
+                        chaser_internals=chaser_internals,
+                        evader_internals=evader_internals,
                     )
                     self._recording_frame_index += 1
                     self._match_step_count = min(

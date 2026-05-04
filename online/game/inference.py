@@ -20,6 +20,14 @@ from rl.policy import build_policies
 class DualPolicyOutputs:
     chaser_action: np.ndarray
     evader_action: np.ndarray
+    chaser_value: float
+    evader_value: float
+    chaser_action_mean: np.ndarray
+    evader_action_mean: np.ndarray
+    chaser_action_stddev: np.ndarray
+    evader_action_stddev: np.ndarray
+    chaser_hidden_state: np.ndarray
+    evader_hidden_state: np.ndarray
 
 
 class DualPolicyRunner:
@@ -44,7 +52,7 @@ class DualPolicyRunner:
     def warmup(self) -> None:
         obs_size = observation_size(self.env_config)
         zero_obs = jnp.zeros((obs_size,), dtype=jnp.float32)
-        chaser_hstate, evader_hstate, _, _ = self._step_fn(
+        chaser_hstate, evader_hstate, *_ = self._step_fn(
             self.chaser_params,
             self.evader_params,
             self.chaser_hstate,
@@ -64,7 +72,13 @@ class DualPolicyRunner:
         evader_hstate: jax.Array,
         chaser_obs: jax.Array,
         evader_obs: jax.Array,
-    ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    ) -> tuple[
+        jax.Array, jax.Array,
+        jax.Array, jax.Array,
+        jax.Array, jax.Array,
+        jax.Array, jax.Array,
+        jax.Array, jax.Array,
+    ]:
         chaser_input = (
             jnp.asarray(chaser_obs, dtype=jnp.float32)[None, None, :],
             jnp.zeros((1, 1), dtype=bool),
@@ -73,17 +87,28 @@ class DualPolicyRunner:
             jnp.asarray(evader_obs, dtype=jnp.float32)[None, None, :],
             jnp.zeros((1, 1), dtype=bool),
         )
-        next_chaser_hstate, chaser_pi, _ = self.chaser_policy.apply(
+        next_chaser_hstate, chaser_pi, chaser_value = self.chaser_policy.apply(
             chaser_params, chaser_hstate, chaser_input
         )
-        next_evader_hstate, evader_pi, _ = self.evader_policy.apply(
+        next_evader_hstate, evader_pi, evader_value = self.evader_policy.apply(
             evader_params, evader_hstate, evader_input
         )
+        chaser_mean = chaser_pi.loc[0, 0]
+        evader_mean = evader_pi.loc[0, 0]
+        # scale_diag may be stored without batch dims; broadcast then index to (action_dim,).
+        chaser_stddev = jnp.broadcast_to(chaser_pi.scale_diag, chaser_pi.loc.shape)[0, 0]
+        evader_stddev = jnp.broadcast_to(evader_pi.scale_diag, evader_pi.loc.shape)[0, 0]
         return (
             next_chaser_hstate,
             next_evader_hstate,
-            jnp.clip(chaser_pi.loc[0, 0], -1.0, 1.0),
-            jnp.clip(evader_pi.loc[0, 0], -1.0, 1.0),
+            jnp.clip(chaser_mean, -1.0, 1.0),
+            jnp.clip(evader_mean, -1.0, 1.0),
+            chaser_value[0, 0],
+            evader_value[0, 0],
+            chaser_mean,
+            evader_mean,
+            chaser_stddev,
+            evader_stddev,
         )
 
     def step(self, chaser_obs: jax.Array, evader_obs: jax.Array) -> DualPolicyOutputs:
@@ -92,6 +117,12 @@ class DualPolicyRunner:
             self.evader_hstate,
             chaser_action,
             evader_action,
+            chaser_value,
+            evader_value,
+            chaser_mean,
+            evader_mean,
+            chaser_stddev,
+            evader_stddev,
         ) = self._step_fn(
             self.chaser_params,
             self.evader_params,
@@ -100,13 +131,32 @@ class DualPolicyRunner:
             jnp.asarray(chaser_obs, dtype=jnp.float32),
             jnp.asarray(evader_obs, dtype=jnp.float32),
         )
-        host_actions = np.asarray(
-            jax.device_get(jnp.stack([chaser_action, evader_action], axis=0)),
-            dtype=np.float32,
+        chaser_action_host, evader_action_host = jax.device_get(
+            (chaser_action, evader_action)
+        )
+        chaser_value_host, evader_value_host = jax.device_get(
+            (chaser_value, evader_value)
+        )
+        chaser_mean_host, evader_mean_host = jax.device_get(
+            (chaser_mean, evader_mean)
+        )
+        chaser_stddev_host, evader_stddev_host = jax.device_get(
+            (chaser_stddev, evader_stddev)
+        )
+        chaser_hstate_host, evader_hstate_host = jax.device_get(
+            (self.chaser_hstate, self.evader_hstate)
         )
         return DualPolicyOutputs(
-            chaser_action=host_actions[0],
-            evader_action=host_actions[1],
+            chaser_action=np.asarray(chaser_action_host, dtype=np.float32),
+            evader_action=np.asarray(evader_action_host, dtype=np.float32),
+            chaser_value=float(chaser_value_host),
+            evader_value=float(evader_value_host),
+            chaser_action_mean=np.asarray(chaser_mean_host, dtype=np.float32),
+            evader_action_mean=np.asarray(evader_mean_host, dtype=np.float32),
+            chaser_action_stddev=np.asarray(chaser_stddev_host, dtype=np.float32),
+            evader_action_stddev=np.asarray(evader_stddev_host, dtype=np.float32),
+            chaser_hidden_state=np.asarray(chaser_hstate_host[0], dtype=np.float32),
+            evader_hidden_state=np.asarray(evader_hstate_host[0], dtype=np.float32),
         )
 
 

@@ -275,6 +275,7 @@ INDEX_HTML = """
         <button onclick=\"sendAction('record_off')\">Record Off</button>
         <button onclick=\"sendAction('record_train')\">Record Train</button>
         <button onclick=\"sendAction('record_eval')\">Record Eval</button>
+        <button onclick=\"sendAction('record_showcase')\">Record Showcase</button>
       </div>
 
       <div class=\"hero\">

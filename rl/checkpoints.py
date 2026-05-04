@@ -10,6 +10,36 @@ from rl.config import RLConfig
 from rl.rollout import RunnerState
 
 
+class _LegacyOpaqueTuple(tuple):
+    """Stand-in for environment.types NamedTuples whose schema has drifted.
+
+    Stores values positionally; field names are lost. Only safe for fields the
+    caller does not introspect — used to load old checkpoints for inference,
+    where env_state is never read.
+    """
+
+    def __new__(cls, *args: Any) -> "_LegacyOpaqueTuple":
+        return tuple.__new__(cls, args)
+
+
+_LEGACY_PERMISSIVE_TYPES = {
+    "AgentDynamicsParams",
+    "AgentKinematics",
+    "DomainParams",
+    "ObstacleState",
+    "PipelineParams",
+    "TagEnvironmentState",
+    "TagEnvironmentStepInfo",
+}
+
+
+class _PermissiveCheckpointUnpickler(pickle.Unpickler):
+    def find_class(self, module: str, name: str) -> Any:
+        if module == "environment.types" and name in _LEGACY_PERMISSIVE_TYPES:
+            return _LegacyOpaqueTuple
+        return super().find_class(module, name)
+
+
 def _unreplicate_tree(tree: Any) -> Any:
     return jax.tree.map(lambda x: jax.device_get(x[0]), tree)
 
@@ -107,8 +137,22 @@ def save_checkpoint(
 
 
 def load_checkpoint(path: str) -> dict[str, Any]:
-    with open(path, "rb") as f:
-        checkpoint = pickle.load(f)
+    try:
+        with open(path, "rb") as f:
+            checkpoint = pickle.load(f)
+    except TypeError as exc:
+        # NamedTuple arity mismatch — checkpoint was saved with an older
+        # environment.types schema. Retry with a permissive unpickler so policy
+        # params still load. env_state becomes opaque and must not be used.
+        if "positional argument" not in str(exc):
+            raise
+        print(
+            f"WARNING: {path} contains stale environment.types NamedTuples "
+            f"({exc}). Loading with permissive unpickler — env_state will be "
+            f"opaque tuples and is not safe to resume training from."
+        )
+        with open(path, "rb") as f:
+            checkpoint = _PermissiveCheckpointUnpickler(f).load()
     if not isinstance(checkpoint, dict):
         raise ValueError(f"Checkpoint at {path} is not a dictionary payload")
     return checkpoint

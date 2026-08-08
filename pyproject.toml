@@ -1,7 +1,7 @@
 [project]
 name = "tag-rl"
 version = "0.1.0"
-description = "Add your description here"
+description = "Two robots learn to play tag."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

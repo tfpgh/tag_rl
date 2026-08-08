@@ -4,6 +4,8 @@ Two custom robots learn to play tag in simulation through self-play reinforcemen
 
 **[Watch them play](https://youtu.be/83YcsIVBEEk)** · **[Poster](https://tobypenner.com/tag/poster.pdf)**
 
+[Gameplay](https://github.com/user-attachments/assets/fdf1c895-c2dc-47ee-b02f-4c47710d9e93)
+
 ## Motivation
 
 I wanted to watch robots teach themselves to play tag. It’s a children’s game, how hard could it be? There are two main difficulties when applying reinforcement learning to tag:

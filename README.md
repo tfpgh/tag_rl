@@ -25,19 +25,21 @@ Both policies train independently under PPO across 65,536 parallel MuJoCo enviro
 
 It's impossible to make the simulation perfectly accurate to reality, so I randomize various environment parameters throughout training: mass, friction, motor strength, latency, sensor noise. This is the main reason I used a recurrent policy. If the policy can't maintain state across timesteps, it has to learn a general policy which works in all environment conditions. If it's recurrent, it can maintain an implicit belief about the dynamics regime it's operating in, and optimize for that.
 
-I also manually recorded some driving on the real hardware setup, and used CMA-ES to fit the domain randomization parameters to the recorded data. This is to try and get starting points for domain randomization.
+I also manually recorded some driving on the real hardware setup, and used CMA-ES to fit the domain randomization parameters to the recorded data. This centers the domain randomization distributions on reality.
 
-The robots themselves are very simple, they don't know anything about the game being played and they don't have any motor encoders or IMUs. They just listen to motor voltage commands over UDP at 20 Hz.
+The robots themselves are very simple; they don't know anything about the game being played and they don't have any motor encoders or IMUs. They just listen to motor voltage commands over UDP at 20 Hz.
 
-Tracking uses an overhead USB camera and AprilTags on the robots and obstacles. A desktop computer does AprilTag tracking, policy inference, and commands the robots.
+Tracking uses an overhead USB camera and AprilTags on the robots and obstacles. A desktop computer handles AprilTag tracking, runs inference, and commands the robots.
 
 ## Results
 
 The tag rate in simulation settles near 90%, oscillating by a few percent as the two policies co-adapt, with a mean game length of 11 seconds and roughly one wall or obstacle collision per seven minutes of play.
 
-The learned behavior of the policies is super interesting. If there are no obstacles, the chaser can easily drive back and forth pushing the evader closer to a wall until they have nowhere to go. With obstacles, the evader usually continually loops around one of them which can be hard for the chaser to break. The evader in this scenario will often try to reverse direction while it's out of sight of the chaser. The robots often weave excessively at the very start of games for seemingly no reason. My best guess is that this is the quickest way to build up a strong implicit understanding of the environment dynamics. They don't weave if they're trained without domain randomization which lines up with this understanding.
+If there are no obstacles, the chaser can easily drive back and forth pushing the evader closer to a wall until they have nowhere to go. With obstacles, the evader usually loops around one of them which is hard for the chaser to break. The evader in this scenario will often try to reverse direction while it's out of sight of the chaser.
 
-The largest room for improvement is the simulation environment. Even after system identification, simulated and real trajectories diverge in under a second. The physics model is likely underparameterized and the robots are very powerful with tiny wheel contact patches, which are unpredictable. A learned dynamics model would be an interesting improvement to try.
+The robots often weave excessively at the start of games for seemingly no reason. My best guess is that this is the quickest way to build up a strong implicit understanding of the environment dynamics. They don't weave if they're trained without domain randomization, which lines up with this hypothesis.
+
+The largest room for improvement is the simulation environment. Even after system identification, simulated and real trajectories diverge in under a second. The robots have tiny wheel contact patches, so their dynamics are very unpredictable. Building a more stable robot and using a learned dynamics model would be interesting improvements to try.
 
 ---
 
